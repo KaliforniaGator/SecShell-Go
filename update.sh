@@ -14,21 +14,24 @@ else
     echo "Go is already installed."
 fi
 
-# Define the GitHub repository and files to download
-REPO_URL="https://github.com/KaliforniaGator/SecShell-Go"
-FILES=("secshell.go" "go.mod" "go.sum" "colors/colors.go")
+# Define the GitHub repository
+REPO_URL="https://github.com/KaliforniaGator/SecShell-Go.git"
+REPO_DIR="SecShell-Go"
 
-# Download each file from the repository to the current directory
-for FILE in "${FILES[@]}"; do
-    FILE_URL="$REPO_URL/raw/main/$FILE"
-    echo "Downloading $FILE..."
-    mkdir -p "$(dirname "$FILE")"  # Create directories if needed (e.g., for colors/colors.go)
-    curl -s -o "$FILE" "$FILE_URL"
+# Clone the repository
+echo "Cloning repository from $REPO_URL..."
+if [ -d "$REPO_DIR" ]; then
+    echo "Directory $REPO_DIR already exists. Pulling latest changes..."
+    cd "$REPO_DIR"
+    git pull origin main
+else
+    git clone "$REPO_URL" "$REPO_DIR"
     if [ $? -ne 0 ]; then
-        echo "Failed to download $FILE. Please check your internet connection and try again."
+        echo "Failed to clone the repository. Please check your internet connection and try again."
         exit 1
     fi
-done
+    cd "$REPO_DIR"
+fi
 
 # Initialize the Go module if go.mod is missing or incomplete
 if [ ! -f "go.mod" ] || ! grep -q "^module " "go.mod"; then
