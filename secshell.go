@@ -158,6 +158,9 @@ func (s *SecShell) loadWhitelist(filename string) {
 
 // run starts the shell and listens for user input
 func (s *SecShell) run() {
+	// Display welcome screen
+	s.displayWelcomeScreen()
+
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTSTP)
 
@@ -953,6 +956,42 @@ func getExecutablePath() string {
 		return "."
 	}
 	return filepath.Dir(exe)
+}
+
+// Add this after the printError method and before main:
+func (s *SecShell) displayWelcomeScreen() {
+	// Clear the screen first
+	fmt.Print("\033[H\033[2J")
+
+	// ASCII art logo
+	logo := `
+    ███████╗███████╗ ██████╗███████╗██╗  ██╗███████╗██╗     ██╗     
+    ██╔════╝██╔════╝██╔════╝██╔════╝██║  ██║██╔════╝██║     ██║     
+    ███████╗█████╗  ██║     ███████╗███████║█████╗  ██║     ██║     
+    ╚════██║██╔══╝  ██║     ╚════██║██╔══██║██╔══╝  ██║     ██║     
+    ███████║███████╗╚██████╗███████║██║  ██║███████╗███████╗███████╗
+    ╚══════╝╚══════╝ ╚═════╝╚══════╝╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝
+    `
+
+	fmt.Printf("%s%s%s\n", colors.Yellow, logo, colors.Reset)
+
+	s.runDrawbox("Welcome to SecShell - A Secure Command Shell", "bold_green")
+	fmt.Printf("\n%sFeatures:%s\n", colors.BoldWhite, colors.Reset)
+	features := []string{
+		"✓ Command whitelisting and blacklisting",
+		"✓ Secure input handling",
+		"✓ Process isolation",
+		"✓ Service management",
+		"✓ Background job support",
+		"✓ Command history",
+		"✓ Tab completion",
+	}
+
+	for _, feature := range features {
+		fmt.Printf("  %s%s%s\n", colors.Green, feature, colors.Reset)
+	}
+
+	fmt.Printf("\n%sType 'help' for available commands%s\n\n", colors.Yellow, colors.Reset)
 }
 
 // main function to start the shell
