@@ -4,12 +4,14 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"secshell/colors"
 
@@ -46,11 +48,10 @@ func NewSecShell(blacklistPath, whitelistPath string) *SecShell {
 		jobs:            make(map[int]string),
 		running:         true,
 		allowedDirs:     []string{"/usr/bin/", "/bin/", "/opt/"},
-		allowedCommands: []string{},
+		allowedCommands: []string{"ls", "cd", "pwd", "download"},
 		blacklist:       blacklistPath,
 		whitelist:       whitelistPath,
 		history:         []string{},
-		historyIndex:    -1,
 	}
 	shell.ensureFilesExist()
 	shell.loadBlacklist(blacklistPath)
@@ -212,7 +213,7 @@ func (s *SecShell) getInput() string {
 
 	line := ""
 	pos := 0
-	buf := make([]byte, 3)
+	buf := make([]byte, 1024) // Increased buffer size to handle pasting
 	for {
 		n, err := os.Stdin.Read(buf)
 		if err != nil {
@@ -220,73 +221,75 @@ func (s *SecShell) getInput() string {
 			return ""
 		}
 
-		input := string(buf[:n])
-		switch input {
-		case KeyLeft:
-			if pos > 0 {
-				pos--
-				fmt.Print("\x1b[D") // Move cursor left
-			}
-		case KeyRight:
-			if pos < len(line) {
-				pos++
-				fmt.Print("\x1b[C") // Move cursor right
-			}
-		case KeyDelete, KeyBackspace:
-			if pos > 0 {
-				// Remove character at position
-				line = line[:pos-1] + line[pos:]
-				pos--
-				// Clear from cursor to end of line
-				fmt.Print("\x1b[D\x1b[K")
-				// Print remaining text
-				if pos < len(line) {
-					fmt.Print(line[pos:])
-					// Move cursor back to position
-					fmt.Printf("\x1b[%dD", len(line)-pos)
+		// Handle input bytes one by one
+		for i := 0; i < n; i++ {
+			switch buf[i] {
+			case 27: // ESC sequence
+				if i+2 < n { // Check if we have enough bytes for an escape sequence
+					if buf[i+1] == '[' {
+						switch buf[i+2] {
+						case 'A': // Up arrow
+							if s.historyIndex > 0 {
+								s.historyIndex--
+								newLine := strings.TrimSpace(s.history[s.historyIndex])
+								fmt.Printf("\x1b[%dD\x1b[K%s", pos, newLine)
+								line = newLine
+								pos = len(line)
+							}
+							i += 2
+						case 'B': // Down arrow
+							if s.historyIndex < len(s.history)-1 {
+								s.historyIndex++
+								newLine := strings.TrimSpace(s.history[s.historyIndex])
+								fmt.Printf("\x1b[%dD\x1b[K%s", pos, newLine)
+								line = newLine
+								pos = len(line)
+							}
+							i += 2
+						case 'C': // Right arrow
+							if pos < len(line) {
+								pos++
+								fmt.Print("\x1b[C")
+							}
+							i += 2
+						case 'D': // Left arrow
+							if pos > 0 {
+								pos--
+								fmt.Print("\x1b[D")
+							}
+							i += 2
+						}
+					}
 				}
-			}
-		case KeyUp:
-			if s.historyIndex > 0 {
-				s.historyIndex--
-				newLine := strings.TrimSpace(s.history[s.historyIndex])
-				// Clear current line content
-				fmt.Printf("\x1b[%dD\x1b[K", pos)
-				// Print new line
-				fmt.Print(newLine)
-				line = newLine
-				pos = len(line)
-			}
-		case KeyDown:
-			if s.historyIndex < len(s.history)-1 {
-				s.historyIndex++
-				newLine := strings.TrimSpace(s.history[s.historyIndex])
-				// Clear current line content
-				fmt.Printf("\x1b[%dD\x1b[K", pos)
-				// Print new line
-				fmt.Print(newLine)
-				line = newLine
-				pos = len(line)
-			}
-		case KeyTab:
-			line, pos = s.completeCommand(line, pos)
-		case "\r", "\n":
-			fmt.Println()
-			input := s.sanitizeInput(strings.TrimSpace(line))
-			if input != "" {
-				s.history = append(s.history, input)
-				s.historyIndex = len(s.history)
-			}
-			return input
-		default:
-			if len(input) == 1 && input[0] >= 32 { // Printable characters
-				// Insert character at current position
-				line = line[:pos] + input + line[pos:]
-				fmt.Print(line[pos:]) // Print from cursor to end
-				pos++
-				// Move cursor back to position
-				if pos < len(line) {
-					fmt.Printf("\x1b[%dD", len(line)-pos)
+			case 127, 8: // Backspace and Delete
+				if pos > 0 {
+					line = line[:pos-1] + line[pos:]
+					pos--
+					fmt.Print("\x1b[D\x1b[K")
+					if pos < len(line) {
+						fmt.Print(line[pos:])
+						fmt.Printf("\x1b[%dD", len(line)-pos)
+					}
+				}
+			case 9: // Tab
+				line, pos = s.completeCommand(line, pos)
+			case 13, 10: // Enter (CR or LF)
+				fmt.Println()
+				input := s.sanitizeInput(strings.TrimSpace(line))
+				if input != "" {
+					s.history = append(s.history, input)
+					s.historyIndex = len(s.history)
+				}
+				return input
+			default:
+				if buf[i] >= 32 { // Printable characters
+					// Insert character at current position
+					line = line[:pos] + string(buf[i]) + line[pos:]
+					fmt.Print(line[pos:])
+					pos++
+					if pos < len(line) {
+						fmt.Printf("\x1b[%dD", len(line)-pos)
+					}
 				}
 			}
 		}
@@ -295,43 +298,40 @@ func (s *SecShell) getInput() string {
 
 // completeCommand provides command completion suggestions
 func (s *SecShell) completeCommand(line string, pos int) (string, int) {
+	if line == "" {
+		return line, pos
+	}
+
 	words := strings.Fields(line)
 	if len(words) == 0 {
 		return line, pos
 	}
 
 	lastWord := words[len(words)-1]
-	completions := s.getCompletions(lastWord)
+	prefix := lastWord
 
-	if len(completions) == 1 {
-		// Replace the last word with the completion
-		words[len(words)-1] = completions[0]
+	// Only do path/file completion
+	matches, _ := filepath.Glob(prefix + "*")
+	if len(matches) == 0 {
+		return line, pos
+	}
+
+	if len(matches) == 1 {
+		// Single match - replace the last word
+		words[len(words)-1] = matches[0]
 		newLine := strings.Join(words, " ")
+		// Clear current line and reprint with prompt format
+		fmt.Printf("\r\033[K%s└─$ %s", colors.Green, newLine)
 		return newLine, len(newLine)
-	} else if len(completions) > 1 {
-		// Show multiple completions
-		fmt.Println()
-		for _, completion := range completions {
-			fmt.Printf("%s  ", completion)
-		}
-		fmt.Println()
-		s.displayPrompt()
-		fmt.Print(line)
 	}
-	return line, pos
-}
 
-// getCompletions returns a list of possible completions for a given prefix
-func (s *SecShell) getCompletions(prefix string) []string {
-	var completions []string
-	for _, cmd := range s.allowedCommands {
-		if strings.HasPrefix(cmd, prefix) {
-			completions = append(completions, cmd)
-		}
+	// Multiple matches - show them while preserving prompt
+	fmt.Print("\n")
+	for _, match := range matches {
+		fmt.Printf("%s  ", match)
 	}
-	files, _ := filepath.Glob(prefix + "*")
-	completions = append(completions, files...)
-	return completions
+	fmt.Printf("\n%s└─$ %s", colors.Green, line)
+	return line, pos
 }
 
 // sanitizeInput removes forbidden characters from input
@@ -545,6 +545,12 @@ func (s *SecShell) processCommand(input string) {
 			s.editWhitelist()
 		case "reload-whitelist":
 			s.reloadWhitelist()
+		case "download":
+			if len(args) != 2 {
+				s.printError("Usage: download <url>")
+				return
+			}
+			s.downloadFile(args[1])
 		case "exit":
 			s.running = false
 		default:
@@ -820,6 +826,8 @@ Built-in Commands:
   %sedit-whitelist%s - Edit the whitelist file
   %sreload-blacklist%s - Reload the blacklisted commands
   %sreload-whitelist%s - Reload the whitelisted commands
+  %sdownload%s    - Download a file from URL
+               Usage: download <url>
 
 %sAllowed System Commands:%s
   ls, ps, netstat, tcpdump, cd, clear, ifconfig
@@ -868,6 +876,7 @@ Only executables from trusted directories are permitted.
 		colors.BoldWhite, colors.Reset, // edit-whitelist
 		colors.BoldWhite, colors.Reset, // reload-blacklist
 		colors.BoldWhite, colors.Reset, // reload-whitelist
+		colors.BoldWhite, colors.Reset, // download
 		colors.Cyan, colors.Reset, // Allowed System Commands
 		colors.Cyan, colors.Reset, // Security Features
 		colors.Cyan, colors.Reset, // Examples
@@ -992,6 +1001,90 @@ func (s *SecShell) displayWelcomeScreen() {
 	}
 
 	fmt.Printf("\n%sType 'help' for available commands%s\n\n", colors.Yellow, colors.Reset)
+}
+
+// Add this new method:
+func (s *SecShell) downloadFile(url string) {
+	// Extract filename from URL
+	fileName := filepath.Base(url)
+	if fileName == "" || fileName == "." {
+		fileName = "downloaded_file"
+	}
+
+	// Create the file
+	out, err := os.Create(fileName)
+	if err != nil {
+		s.printError(fmt.Sprintf("Error creating file: %v", err))
+		return
+	}
+	defer out.Close()
+
+	// Get the data
+	s.printAlert(fmt.Sprintf("Downloading %s...", url))
+	resp, err := http.Get(url)
+	if err != nil {
+		s.printError(fmt.Sprintf("Error downloading file: %v", err))
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		s.printError(fmt.Sprintf("Bad status: %s", resp.Status))
+		return
+	}
+
+	// Create progress bar
+	size := resp.ContentLength
+	progress := 0
+	startTime := time.Now()
+
+	// Create counter proxy reader
+	counter := &WriteCounter{
+		Total:    size,
+		progress: &progress,
+		shell:    s,
+	}
+
+	// Copy data with progress updates
+	_, err = io.Copy(out, io.TeeReader(resp.Body, counter))
+	if err != nil {
+		s.printError(fmt.Sprintf("Error saving file: %v", err))
+		return
+	}
+
+	// Calculate download speed
+	duration := time.Since(startTime).Seconds()
+	speed := float64(size) / duration / 1024 / 1024 // MB/s
+
+	fmt.Print("\r\033[K") // Clear progress line
+	s.printAlert(fmt.Sprintf("Downloaded %s (%.2f MB/s)", fileName, speed))
+}
+
+// Add this struct for progress tracking
+type WriteCounter struct {
+	Total    int64
+	progress *int
+	shell    *SecShell
+}
+
+func (wc *WriteCounter) Write(p []byte) (int, error) {
+	n := len(p)
+	if wc.Total > 0 {
+		*wc.progress = int(float64(n) / float64(wc.Total) * 100)
+		if *wc.progress != *wc.progress {
+			// Clear line and show progress
+			fmt.Printf("\r\033[K[")
+			for i := 0; i < 50; i++ {
+				if i < *wc.progress/2 {
+					fmt.Print("=")
+				} else {
+					fmt.Print(" ")
+				}
+			}
+			fmt.Printf("] %d%%", *wc.progress)
+		}
+	}
+	return n, nil
 }
 
 // main function to start the shell
