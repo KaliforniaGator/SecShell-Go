@@ -59,5 +59,14 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Move the binary to the current working directory (PWD)
+echo "Moving 'secshell' binary to the current directory..."
+mv secshell ..
+
+# Clean up: Remove the cloned repository
+echo "Cleaning up..."
+cd ..
+rm -rf "$REPO_DIR"
+
 echo "Compilation successful. The 'secshell' binary has been placed in the current directory."
 echo "Update complete. You can now run './secshell' to start the shell."
