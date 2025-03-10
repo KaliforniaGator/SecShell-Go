@@ -62,6 +62,14 @@ func NewSecShell(blacklistPath, whitelistPath string) *SecShell {
 func (s *SecShell) ensureFilesExist() {
 	defaultWhitelistCommands := []string{"ls", "cd", "pwd", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "cat", "echo", "grep", "find", "chmod", "chown", "ps", "kill", "top", "df", "du", "ifconfig", "netstat", "ping", "clear", "vim", "nano", "emacs", "nvim"}
 
+	// Ensure directory exists
+	exePath := getExecutablePath()
+	if err := os.MkdirAll(exePath, 0755); err != nil {
+		s.printError(fmt.Sprintf("Failed to create directory for config files: %s", err))
+		return
+	}
+
+	// Create blacklist if it doesn't exist
 	if _, err := os.Stat(s.blacklist); os.IsNotExist(err) {
 		file, err := os.Create(s.blacklist)
 		if err != nil {
@@ -72,6 +80,7 @@ func (s *SecShell) ensureFilesExist() {
 		}
 	}
 
+	// Create/update whitelist if needed
 	if _, err := os.Stat(s.whitelist); os.IsNotExist(err) {
 		file, err := os.Create(s.whitelist)
 		if err != nil {
@@ -84,6 +93,7 @@ func (s *SecShell) ensureFilesExist() {
 			s.printAlert(fmt.Sprintf("Created new whitelist file at %s with default commands", s.whitelist))
 		}
 	} else {
+		// Update existing whitelist with any missing default commands
 		existingCommands := make(map[string]bool)
 		file, err := os.OpenFile(s.whitelist, os.O_RDWR|os.O_APPEND, 0666)
 		if err != nil {
@@ -936,10 +946,20 @@ func (s *SecShell) printError(message string) {
 	}
 }
 
+// Add this function near the top of the file after the imports
+func getExecutablePath() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "."
+	}
+	return filepath.Dir(exe)
+}
+
 // main function to start the shell
 func main() {
-	blacklistPath := "./.blacklist"
-	whitelistPath := "./.whitelist"
+	exePath := getExecutablePath()
+	blacklistPath := filepath.Join(exePath, ".blacklist")
+	whitelistPath := filepath.Join(exePath, ".whitelist")
 	shell := NewSecShell(blacklistPath, whitelistPath)
 	shell.run()
 }
