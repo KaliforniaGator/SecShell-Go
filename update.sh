@@ -30,11 +30,29 @@ for FILE in "${FILES[@]}"; do
     fi
 done
 
+# Initialize the Go module if go.mod is missing or incomplete
+if [ ! -f "go.mod" ] || ! grep -q "^module " "go.mod"; then
+    echo "go.mod is missing or incomplete. Initializing module..."
+    go mod init github.com/KaliforniaGator/SecShell-Go
+    if [ $? -ne 0 ]; then
+        echo "Failed to initialize Go module. Please check the error message above."
+        exit 1
+    fi
+fi
+
+# Download dependencies
+echo "Downloading Go dependencies..."
+go mod tidy
+if [ $? -ne 0 ]; then
+    echo "Failed to download Go dependencies. Please check the error message above."
+    exit 1
+fi
+
 # Compile the program
 echo "Compiling secshell.go..."
 go build -o secshell secshell.go
 if [ $? -ne 0 ]; then
-    echo "Compilation failed. Please check the downloaded files and troubleshoot the issue."
+    echo "Compilation failed. Please check the error message above."
     exit 1
 fi
 
