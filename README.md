@@ -17,6 +17,18 @@ SecShell is a secure shell implementation written in Go, designed to provide a c
 
 ## Installation
 
+###Requirements
+1. GoLang-Go
+   ```bash
+   sudo apt install golang-go
+   ```  
+2. systemctl
+   ```bash
+   sudo apt install systemctl
+   ```
+3. drawbox
+   [Installation Instructions](https://github.com/KaliforniaGator/DrawBox)
+
 To use SecShell, you need to have Go installed on your system. Follow these steps to get started:
 
 1. **Clone the repository**:
@@ -60,6 +72,7 @@ Once the shell is running, you can start executing commands. The shell supports 
 - **edit-whitelist**: Edit the whitelist file.
 - **reload-blacklist**: Reload the blacklisted commands.
 - **reload-whitelist**: Reload the whitelisted commands.
+- **download** Download a file from the internet using: download <filename>.
 
 ### Examples
 
