@@ -42,16 +42,22 @@ type SecShell struct {
 	historyIndex        int
 }
 
+// Define a list of built-in commands
+var builtInCommands = []string{
+	"help", "exit", "services", "jobs", "cd", "history", "export", "env", "unset",
+	"reload-blacklist", "blacklist", "edit-blacklist", "whitelist", "edit-whitelist",
+	"reload-whitelist", "download"}
+
 // NewSecShell initializes a new SecShell instance
 func NewSecShell(blacklistPath, whitelistPath string) *SecShell {
 	shell := &SecShell{
-		jobs:            make(map[int]string),
-		running:         true,
-		allowedDirs:     []string{"/usr/bin/", "/bin/", "/opt/"},
-		allowedCommands: []string{"ls", "cd", "pwd", "download"},
-		blacklist:       blacklistPath,
-		whitelist:       whitelistPath,
-		history:         []string{},
+		jobs:        make(map[int]string),
+		running:     true,
+		allowedDirs: []string{"/usr/bin/", "/bin/", "/opt/"},
+		//allowedCommands: []string{"ls", "cd", "pwd", "download"},
+		blacklist: blacklistPath,
+		whitelist: whitelistPath,
+		history:   []string{},
 	}
 	shell.ensureFilesExist()
 	shell.loadBlacklist(blacklistPath)
@@ -180,7 +186,7 @@ func (s *SecShell) run() {
 	fmt.Print("\033[H\033[2J")
 }
 
-// displayPrompt shows the shell prompt to the user
+// Change the displayPrompt function:
 func (s *SecShell) displayPrompt() {
 	user := os.Getenv("USER")
 	if user == "" {
@@ -193,11 +199,10 @@ func (s *SecShell) displayPrompt() {
 		return
 	}
 
-	fmt.Fprintf(os.Stdout, "%s┌─[SecShell]%s %s(%s)%s %s[%s]%s\n%s└─%s$ ",
-		colors.Green, colors.Reset,
-		colors.Blue, user, colors.Reset,
-		colors.Yellow, cwd, colors.Reset,
-		colors.Green, colors.Reset)
+	fmt.Print(colors.BoldGreen + "┌─[SecShell]" + colors.Reset + " " +
+		colors.BoldBlue + "(" + user + ")" + colors.Reset + " " +
+		colors.BoldWhite + "[" + cwd + "]" + colors.Reset + "\n" +
+		colors.BoldGreen + "└─" + colors.Reset + "$ ")
 }
 
 // getInput reads user input from the terminal
@@ -296,7 +301,7 @@ func (s *SecShell) getInput() string {
 	}
 }
 
-// completeCommand provides command completion suggestions
+// Modify the completeCommand function:
 func (s *SecShell) completeCommand(line string, pos int) (string, int) {
 	if line == "" {
 		return line, pos
@@ -310,33 +315,91 @@ func (s *SecShell) completeCommand(line string, pos int) (string, int) {
 	lastWord := words[len(words)-1]
 	prefix := lastWord
 
-	// Only do path/file completion
-	matches, _ := filepath.Glob(prefix + "*")
-	if len(matches) == 0 {
-		return line, pos
-	}
+	// Check if we are completing a command or a path
+	if len(words) == 1 {
+		// Command completion
+		matches := s.getCommandMatches(prefix)
+		if len(matches) == 0 {
+			return line, pos
+		}
 
-	if len(matches) == 1 {
-		// Single match - replace the last word
+		// Replace the last word with the first match
 		words[len(words)-1] = matches[0]
 		newLine := strings.Join(words, " ")
-		// Clear current line and reprint with prompt format
-		fmt.Printf("\r\033[K%s└─$ %s", colors.Green, newLine)
+		s.clearLine()
+		s.clearLineAndPrintBottom()
+		fmt.Print(newLine)
+
+		// If there are multiple matches, show them below
+		if len(matches) > 1 {
+			for _, match := range matches {
+				fmt.Print(match + "  ")
+			}
+			s.clearLine()
+			s.clearLineAndPrintBottom() // Clear line and print the bottom prompt
+			fmt.Print(newLine)          // Reprint the new input with the first match
+		}
+
+		return newLine, len(newLine)
+
+	} else {
+		// Path completion
+		matches, _ := filepath.Glob(prefix + "*")
+		if len(matches) == 0 {
+			return line, pos
+		}
+
+		// Replace the last word with the first match
+		words[len(words)-1] = matches[0]
+		newLine := strings.Join(words, " ")
+		s.clearLine()
+		s.clearLineAndPrintBottom()
+		fmt.Print(newLine)
+
+		// If there are multiple matches, show them below
+		if len(matches) > 1 {
+			for _, match := range matches {
+				fmt.Print(match + "  ")
+			}
+			s.clearLine()
+			s.clearLineAndPrintBottom() // Clear line and print the bottom prompt
+			fmt.Print(newLine)          // Reprint the new input with the first match
+		}
+
 		return newLine, len(newLine)
 	}
+}
 
-	// Multiple matches - show them while preserving prompt
-	fmt.Print("\n")
-	for _, match := range matches {
-		fmt.Printf("%s  ", match)
+// Add this new method to get command matches:
+func (s *SecShell) getCommandMatches(prefix string) []string {
+	var matches []string
+	for _, cmd := range s.allowedCommands {
+		if strings.HasPrefix(cmd, prefix) {
+			matches = append(matches, cmd)
+		}
 	}
-	fmt.Printf("\n%s└─$ %s", colors.Green, line)
-	return line, pos
+
+	// Include built-in commands
+	for _, cmd := range builtInCommands {
+		if strings.HasPrefix(cmd, prefix) {
+			matches = append(matches, cmd)
+		}
+	}
+	return matches
 }
 
 // sanitizeInput removes forbidden characters from input
-func (s *SecShell) sanitizeInput(input string) string {
-	forbidden := ";`"
+func (s *SecShell) sanitizeInput(input string, allowSpecialChars ...bool) string {
+	allow := true
+	if len(allowSpecialChars) > 0 {
+		allow = allowSpecialChars[0]
+	}
+
+	forbidden := ";`\\\"'"
+	if !allow {
+		forbidden += "&|><"
+	}
+
 	for _, char := range forbidden {
 		input = strings.ReplaceAll(input, string(char), "")
 	}
@@ -377,7 +440,7 @@ func (s *SecShell) exportVariable(args []string) {
 		return
 	}
 
-	varValue := args[1]
+	varValue := s.sanitizeInput(args[1], false)
 	equalsPos := strings.Index(varValue, "=")
 	if equalsPos == -1 {
 		s.printError("Invalid export syntax. Use VAR=value")
@@ -409,7 +472,7 @@ func (s *SecShell) unsetEnvVariable(args []string) {
 		return
 	}
 
-	varName := args[1]
+	varName := s.sanitizeInput(args[1], false)
 	if err := os.Unsetenv(varName); err != nil {
 		s.printError(fmt.Sprintf("Failed to unset environment variable: %s", err))
 	} else {
@@ -1005,11 +1068,17 @@ func (s *SecShell) displayWelcomeScreen() {
 
 // Add this new method:
 func (s *SecShell) downloadFile(url string) {
+	// Sanitize URL
+	url = s.sanitizeInput(url, false)
+
 	// Extract filename from URL
 	fileName := filepath.Base(url)
 	if fileName == "" || fileName == "." {
 		fileName = "downloaded_file"
 	}
+
+	// Sanitize filename
+	fileName = s.sanitizeInput(fileName, false)
 
 	// Create the file
 	out, err := os.Create(fileName)
@@ -1038,11 +1107,12 @@ func (s *SecShell) downloadFile(url string) {
 	progress := 0
 	startTime := time.Now()
 
-	// Create counter proxy reader
+	// Create counter proxy reader with proper initialization
 	counter := &WriteCounter{
-		Total:    size,
-		progress: &progress,
-		shell:    s,
+		Total:      size,
+		Downloaded: 0,
+		progress:   &progress,
+		shell:      s,
 	}
 
 	// Copy data with progress updates
@@ -1060,18 +1130,27 @@ func (s *SecShell) downloadFile(url string) {
 	s.printAlert(fmt.Sprintf("Downloaded %s (%.2f MB/s)", fileName, speed))
 }
 
-// Add this struct for progress tracking
+// Replace the WriteCounter struct and its Write method:
 type WriteCounter struct {
-	Total    int64
-	progress *int
-	shell    *SecShell
+	Total      int64
+	Downloaded int64
+	progress   *int
+	shell      *SecShell
 }
 
 func (wc *WriteCounter) Write(p []byte) (int, error) {
 	n := len(p)
+	wc.Downloaded += int64(n)
+
+	// Calculate percentage
 	if wc.Total > 0 {
-		*wc.progress = int(float64(n) / float64(wc.Total) * 100)
-		if *wc.progress != *wc.progress {
+		percentage := float64(wc.Downloaded) / float64(wc.Total) * 100
+		newProgress := int(percentage)
+
+		// Only update if progress has changed
+		if newProgress != *wc.progress {
+			*wc.progress = newProgress
+
 			// Clear line and show progress
 			fmt.Printf("\r\033[K[")
 			for i := 0; i < 50; i++ {
@@ -1085,6 +1164,21 @@ func (wc *WriteCounter) Write(p []byte) (int, error) {
 		}
 	}
 	return n, nil
+}
+
+// Print only top:
+func (s *SecShell) clearLine() {
+	// Clear the entire current line and return carriage
+	fmt.Print("\033[2K\r")
+
+}
+
+// Add this new method:
+func (s *SecShell) clearLineAndPrintBottom() {
+	// Clear the entire current line and return carriage
+	fmt.Print("\033[2K\r")
+	// Print only the bottom prompt exactly as defined
+	fmt.Print(colors.BoldGreen + "└─" + colors.Reset + "$ ")
 }
 
 // main function to start the shell
