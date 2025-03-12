@@ -987,7 +987,17 @@ func (s *SecShell) isCommandBlacklisted(cmd string) bool {
 // runDrawbox runs the drawbox command to display a message box
 func (s *SecShell) runDrawbox(title, color string) {
 	fmt.Print("\n") // Add newline before box
-	drawboxPath := filepath.Join("/usr/local/bin", "drawbox")
+
+	// Use exec.LookPath to find the drawbox executable in the PATH
+	drawboxPath, err := exec.LookPath("drawbox")
+	if err != nil {
+		// If drawbox is not found, fallback to the custom box drawing
+		fmt.Fprintf(os.Stdout, "%s╔══%s %s %s══╗%s\n",
+			colors.BoldWhite, colors.Reset, title, colors.BoldWhite, colors.Reset)
+		return
+	}
+
+	// Execute the drawbox command
 	cmd := exec.Command(drawboxPath, title, color)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
