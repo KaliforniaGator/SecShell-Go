@@ -67,6 +67,13 @@ func NewSecShell(blacklistPath, whitelistPath string) *SecShell {
 
 // ensureFilesExist checks and creates blacklist and whitelist files if they don't exist
 func (s *SecShell) ensureFilesExist() {
+	// Ensure the config directory exists
+	configDir := filepath.Dir(s.blacklist)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		s.printError(fmt.Sprintf("Failed to create config directory: %s", err))
+		return
+	}
+
 	defaultWhitelistCommands := []string{"ls", "cd", "pwd", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "cat", "echo", "grep", "find", "chmod", "chown", "ps", "kill", "top", "df", "du", "ifconfig", "netstat", "ping", "clear", "vim", "nano", "emacs", "nvim"}
 
 	// Ensure directory exists
@@ -1023,11 +1030,11 @@ func (s *SecShell) printError(message string) {
 
 // Add this function near the top of the file after the imports
 func getExecutablePath() string {
-	exe, err := os.Executable()
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return "."
+		return "." // Fallback to current directory if home directory cannot be determined
 	}
-	return filepath.Dir(exe)
+	return filepath.Join(homeDir, ".secshell") // Use ~/.secshell for config files
 }
 
 // Add this after the printError method and before main:
@@ -1183,9 +1190,14 @@ func (s *SecShell) clearLineAndPrintBottom() {
 
 // main function to start the shell
 func main() {
-	exePath := getExecutablePath()
-	blacklistPath := filepath.Join(exePath, ".blacklist")
-	whitelistPath := filepath.Join(exePath, ".whitelist")
+	configDir := getExecutablePath()
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		fmt.Printf("Failed to create config directory: %s\n", err)
+		return
+	}
+
+	blacklistPath := filepath.Join(configDir, ".blacklist")
+	whitelistPath := filepath.Join(configDir, ".whitelist")
 	shell := NewSecShell(blacklistPath, whitelistPath)
 	shell.run()
 }
