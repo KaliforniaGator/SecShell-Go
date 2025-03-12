@@ -1010,16 +1010,12 @@ func (s *SecShell) runDrawbox(title, color string) {
 
 // printAlert prints an alert message
 func (s *SecShell) printAlert(message string) {
-	s.runDrawbox("ALERT", "bold_yellow")
-	// Print the message after the box
-	fmt.Fprintf(os.Stdout, "%s %s\n", colors.Reset, message)
+	s.runDrawbox("ALERT: "+message, "bold_yellow")
 }
 
 // printError prints an error message
 func (s *SecShell) printError(message string) {
-	s.runDrawbox("ERROR", "bold_red")
-	// Print the message after the box
-	fmt.Fprintf(os.Stderr, "%s %s\n", colors.Reset, message)
+	s.runDrawbox("ERROR: "+message, "bold_red")
 }
 
 // Add this function near the top of the file after the imports
