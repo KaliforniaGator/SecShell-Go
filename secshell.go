@@ -1010,32 +1010,16 @@ func (s *SecShell) runDrawbox(title, color string) {
 
 // printAlert prints an alert message
 func (s *SecShell) printAlert(message string) {
-	fmt.Print("\n") // Add newline before box
-	drawboxPath := filepath.Join("/usr/local/bin", "drawbox")
-	cmd := exec.Command(drawboxPath, message, "bold_yellow")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		// Fallback if drawbox fails
-		fmt.Fprintf(os.Stdout, "%s╔═ ALERT ═╗\n│%s %s\n%s└────────┘%s\n",
-			colors.BoldYellow, colors.Reset, message,
-			colors.BoldYellow, colors.Reset)
-	}
+	s.runDrawbox("ALERT", "bold_yellow")
+	// Print the message after the box
+	fmt.Fprintf(os.Stdout, "%s %s\n", colors.Reset, message)
 }
 
 // printError prints an error message
 func (s *SecShell) printError(message string) {
-	fmt.Print("\n") // Add newline before box
-	drawboxPath := filepath.Join("/usr/local/bin", "drawbox")
-	cmd := exec.Command(drawboxPath, message, "bold_red")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		// Fallback if drawbox fails
-		fmt.Fprintf(os.Stderr, "%s╔═ ERROR ═╗\n│%s %s\n%s└────────┘%s\n",
-			colors.BoldRed, colors.Reset, message,
-			colors.BoldRed, colors.Reset)
-	}
+	s.runDrawbox("ERROR", "bold_red")
+	// Print the message after the box
+	fmt.Fprintf(os.Stderr, "%s %s\n", colors.Reset, message)
 }
 
 // Add this function near the top of the file after the imports
