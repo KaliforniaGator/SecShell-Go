@@ -61,6 +61,7 @@ Once the shell is running, you can start executing commands. The shell supports 
 - **cd**: Change directory.
   - Usage: `cd [directory]`
 - **history**: Show command history.
+  - Usage: To search `history [-s query]` To use the interactive history `history -i`
 - **export**: Set an environment variable.
   - Usage: `export VAR=value`
 - **env**: List all environment variables.
