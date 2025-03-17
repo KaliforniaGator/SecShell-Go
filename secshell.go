@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -44,7 +45,7 @@ type SecShell struct {
 
 // Define a list of built-in commands
 var builtInCommands = []string{
-	"help", "exit", "services", "jobs", "cd", "history", "export", "env", "unset",
+	"help", "exit", "services", "jobs", "cd", "history", "history-search", "export", "env", "unset",
 	"reload-blacklist", "blacklist", "edit-blacklist", "whitelist", "edit-whitelist",
 	"reload-whitelist", "download"}
 
@@ -440,6 +441,198 @@ func (s *SecShell) displayHistory() {
 	}
 }
 
+func (s *SecShell) searchHistory(query string) {
+	s.runDrawbox("History Search: "+query, "bold_white")
+	found := false
+
+	for i, cmd := range s.history {
+		if strings.Contains(strings.ToLower(cmd), strings.ToLower(query)) {
+			highlightedCmd := highlightText(cmd, query)
+			fmt.Printf("%d: %s\n", i+1, highlightedCmd)
+			found = true
+		}
+	}
+
+	if !found {
+		s.printAlert("No matching commands found.")
+	}
+}
+
+func (s *SecShell) runHistoryCommand(number int) bool {
+	if number <= 0 || number > len(s.history) {
+		s.printError(fmt.Sprintf("Invalid history number: %d", number))
+		return false
+	}
+
+	cmd := s.history[number-1]
+	s.printAlert(fmt.Sprintf("Running: %s", cmd))
+	s.processCommand(cmd)
+	return true
+}
+
+func (s *SecShell) interactiveHistorySearch() {
+	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	if err != nil {
+		s.printError(fmt.Sprintf("Failed to set terminal to raw mode: %s", err))
+		return
+	}
+	defer term.Restore(int(os.Stdin.Fd()), oldState)
+
+	query := ""
+	selectedIndex := 0
+	filteredHistory := []string{}
+
+	// Hide cursor while navigating
+	fmt.Print("\033[?25l")
+	defer fmt.Print("\033[?25h") // Ensure cursor is shown when function exits
+
+	// Helper function to refresh display
+	refreshDisplay := func() {
+		// Clear screen and scrollback buffer
+		fmt.Print("\033[3J\033[H\033[2J") // Clear screen and scrollback buffer
+
+		// Display header with drawbox
+		fmt.Print("\n")
+		s.clearLine()
+		fmt.Print(colors.BoldGreen + "┌─[Interactive History Search]" + colors.Reset + "\n")
+		s.clearLine()
+		fmt.Printf(colors.BoldGreen+"└─"+colors.Reset+"$ %s", query)
+
+		// Print instructions
+		fmt.Print("\n")
+		s.clearLine()
+		fmt.Println("Type to search, Up/Down arrows to navigate, Enter to select, Esc to cancel")
+
+		// Filter history based on query
+		filteredHistory = []string{}
+		for _, cmd := range s.history {
+			if query == "" || strings.Contains(strings.ToLower(cmd), strings.ToLower(query)) {
+				filteredHistory = append(filteredHistory, cmd)
+			}
+		}
+
+		// Display results with selection highlight
+		for i, cmd := range filteredHistory {
+			if i == selectedIndex {
+				s.clearLine()
+				fmt.Printf("%s→ %d: %s%s\n", colors.BoldGreen, i+1, cmd, colors.Reset)
+			} else {
+				s.clearLine()
+				fmt.Printf("  %d: %s\n", i+1, cmd)
+			}
+		}
+
+		if len(filteredHistory) == 0 {
+			s.clearLine()
+			fmt.Println("  No matching commands found.")
+		}
+	}
+
+	// Initial display
+	refreshDisplay()
+
+	// Input loop
+	buf := make([]byte, 3)
+	for {
+		n, err := os.Stdin.Read(buf)
+		if err != nil {
+			s.printError(fmt.Sprintf("Failed to read input: %s", err))
+			return
+		}
+
+		if n == 1 {
+			switch buf[0] {
+			case 27: // ESC
+				// Clear screen before returning to normal mode
+				fmt.Print("\033[3J\033[H\033[2J") // Clear screen and scrollback buffer
+				return
+
+			case 13: // Enter
+				if len(filteredHistory) > 0 && selectedIndex >= 0 && selectedIndex < len(filteredHistory) {
+					selectedCmd := filteredHistory[selectedIndex]
+					// Restore terminal and run command
+					fmt.Print("\033[?25h") // Make sure cursor is visible
+					term.Restore(int(os.Stdin.Fd()), oldState)
+					// Clear screen and scrollback buffer
+					fmt.Print("\033[3J\033[H\033[2J")
+					s.printAlert("Running: " + selectedCmd)
+					s.processCommand(selectedCmd)
+					return
+				}
+
+			case 127, 8: // Backspace/Delete
+				if len(query) > 0 {
+					query = query[:len(query)-1]
+					selectedIndex = 0
+					refreshDisplay()
+				}
+
+			default:
+				// Add printable characters to query
+				if buf[0] >= 32 && buf[0] <= 126 {
+					query += string(buf[0])
+					selectedIndex = 0
+					refreshDisplay()
+				}
+			}
+		} else if n == 3 && buf[0] == 27 && buf[1] == 91 {
+			// Handle arrow keys
+			switch buf[2] {
+			case 65: // Up arrow
+				if selectedIndex > 0 {
+					selectedIndex--
+					refreshDisplay()
+				}
+
+			case 66: // Down arrow
+				if len(filteredHistory) > 0 && selectedIndex < len(filteredHistory)-1 {
+					selectedIndex++
+					refreshDisplay()
+				}
+			}
+		}
+	}
+}
+
+func highlightText(text, query string) string {
+	if query == "" {
+		return text
+	}
+
+	// Case-insensitive search
+	lowerText := strings.ToLower(text)
+	lowerQuery := strings.ToLower(query)
+
+	var result strings.Builder
+	lastIndex := 0
+
+	for {
+		index := strings.Index(lowerText[lastIndex:], lowerQuery)
+		if index == -1 {
+			break
+		}
+
+		// Adjust index to account for the slice
+		index += lastIndex
+
+		// Append text before the match
+		result.WriteString(text[lastIndex:index])
+
+		// Append the highlighted match
+		result.WriteString(colors.BoldYellow)
+		result.WriteString(text[index : index+len(query)])
+		result.WriteString(colors.Reset)
+
+		// Update lastIndex
+		lastIndex = index + len(query)
+	}
+
+	// Append the remaining text
+	result.WriteString(text[lastIndex:])
+
+	return result.String()
+}
+
 // exportVariable sets an environment variable
 func (s *SecShell) exportVariable(args []string) {
 	if len(args) < 2 {
@@ -559,6 +752,22 @@ func (s *SecShell) processCommand(input string) {
 		return
 	}
 
+	// Handle history execution with ! prefix
+	if strings.HasPrefix(input, "!") {
+		if input == "!!" {
+			if len(s.history) > 1 { // Ensure there's a valid previous command
+				lastCommand := s.history[len(s.history)-2] // Get the second-to-last command
+				s.printAlert(fmt.Sprintf("Running: %s", lastCommand))
+				s.processCommand(lastCommand) // Execute it safely
+			} else {
+				s.printError("No previous command to execute.")
+			}
+		} else if num, err := strconv.Atoi(input[1:]); err == nil {
+			s.runHistoryCommand(num)
+		}
+		return
+	}
+
 	commands := strings.Split(input, "|")
 	for i, command := range commands {
 		commands[i] = strings.TrimSpace(command)
@@ -596,7 +805,22 @@ func (s *SecShell) processCommand(input string) {
 		case "cd":
 			s.changeDirectory(args)
 		case "history":
-			s.displayHistory()
+			if len(args) == 1 {
+				s.displayHistory()
+			} else {
+				switch args[1] {
+				case "-s":
+					if len(args) < 3 {
+						s.printError("Usage: history -s <query>")
+						return
+					}
+					s.searchHistory(strings.Join(args[2:], " ")) // Search history for the given query
+				case "-i":
+					s.interactiveHistorySearch() // Run interactive history search
+				default:
+					s.printError("Invalid history option. Use -s for search or -i for interactive mode.")
+				}
+			}
 		case "export":
 			s.exportVariable(args)
 		case "env":
@@ -880,24 +1104,35 @@ Built-in Commands:
   %shelp%s       - Show this help message
   %sexit%s       - Exit the shell
   %sservices%s   - Manage system services
-               Usage: services <start|stop|restart|status|list> <service_name>
+               		Usage: services <start|stop|restart|status|list> <service_name>
+
   %sjobs%s       - List active background jobs
   %scd%s         - Change directory
-               Usage: cd [directory]
+               		Usage: cd [directory]
+
   %shistory%s    - Show command history
+  			Usage: history [-s <query>] [-i]
+			   -s: Search history for a query
+			   -i: Interactive history search
+			   ![number]: Execute command by number
+			   !!: Execute last command
+
   %sexport%s     - Set an environment variable
-               Usage: export VAR=value
+               		Usage: export VAR=value
+
   %senv%s        - List all environment variables
   %sunset%s      - Unset an environment variable
-               Usage: unset VAR
+               		Usage: unset VAR
+
   %sblacklist%s  - List blacklisted commands
   %swhitelist%s  - List whitelisted commands
   %sedit-blacklist%s - Edit the blacklist file
   %sedit-whitelist%s - Edit the whitelist file
   %sreload-blacklist%s - Reload the blacklisted commands
   %sreload-whitelist%s - Reload the whitelisted commands
+
   %sdownload%s    - Download a file from URL
-               Usage: download <url>
+               		Usage: download <url>
 
 %sAllowed System Commands:%s
   ls, ps, netstat, tcpdump, cd, clear, ifconfig
@@ -1043,7 +1278,7 @@ func (s *SecShell) displayWelcomeScreen() {
     ╚══════╝╚══════╝ ╚═════╝╚══════╝╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝
     `
 
-	fmt.Printf("%s%s%s\n", colors.Yellow, logo, colors.Reset)
+	fmt.Printf("%s%s%s\n", colors.BoldYellow, logo, colors.Reset)
 
 	s.runDrawbox("Welcome to SecShell - A Secure Command Shell", "bold_green")
 	fmt.Printf("\n%sFeatures:%s\n", colors.BoldWhite, colors.Reset)
@@ -1058,10 +1293,10 @@ func (s *SecShell) displayWelcomeScreen() {
 	}
 
 	for _, feature := range features {
-		fmt.Printf("  %s%s%s\n", colors.Green, feature, colors.Reset)
+		fmt.Printf("  %s%s%s\n", colors.BoldGreen, feature, colors.Reset)
 	}
 
-	fmt.Printf("\n%sType 'help' for available commands%s\n\n", colors.Yellow, colors.Reset)
+	fmt.Printf("\n%sType 'help' for available commands%s\n\n", colors.BoldCyan, colors.Reset)
 }
 
 // Add this new method:
