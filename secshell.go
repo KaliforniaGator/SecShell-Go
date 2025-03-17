@@ -402,7 +402,7 @@ func (s *SecShell) sanitizeInput(input string, allowSpecialChars ...bool) string
 		allow = allowSpecialChars[0]
 	}
 
-	forbidden := ";`\\\"'"
+	forbidden := ";`\\"
 	if !allow {
 		forbidden += "&|><"
 	}
@@ -922,6 +922,7 @@ Built-in Commands:
   > history
   > blacklist
   > edit-blacklist
+  > reload-blacklist
   > whitelist
   > edit-whitelist
   > reload-whitelist
