@@ -881,18 +881,29 @@ func (s *SecShell) processCommand(input string) {
 			s.listEnvVariables()
 		case "unset":
 			s.unsetEnvVariable(args)
-		case "reload-blacklist":
-			s.reloadBlacklist()
 		case "blacklist":
 			s.listBlacklistCommands()
-		case "edit-blacklist":
-			s.editBlacklist()
 		case "whitelist":
 			s.listWhitelistCommands()
-		case "edit-whitelist":
-			s.editWhitelist()
-		case "reload-whitelist":
-			s.reloadWhitelist()
+		case "edit-blacklist", "edit-whitelist", "reload-whitelist", "reload-blacklist", "exit":
+			// Require admin privileges for these commands
+			if !isAdmin() {
+				s.printError("Permission denied: Admin privileges required.")
+				return
+			}
+
+			switch args[0] {
+			case "edit-blacklist":
+				s.editBlacklist()
+			case "edit-whitelist":
+				s.editWhitelist()
+			case "reload-whitelist":
+				s.reloadWhitelist()
+			case "reload-blacklist":
+				s.reloadBlacklist()
+			case "exit":
+				s.running = false
+			}
 		case "toggle-security":
 			s.toggleSecurity()
 		case "download":
@@ -901,8 +912,6 @@ func (s *SecShell) processCommand(input string) {
 				return
 			}
 			s.downloadFile(args[1])
-		case "exit":
-			s.running = false
 		default:
 			// Handle quoted arguments
 			args = s.parseQuotedArgs(args)
