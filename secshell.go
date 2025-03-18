@@ -200,17 +200,34 @@ func (s *SecShell) displayPrompt() {
 	if user == "" {
 		user = "unknown"
 	}
-
+	host, _ := os.Hostname()
 	cwd, err := os.Getwd()
 	if err != nil {
 		s.printError("Failed to get current working directory")
 		return
 	}
 
-	fmt.Print(colors.BoldGreen + "┌─[SecShell]" + colors.Reset + " " +
-		colors.BoldBlue + "(" + user + ")" + colors.Reset + " " +
-		colors.BoldWhite + "[" + cwd + "]" + colors.Reset + "\n" +
-		colors.BoldGreen + "└─" + colors.Reset + "$ ")
+	/* fmt.Print(colors.BoldGreen + "┌─[SecShell]" + colors.Reset + " " +
+	colors.BoldBlue + "(" + user + ")" + colors.Reset + " " +
+	colors.BoldWhite + "[" + cwd + "]" + colors.Reset + "\n" +
+	colors.BoldGreen + "└─" + colors.Reset + "$ ") */
+
+	// Background color for the bar
+	textReset := colors.Reset
+	bgReset := colors.BgReset
+	frameColor := colors.BoldGreen
+	bgColor := colors.BgGray2
+	endCapColor := colors.Gray2   // End caps should match the background
+	logoColor := colors.BoldGreen // Text should contrast with the background
+	userColor := colors.BoldCyan  // User/host should have a different color
+	dirColor := colors.BoldYellow // Directory should have a different color
+
+	// Print top bar with seamless end caps and proper alignment
+	fmt.Printf("\n%s╭─%s%s%s [SecShell] %s %s@%s %s%s %s %s%s%s\n",
+		frameColor, endCapColor, bgColor, logoColor, userColor, user, host, frameColor, dirColor, cwd, bgReset, endCapColor, textReset)
+
+	// Print bottom input line
+	fmt.Printf("%s╰─%s$ %s", frameColor, colors.BoldWhite, textReset)
 }
 
 // getInput reads user input from the terminal
