@@ -1,4 +1,6 @@
-# SecShell - A Secure Shell Implementation in Go
+![Screen Shot 2025-03-17 at 10 44 02 PM](https://github.com/user-attachments/assets/d17d6236-62a5-4b8a-83df-b5089f6bb1e4)
+
+# SecShell - A Secure Shell Implementation written in Go
 
 SecShell is a secure shell implementation written in Go, designed to provide a controlled and secure environment for executing system commands. It incorporates various security features such as command whitelisting, input sanitization, and process isolation to ensure that only trusted commands are executed.
 
