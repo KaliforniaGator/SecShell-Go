@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -169,6 +170,42 @@ func (s *SecShell) loadWhitelist(filename string) {
 		s.printAlert("Warning: Whitelist file is empty. Allowing hard-coded commands and any command within allowed directories.")
 		s.allowedCommands = []string{"ls", "cd", "pwd", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "cat", "echo", "grep", "find", "chmod", "chown", "ps", "kill", "top", "df", "du", "ifconfig", "netstat", "ping", "clear", "vim", "nano", "emacs", "nvim"}
 	}
+}
+
+// Check if the current user is in an admin group
+func isAdmin() bool {
+	currentUser, err := user.Current()
+	if err != nil {
+		return false // Fail-safe: assume not an admin
+	}
+
+	// Root (UID 0) is always an admin
+	if currentUser.Uid == "0" {
+		return true
+	}
+
+	// Get the user's group IDs
+	groups, err := currentUser.GroupIds()
+	if err != nil {
+		return false
+	}
+
+	// Define admin groups (adjust as needed)
+	adminGroups := []string{"sudo", "admin", "wheel", "root"}
+
+	// Check if the user belongs to an admin group
+	for _, groupID := range groups {
+		group, err := user.LookupGroupId(groupID)
+		if err == nil {
+			for _, adminGroup := range adminGroups {
+				if group.Name == adminGroup {
+					return true
+				}
+			}
+		}
+	}
+
+	return false
 }
 
 // run starts the shell and listens for user input
@@ -856,6 +893,8 @@ func (s *SecShell) processCommand(input string) {
 			s.editWhitelist()
 		case "reload-whitelist":
 			s.reloadWhitelist()
+		case "toggle-security":
+			s.toggleSecurity()
 		case "download":
 			if len(args) != 2 {
 				s.printError("Usage: download <url>")
@@ -1209,6 +1248,11 @@ Only executables from trusted directories are permitted.
 
 // isCommandAllowed checks if a command is allowed
 func (s *SecShell) isCommandAllowed(cmd string) bool {
+	// Bypass security checks for built-in commands
+	if isAdmin() && !securityEnabled {
+		return true // Admins bypass whitelist
+	}
+
 	// First check if command is in whitelist
 	for _, allowedCmd := range s.allowedCommands {
 		if cmd == allowedCmd {
@@ -1229,12 +1273,59 @@ func (s *SecShell) isCommandAllowed(cmd string) bool {
 
 // isCommandBlacklisted checks if a command is blacklisted
 func (s *SecShell) isCommandBlacklisted(cmd string) bool {
+	// Bypass security checks for built-in commands
+	if isAdmin() && !securityEnabled {
+		return false // Admins bypass blacklist
+	}
+
 	for _, blacklistedCmd := range s.blacklistedCommands {
 		if cmd == blacklistedCmd {
 			return true
 		}
 	}
 	return false
+}
+
+var securityEnabled = true
+
+// toggleSecurity prompts for a password before allowing admins to toggle security.
+func (s *SecShell) toggleSecurity() {
+	if !isAdmin() {
+		s.printError("Permission denied: Only admins can toggle security settings.")
+		return
+	}
+
+	// Request password authentication
+	fmt.Print("Enter your password: ")
+	bytePassword, err := term.ReadPassword(int(os.Stdin.Fd()))
+	fmt.Println() // Move to the next line after password input
+	if err != nil {
+		s.printError("Failed to read password.")
+		return
+	}
+
+	password := strings.TrimSpace(string(bytePassword))
+
+	// Authenticate the user
+	if !authenticateUser(password) {
+		s.printError("Authentication failed. Incorrect password.")
+		return
+	}
+
+	// Toggle security state
+	securityEnabled = !securityEnabled
+	if securityEnabled {
+		s.printAlert("Security enforcement ENABLED.")
+	} else {
+		s.printAlert("Security enforcement DISABLED. All commands are now allowed.")
+	}
+}
+
+func authenticateUser(password string) bool {
+	cmd := exec.Command("sudo", "-S", "true") // 'true' just runs a simple authenticated command
+	cmd.Stdin = strings.NewReader(password + "\n")
+	err := cmd.Run()
+	return err == nil // If err is nil, authentication was successful
 }
 
 // runDrawbox runs the drawbox command to display a message box
