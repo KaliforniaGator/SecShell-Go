@@ -17,6 +17,7 @@ import (
 
 	"secshell/colors"
 
+	"github.com/msteinert/pam"
 	"golang.org/x/term"
 )
 
@@ -46,7 +47,7 @@ type SecShell struct {
 
 // Define a list of built-in commands
 var builtInCommands = []string{
-	"help", "exit", "services", "jobs", "cd", "history", "history-search", "export", "env", "unset",
+	"help", "exit", "services", "jobs", "cd", "history", "export", "env", "unset",
 	"reload-blacklist", "blacklist", "edit-blacklist", "whitelist", "edit-whitelist",
 	"reload-whitelist", "download"}
 
@@ -76,7 +77,7 @@ func (s *SecShell) ensureFilesExist() {
 		return
 	}
 
-	defaultWhitelistCommands := []string{"ls", "cd", "pwd", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "cat", "echo", "grep", "find", "chmod", "chown", "ps", "kill", "top", "df", "du", "ifconfig", "netstat", "ping", "clear", "vim", "nano", "emacs", "nvim"}
+	defaultWhitelistCommands := []string{"ls", "cd", "pwd", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "cat", "echo", "grep", "find", "chmod", "chown", "ps", "kill", "top", "df", "du", "ifconfig", "netstat", "ping", "ip", "clear", "vim", "nano", "emacs", "nvim"}
 
 	// Ensure directory exists
 	exePath := getExecutablePath()
@@ -168,7 +169,7 @@ func (s *SecShell) loadWhitelist(filename string) {
 
 	if len(s.allowedCommands) == 0 {
 		s.printAlert("Warning: Whitelist file is empty. Allowing hard-coded commands and any command within allowed directories.")
-		s.allowedCommands = []string{"ls", "cd", "pwd", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "cat", "echo", "grep", "find", "chmod", "chown", "ps", "kill", "top", "df", "du", "ifconfig", "netstat", "ping", "clear", "vim", "nano", "emacs", "nvim"}
+		s.allowedCommands = []string{"ls", "cd", "pwd", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "cat", "echo", "grep", "find", "chmod", "chown", "ps", "kill", "top", "df", "du", "ifconfig", "netstat", "ping", "ip", "clear", "vim", "nano", "emacs", "nvim"}
 	}
 }
 
@@ -1262,6 +1263,16 @@ func (s *SecShell) isCommandAllowed(cmd string) bool {
 		return true // Admins bypass whitelist
 	}
 
+	// Define a list of restricted network commands
+	networkCommands := []string{"wget", "curl", "nc", "nmap", "scp", "rsync"}
+
+	for _, netCmd := range networkCommands {
+		if cmd == netCmd {
+			s.printError("Network access restricted for non-admin users.")
+			return false
+		}
+	}
+
 	// First check if command is in whitelist
 	for _, allowedCmd := range s.allowedCommands {
 		if cmd == allowedCmd {
@@ -1331,10 +1342,30 @@ func (s *SecShell) toggleSecurity() {
 }
 
 func authenticateUser(password string) bool {
-	cmd := exec.Command("sudo", "-S", "true") // 'true' just runs a simple authenticated command
-	cmd.Stdin = strings.NewReader(password + "\n")
-	err := cmd.Run()
-	return err == nil // If err is nil, authentication was successful
+	// Get current user
+	currentUser, err := user.Current()
+	if err != nil {
+		fmt.Println("Error getting current user:", err)
+		return false
+	}
+
+	// Start a PAM authentication transaction
+	transaction, err := pam.StartFunc("login", currentUser.Username, func(s pam.Style, msg string) (string, error) {
+		return password, nil
+	})
+	if err != nil {
+		fmt.Println("PAM transaction start failed:", err)
+		return false
+	}
+
+	// Attempt authentication
+	err = transaction.Authenticate(0)
+	if err != nil {
+		fmt.Println("Authentication failed:", err)
+		return false
+	}
+
+	return true // Authentication successful
 }
 
 // runDrawbox runs the drawbox command to display a message box
