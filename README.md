@@ -19,46 +19,31 @@ SecShell is a secure shell implementation written in Go, designed to provide a c
 
 ## Installation
 
-###Requirements
-1. GoLang-Go
-   ```bash
-   sudo apt install golang-go
-   ```  
-2. systemctl
-   ```bash
-   sudo apt install systemctl
-   ```
-3. drawbox
-   [Installation Instructions](https://github.com/KaliforniaGator/DrawBox)
+### Requirements
 
-4. PAM-Dev
-   ```sh
-   sudo apt update
-   sudo apt install libpam0g-dev
+The installation process requires the following dependencies:
+- **GoLang-Go**
+- **systemctl**
+- **DrawBox** (from [DrawBox Repository](https://github.com/KaliforniaGator/DrawBox))
+- **PAM Development Library (libpam0g-dev)**
 
-   ```
+### One-Step Installation
 
-To use SecShell, you need to have Go installed on your system. Follow these steps to get started:
+To install all dependencies and SecShell in one step, run the following command:
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/yourusername/secshell.git
-   cd secshell
-   ```
+```bash
+curl -fsSL https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/main/update.sh | bash
+```
 
-2. **Build the project**:
-   ```bash
-   go build -o secshell
-   ```
-
-3. **Run the shell**:
-   ```bash
-   ./secshell
-   ```
+This will install the required dependencies, clone the SecShell-Go repository, and compile the project automatically.
 
 ## Usage
 
-Once the shell is running, you can start executing commands. The shell supports a variety of built-in commands and system commands.
+Once installed, you can start SecShell by running:
+
+```bash
+./secshell
+```
 
 ### Built-in Commands
 
@@ -70,7 +55,7 @@ Once the shell is running, you can start executing commands. The shell supports 
 - **cd**: Change directory.
   - Usage: `cd [directory]`
 - **history**: Show command history.
-  - Usage: To search `history [-s query]` To use the interactive history `history -i`
+  - Usage: `history [-s query]` or `history -i` for interactive mode.
 - **export**: Set an environment variable.
   - Usage: `export VAR=value`
 - **env**: List all environment variables.
@@ -82,8 +67,8 @@ Once the shell is running, you can start executing commands. The shell supports 
 - **edit-whitelist**: Edit the whitelist file.
 - **reload-blacklist**: Reload the blacklisted commands.
 - **reload-whitelist**: Reload the whitelisted commands.
-- **download** Download a file from the internet using: download <filename>.
-- **toggle-security** Run commands as an administrator bypassing the whitelisting and blacklisting.
+- **download**: Download a file from the internet using `download <filename>`.
+- **toggle-security**: Run commands as an administrator bypassing the whitelisting and blacklisting.
 
 ### Examples
 
