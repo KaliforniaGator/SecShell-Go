@@ -1,44 +1,75 @@
 #!/bin/bash
 
-# Check if Go is installed, and install it if not
-if ! command -v go &> /dev/null; then
-    echo "Go is not installed. Installing Go..."
-    sudo apt-get update
-    sudo apt-get install -y golang-go
+# Function to check if a package is installed
+is_installed() {
+    dpkg -l | grep -qw "$1"
+}
+
+# Update package lists
+sudo apt-get update
+
+# Install necessary packages if not already installed
+for package in golang-go libpam0g-dev systemctl; do
+    if is_installed "$package"; then
+        echo "$package is already installed. Skipping..."
+    else
+        echo "$package is not installed. Installing..."
+        sudo apt-get install -y "$package"
+        if [ $? -ne 0 ]; then
+            echo "Failed to install $package."
+            exit 1
+        fi
+    fi
+done
+
+# Define the GitHub repositories
+SECSHELL_REPO="https://github.com/KaliforniaGator/SecShell-Go.git"
+DRAWBOX_URL="https://raw.githubusercontent.com/KaliforniaGator/DrawBox/refs/heads/main/update.sh"
+SECSHELL_DIR="SecShell-Go"
+
+# Check if DrawBox is installed
+if command -v drawbox &> /dev/null; then
+    echo "DrawBox is already installed. Skipping installation."
+else
+    echo "Downloading and executing DrawBox update script..."
+    curl -fsSL "$DRAWBOX_URL" | bash
     if [ $? -ne 0 ]; then
-        echo "Failed to install Go. Please install it manually and try again."
+        echo "Failed to download or execute DrawBox update script."
         exit 1
     fi
-    echo "Go installed successfully."
-else
-    echo "Go is already installed."
+
+    echo "DrawBox update script executed successfully."
+
+    # Move DrawBox binary to /usr/local/bin
+    echo "Moving DrawBox binary to /usr/local/bin..."
+    sudo mv drawbox /usr/local/bin/
+    if [ $? -ne 0 ]; then
+        echo "Failed to move DrawBox binary."
+        exit 1
+    fi
+    echo "DrawBox binary installed successfully."
 fi
 
-# Define the GitHub repository
-REPO_URL="https://github.com/KaliforniaGator/SecShell-Go.git"
-REPO_DIR="SecShell-Go"
-
-# Clone the repository
-echo "Cloning repository from $REPO_URL..."
-if [ -d "$REPO_DIR" ]; then
-    echo "Directory $REPO_DIR already exists. Pulling latest changes..."
-    cd "$REPO_DIR"
+# Clone SecShell-Go repository
+if [ -d "$SECSHELL_DIR" ]; then
+    echo "Directory $SECSHELL_DIR already exists. Pulling latest changes..."
+    cd "$SECSHELL_DIR"
     git pull origin main
 else
-    git clone "$REPO_URL" "$REPO_DIR"
+    git clone "$SECSHELL_REPO" "$SECSHELL_DIR"
     if [ $? -ne 0 ]; then
-        echo "Failed to clone the repository. Please check your internet connection and try again."
+        echo "Failed to clone SecShell-Go repository."
         exit 1
     fi
-    cd "$REPO_DIR"
+    cd "$SECSHELL_DIR"
 fi
 
-# Initialize the Go module if go.mod is missing or incomplete
+# Initialize the Go module if needed
 if [ ! -f "go.mod" ] || ! grep -q "^module " "go.mod"; then
-    echo "go.mod is missing or incomplete. Initializing module..."
+    echo "Initializing Go module..."
     go mod init github.com/KaliforniaGator/SecShell-Go
     if [ $? -ne 0 ]; then
-        echo "Failed to initialize Go module. Please check the error message above."
+        echo "Failed to initialize Go module."
         exit 1
     fi
 fi
@@ -47,7 +78,7 @@ fi
 echo "Downloading Go dependencies..."
 go mod tidy
 if [ $? -ne 0 ]; then
-    echo "Failed to download Go dependencies. Please check the error message above."
+    echo "Failed to download Go dependencies."
     exit 1
 fi
 
@@ -55,18 +86,17 @@ fi
 echo "Compiling secshell.go..."
 go build -o secshell secshell.go
 if [ $? -ne 0 ]; then
-    echo "Compilation failed. Please check the error message above."
+    echo "Compilation failed."
     exit 1
 fi
 
-# Move the binary to the current working directory (PWD)
+# Move the binary to the current directory
 echo "Moving 'secshell' binary to the current directory..."
 mv secshell ..
 
-# Clean up: Remove the cloned repository
+# Clean up
 echo "Cleaning up..."
 cd ..
-rm -rf "$REPO_DIR"
+rm -rf "$SECSHELL_DIR"
 
-echo "Compilation successful. The 'secshell' binary has been placed in the current directory."
 echo "Update complete. You can now run './secshell' to start the shell."
