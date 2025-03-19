@@ -5,20 +5,23 @@ is_installed() {
     dpkg -l | grep -qw "$1"
 }
 
+# Function to handle errors
+handle_error() {
+    echo "Error: $1"
+    exit 1
+}
+
 # Update package lists
-sudo apt-get update
+echo "Updating package lists..."
+sudo apt-get update || handle_error "Failed to update package lists."
 
 # Install necessary packages if not already installed
-for package in golang-go libpam0g-dev systemctl; do
+for package in golang-go libpam0g-dev; do
     if is_installed "$package"; then
         echo "$package is already installed. Skipping..."
     else
         echo "$package is not installed. Installing..."
-        sudo apt-get install -y "$package"
-        if [ $? -ne 0 ]; then
-            echo "Failed to install $package."
-            exit 1
-        fi
+        sudo apt-get install -y "$package" || handle_error "Failed to install $package."
     fi
 done
 
@@ -32,21 +35,12 @@ if command -v drawbox &> /dev/null; then
     echo "DrawBox is already installed. Skipping installation."
 else
     echo "Downloading and executing DrawBox update script..."
-    curl -fsSL "$DRAWBOX_URL" | bash
-    if [ $? -ne 0 ]; then
-        echo "Failed to download or execute DrawBox update script."
-        exit 1
-    fi
-
+    curl -fsSL "$DRAWBOX_URL" | bash || handle_error "Failed to download or execute DrawBox update script."
     echo "DrawBox update script executed successfully."
 
     # Move DrawBox binary to /usr/local/bin
     echo "Moving DrawBox binary to /usr/local/bin..."
-    sudo mv drawbox /usr/local/bin/
-    if [ $? -ne 0 ]; then
-        echo "Failed to move DrawBox binary."
-        exit 1
-    fi
+    sudo mv drawbox /usr/local/bin/ || handle_error "Failed to move DrawBox binary."
     echo "DrawBox binary installed successfully."
 fi
 
@@ -54,45 +48,29 @@ fi
 if [ -d "$SECSHELL_DIR" ]; then
     echo "Directory $SECSHELL_DIR already exists. Pulling latest changes..."
     cd "$SECSHELL_DIR"
-    git pull origin main
+    git pull origin main || handle_error "Failed to pull latest changes from $SECSHELL_REPO."
 else
-    git clone "$SECSHELL_REPO" "$SECSHELL_DIR"
-    if [ $? -ne 0 ]; then
-        echo "Failed to clone SecShell-Go repository."
-        exit 1
-    fi
+    git clone "$SECSHELL_REPO" "$SECSHELL_DIR" || handle_error "Failed to clone SecShell-Go repository."
     cd "$SECSHELL_DIR"
 fi
 
 # Initialize the Go module if needed
 if [ ! -f "go.mod" ] || ! grep -q "^module " "go.mod"; then
     echo "Initializing Go module..."
-    go mod init github.com/KaliforniaGator/SecShell-Go
-    if [ $? -ne 0 ]; then
-        echo "Failed to initialize Go module."
-        exit 1
-    fi
+    go mod init github.com/KaliforniaGator/SecShell-Go || handle_error "Failed to initialize Go module."
 fi
 
 # Download dependencies
 echo "Downloading Go dependencies..."
-go mod tidy
-if [ $? -ne 0 ]; then
-    echo "Failed to download Go dependencies."
-    exit 1
-fi
+go mod tidy || handle_error "Failed to download Go dependencies."
 
 # Compile the program
 echo "Compiling secshell.go..."
-go build -o secshell secshell.go
-if [ $? -ne 0 ]; then
-    echo "Compilation failed."
-    exit 1
-fi
+go build -o secshell secshell.go || handle_error "Compilation failed."
 
 # Move the binary to the current directory
 echo "Moving 'secshell' binary to the current directory..."
-mv secshell ..
+mv secshell .. || handle_error "Failed to move secshell binary."
 
 # Clean up
 echo "Cleaning up..."
