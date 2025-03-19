@@ -1,4 +1,4 @@
-![Screen Shot 2025-03-17 at 10 44 02 PM](https://github.com/user-attachments/assets/d17d6236-62a5-4b8a-83df-b5089f6bb1e4)
+![Preview](https://github.com/user-attachments/assets/c5444355-b435-4fbf-84a0-cf1f1ad23233)
 
 # SecShell - A Secure Shell Implementation written in Go
 
