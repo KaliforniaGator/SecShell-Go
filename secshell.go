@@ -526,6 +526,7 @@ func (s *SecShell) runHistoryCommand(number int) bool {
 }
 
 func (s *SecShell) interactiveHistorySearch() {
+	//Put Terminal in RawMode To read realtime input.
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
 		s.printError(fmt.Sprintf("Failed to set terminal to raw mode: %s", err))
@@ -543,9 +544,7 @@ func (s *SecShell) interactiveHistorySearch() {
 
 	// Helper function to refresh display
 	refreshDisplay := func() {
-		// Clear screen and scrollback buffer
-		fmt.Print("\033[3J\033[H\033[2J") // Clear screen and scrollback buffer
-
+		fmt.Print("\033[H\033[2J\033[3J") // Clear screen and scrollback buffer
 		// Display header with drawbox
 		fmt.Print("\n")
 		s.clearLine()
@@ -599,7 +598,7 @@ func (s *SecShell) interactiveHistorySearch() {
 			switch buf[0] {
 			case 27: // ESC
 				// Clear screen before returning to normal mode
-				fmt.Print("\033[3J\033[H\033[2J") // Clear screen and scrollback buffer
+				fmt.Print("\033[H\033[2J\033[3J") // Clear screen and scrollback buffer
 				return
 
 			case 13: // Enter
@@ -608,8 +607,7 @@ func (s *SecShell) interactiveHistorySearch() {
 					// Restore terminal and run command
 					fmt.Print("\033[?25h") // Make sure cursor is visible
 					term.Restore(int(os.Stdin.Fd()), oldState)
-					// Clear screen and scrollback buffer
-					fmt.Print("\033[3J\033[H\033[2J")
+					fmt.Print("\033[H\033[2J\033[3J") // Clear screen and scrollback buffer
 					s.printAlert("Running: " + selectedCmd)
 					s.processCommand(selectedCmd)
 					return
