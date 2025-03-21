@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"secshell/colors"
+	"secshell/services"
 
 	"github.com/msteinert/pam"
 	"golang.org/x/term"
@@ -526,7 +527,6 @@ func (s *SecShell) runHistoryCommand(number int) bool {
 }
 
 func (s *SecShell) interactiveHistorySearch() {
-	//Put Terminal in RawMode To read realtime input.
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
 		s.printError(fmt.Sprintf("Failed to set terminal to raw mode: %s", err))
@@ -970,21 +970,23 @@ func (s *SecShell) manageServices(args []string) {
 
 	var command string
 	if action == "list" {
-		command = "systemctl list-units --type=service"
+		services.GetServices()
 	} else if action == "status" {
 		command = "systemctl status " + serviceName
 	} else {
 		command = "sudo systemctl " + action + " " + serviceName
 	}
 
-	s.runDrawbox("Service Manager", "bold_white")
-	cmd := exec.Command("sh", "-c", command)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		s.printError("Failed to execute service command.")
-	} else {
-		s.printAlert("Service command executed successfully.")
+	if action != "list" {
+		s.runDrawbox("Service Manager", "bold_white")
+		cmd := exec.Command("sh", "-c", command)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			s.printError("Failed to execute service command.")
+		} else {
+			s.printAlert("Service command executed successfully.")
+		}
 	}
 }
 
