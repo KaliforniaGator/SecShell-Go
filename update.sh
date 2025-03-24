@@ -68,13 +68,13 @@ go mod tidy || handle_error "Failed to download Go dependencies."
 echo "Compiling secshell.go..."
 go build -o secshell secshell.go || handle_error "Compilation failed."
 
-# Move the binary to the current directory
-echo "Moving 'secshell' binary to the current directory..."
-mv secshell .. || handle_error "Failed to move secshell binary."
+# Move the binary to /usr/bin
+echo "Moving 'secshell' binary to /usr/bin..."
+sudo mv secshell /usr/bin/ || handle_error "Failed to move secshell binary to /usr/bin."
 
 # Clean up
 echo "Cleaning up..."
 cd ..
 rm -rf "$SECSHELL_DIR"
 
-echo "Update complete. You can now run './secshell' to start the shell."
+echo "Update complete. You can now run 'secshell' to start the shell."
