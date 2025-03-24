@@ -31,6 +31,8 @@ const (
 	KeyBackspace = "\b"   // Add backspace key constant
 	KeyLeft      = "\x1b[D"
 	KeyRight     = "\x1b[C"
+
+	DefaultVersion = "1.0.0" // Default version if not specified
 )
 
 // SecShell struct to hold shell state and configurations
@@ -43,6 +45,7 @@ type SecShell struct {
 	blacklistedCommands []string
 	history             []string
 	whitelist           string
+	versionFile         string
 	historyIndex        int
 }
 
@@ -59,14 +62,57 @@ func NewSecShell(blacklistPath, whitelistPath string) *SecShell {
 		running:     true,
 		allowedDirs: []string{"/usr/bin/", "/bin/", "/opt/"},
 		//allowedCommands: []string{"ls", "cd", "pwd", "download"},
-		blacklist: blacklistPath,
-		whitelist: whitelistPath,
-		history:   []string{},
+		blacklist:   blacklistPath,
+		whitelist:   whitelistPath,
+		versionFile: filepath.Join(filepath.Dir(blacklistPath), ".ver"),
+		history:     []string{},
 	}
 	shell.ensureFilesExist()
 	shell.loadBlacklist(blacklistPath)
 	shell.loadWhitelist(whitelistPath)
 	return shell
+}
+
+// checkForUpdates checks if there's a new version available
+func (s *SecShell) checkForUpdates() {
+	// Try to get the latest version from GitHub
+	resp, err := http.Get("https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/refs/heads/main/VERSION")
+	if err != nil {
+		// If offline, ensure we're using the default version
+		s.updateVersionFile(DefaultVersion)
+		return
+	}
+	defer resp.Body.Close()
+
+	// Read the response
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		s.updateVersionFile(DefaultVersion)
+		return
+	}
+
+	// Update the version file with the latest version
+	latestVersion := strings.TrimSpace(string(body))
+	if latestVersion != "" {
+		s.updateVersionFile(latestVersion)
+	}
+}
+
+// updateVersionFile updates the .ver file with the given version
+func (s *SecShell) updateVersionFile(version string) {
+	err := os.WriteFile(s.versionFile, []byte(version+"\n"), 0644)
+	if err != nil {
+		s.printError(fmt.Sprintf("Failed to update version file: %s", err))
+	}
+}
+
+// getCurrentVersion gets the current version from the .ver file
+func (s *SecShell) getCurrentVersion() string {
+	content, err := os.ReadFile(s.versionFile)
+	if err != nil {
+		return DefaultVersion
+	}
+	return strings.TrimSpace(string(content))
 }
 
 // ensureFilesExist checks and creates blacklist and whitelist files if they don't exist
@@ -131,6 +177,19 @@ func (s *SecShell) ensureFilesExist() {
 			}
 		}
 	}
+
+	// Create verion file if it doesn't exist
+	if _, err := os.Stat(s.versionFile); os.IsNotExist(err) {
+		file, err := os.Create(s.versionFile)
+		if err != nil {
+			s.printError(fmt.Sprintf("Failed to create version file: %s", err))
+		} else {
+			file.Close()
+			s.updateVersionFile(DefaultVersion)
+			s.printAlert(fmt.Sprintf("Created new version file at %s", s.versionFile))
+		}
+	}
+	s.checkForUpdates()
 }
 
 // loadBlacklist loads blacklisted commands from a file
@@ -1427,7 +1486,10 @@ func (s *SecShell) displayWelcomeScreen() {
     `
 
 	fmt.Printf("%s%s%s\n", colors.BoldYellow, logo, colors.Reset)
-
+	// Add version display
+	version := s.getCurrentVersion()
+	fmt.Printf("\n%sVersion: %s%s\n", colors.BoldWhite, version, colors.Reset)
+	// Display welcome message
 	s.runDrawbox("Welcome to SecShell - A Secure Command Shell", "bold_green")
 	fmt.Printf("\n%sFeatures:%s\n", colors.BoldWhite, colors.Reset)
 	features := []string{
