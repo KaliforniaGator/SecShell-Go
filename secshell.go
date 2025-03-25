@@ -210,7 +210,7 @@ func (s *SecShell) updateSecShell() {
 		UpdateFunc: func(bytesRead, total int64) {
 			percent := int(math.Min(float64(bytesRead)/float64(total)*100, 100))
 			// Run drawbox progress command
-			cmd := exec.Command("drawbox", "progress", fmt.Sprintf("%d", percent), "100", "50", "block_full", "block_light", "yellow")
+			cmd := exec.Command("drawbox", "progress", fmt.Sprintf("%d", percent), "100", "50", "block_full", "block_light", "green")
 			cmd.Stdout = os.Stdout
 			cmd.Run()
 		},
