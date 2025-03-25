@@ -33,6 +33,8 @@ const (
 	KeyRight     = "\x1b[C"
 
 	DefaultVersion = "1.0.0" // Default version if not specified
+	// Update script URL
+	UpdateScript = "https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/refs/heads/main/update.sh"
 )
 
 // SecShell struct to hold shell state and configurations
@@ -53,7 +55,7 @@ type SecShell struct {
 var builtInCommands = []string{
 	"help", "exit", "services", "jobs", "cd", "history", "export", "env", "unset",
 	"reload-blacklist", "blacklist", "edit-blacklist", "whitelist", "edit-whitelist",
-	"reload-whitelist", "download"}
+	"reload-whitelist", "download", "--version", "--update"}
 
 // NewSecShell initializes a new SecShell instance
 func NewSecShell(blacklistPath, whitelistPath string) *SecShell {
@@ -75,27 +77,33 @@ func NewSecShell(blacklistPath, whitelistPath string) *SecShell {
 
 // checkForUpdates checks if there's a new version available
 func (s *SecShell) checkForUpdates() {
-	// Try to get the latest version from GitHub
-	resp, err := http.Get("https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/refs/heads/main/VERSION")
-	if err != nil {
-		// If offline, ensure we're using the default version
-		s.updateVersionFile(DefaultVersion)
-		return
-	}
-	defer resp.Body.Close()
+	// Check if version file exists first
+	if _, err := os.Stat(s.versionFile); os.IsNotExist(err) {
+		// Version file doesn't exist, create it with latest version from GitHub
+		resp, err := http.Get("https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/refs/heads/main/VERSION")
+		if err != nil {
+			// If offline, ensure we're using the default version
+			s.updateVersionFile(DefaultVersion)
+			return
+		}
+		defer resp.Body.Close()
 
-	// Read the response
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		s.updateVersionFile(DefaultVersion)
-		return
-	}
+		// Read the response
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			s.updateVersionFile(DefaultVersion)
+			return
+		}
 
-	// Update the version file with the latest version
-	latestVersion := strings.TrimSpace(string(body))
-	if latestVersion != "" {
-		s.updateVersionFile(latestVersion)
+		// Update the version file with the latest version
+		latestVersion := strings.TrimSpace(string(body))
+		if latestVersion != "" {
+			s.updateVersionFile(latestVersion)
+		} else {
+			s.updateVersionFile(DefaultVersion)
+		}
 	}
+	// If version file exists, don't update it as update.sh will handle that
 }
 
 // updateVersionFile updates the .ver file with the given version
@@ -113,6 +121,118 @@ func (s *SecShell) getCurrentVersion() string {
 		return DefaultVersion
 	}
 	return strings.TrimSpace(string(content))
+}
+
+// Display the current version of the shell
+func (s *SecShell) displayVersion() {
+	version := s.getCurrentVersion()
+	s.runDrawbox(fmt.Sprintf("SecShell Version: %s", version), "bold_white")
+}
+
+// Update the current version of the shell
+func (s *SecShell) updateSecShell() {
+	if !isAdmin() {
+		s.printError("Permission denied: Admin privileges required for updates.")
+		return
+	}
+
+	// Create a temporary file for the update script
+	tmpFile, err := os.CreateTemp("", "secshell-update-*.sh")
+	if err != nil {
+		s.printError(fmt.Sprintf("Failed to create temporary file: %s", err))
+		return
+	}
+	defer os.Remove(tmpFile.Name()) // Clean up temp file when done
+
+	// Download the update script with progress
+	s.printAlert("Downloading update script...")
+
+	// Initialize HTTP client and request
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", UpdateScript, nil)
+	if err != nil {
+		s.printError(fmt.Sprintf("Failed to create request: %s", err))
+		return
+	}
+
+	// Execute request
+	resp, err := client.Do(req)
+	if err != nil {
+		s.printError(fmt.Sprintf("Failed to download update script: %s", err))
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		s.printError(fmt.Sprintf("Failed to download update script. Status: %s", resp.Status))
+		return
+	}
+
+	// Get content length for progress bar
+	contentLength := resp.ContentLength
+	if contentLength <= 0 {
+		contentLength = 1000 // Default size if unknown
+	}
+
+	// Create progress tracking reader
+	progressReader := &ProgressReader{
+		Reader: resp.Body,
+		Total:  contentLength,
+		UpdateFunc: func(bytesRead, total int64) {
+			percent := int(float64(bytesRead) / float64(total) * 100)
+			// Run drawbox progress command
+			cmd := exec.Command("drawbox", "progress", fmt.Sprintf("%d", percent), "100", "50", "block_full", "block_light", "yellow")
+			cmd.Stdout = os.Stdout
+			cmd.Run()
+		},
+	}
+
+	// Save the update script to the temporary file
+	_, err = io.Copy(tmpFile, progressReader)
+	if err != nil {
+		s.printError(fmt.Sprintf("Failed to save update script: %s", err))
+		return
+	}
+	tmpFile.Close()
+
+	// Make the script executable
+	if err := os.Chmod(tmpFile.Name(), 0755); err != nil {
+		s.printError(fmt.Sprintf("Failed to make update script executable: %s", err))
+		return
+	}
+
+	// Run the update script
+	s.printAlert("Running update script...")
+	cmd := exec.Command(tmpFile.Name())
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		s.printError(fmt.Sprintf("Update failed: %s", err))
+		return
+	}
+
+	s.printAlert("Update completed successfully. Restart SecShell to use the new version.")
+}
+
+// ProgressReader is a wrapper around an io.Reader that reports progress
+type ProgressReader struct {
+	Reader     io.Reader
+	Total      int64
+	BytesRead  int64
+	UpdateFunc func(bytesRead, total int64)
+}
+
+// Read implements the io.Reader interface
+func (pr *ProgressReader) Read(p []byte) (int, error) {
+	n, err := pr.Reader.Read(p)
+	pr.BytesRead += int64(n)
+
+	// Call the update function with the current progress
+	if pr.UpdateFunc != nil {
+		pr.UpdateFunc(pr.BytesRead, pr.Total)
+	}
+
+	return n, err
 }
 
 // ensureFilesExist checks and creates blacklist and whitelist files if they don't exist
@@ -178,7 +298,7 @@ func (s *SecShell) ensureFilesExist() {
 		}
 	}
 
-	// Create verion file if it doesn't exist
+	// Create version file if it doesn't exist
 	if _, err := os.Stat(s.versionFile); os.IsNotExist(err) {
 		file, err := os.Create(s.versionFile)
 		if err != nil {
@@ -908,6 +1028,10 @@ func (s *SecShell) processCommand(input string) {
 		fmt.Print("\r\033[K")
 
 		switch args[0] {
+		case "--version":
+			s.displayVersion()
+		case "--update":
+			s.updateSecShell()
 		case "services":
 			s.manageServices(args)
 		case "jobs":
@@ -1626,6 +1750,28 @@ func (s *SecShell) clearLineAndPrintBottom() {
 
 // main function to start the shell
 func main() {
+	// Check for version flags
+	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
+		configDir := getExecutablePath()
+		shell := NewSecShell(
+			filepath.Join(configDir, ".blacklist"),
+			filepath.Join(configDir, ".whitelist"),
+		)
+		shell.displayVersion()
+		return
+	}
+	// Check for update flag
+	if len(os.Args) > 1 && os.Args[1] == "--update" {
+		configDir := getExecutablePath()
+		shell := NewSecShell(
+			filepath.Join(configDir, ".blacklist"),
+			filepath.Join(configDir, ".whitelist"),
+		)
+		shell.updateSecShell()
+		return
+	}
+
+	// Create config directory if it doesn't exist
 	configDir := getExecutablePath()
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		fmt.Printf("Failed to create config directory: %s\n", err)
