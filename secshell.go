@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -136,6 +137,23 @@ func (s *SecShell) updateSecShell() {
 		return
 	}
 
+	// Check if version is up to date at the beginning
+	localVersion, _ := os.ReadFile(s.versionFile)
+
+	resp, err := http.Get("https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/refs/heads/main/VERSION")
+	if err != nil {
+		s.printError(fmt.Sprintf("Failed to check version: %s", err))
+		return
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	githubVersion := strings.TrimSpace(string(body))
+
+	if strings.TrimSpace(string(localVersion)) == githubVersion {
+		s.runDrawbox("You're already up to date!", "bold_green")
+		return
+	}
+
 	// Create a temporary file for the update script
 	tmpFile, err := os.CreateTemp("", "secshell-update-*.sh")
 	if err != nil {
@@ -156,7 +174,7 @@ func (s *SecShell) updateSecShell() {
 	}
 
 	// Execute request
-	resp, err := client.Do(req)
+	resp, err = client.Do(req)
 	if err != nil {
 		s.printError(fmt.Sprintf("Failed to download update script: %s", err))
 		return
@@ -179,7 +197,7 @@ func (s *SecShell) updateSecShell() {
 		Reader: resp.Body,
 		Total:  contentLength,
 		UpdateFunc: func(bytesRead, total int64) {
-			percent := int(float64(bytesRead) / float64(total) * 100)
+			percent := int(math.Min(float64(bytesRead)/float64(total)*100, 100))
 			// Run drawbox progress command
 			cmd := exec.Command("drawbox", "progress", fmt.Sprintf("%d", percent), "100", "50", "block_full", "block_light", "yellow")
 			cmd.Stdout = os.Stdout
