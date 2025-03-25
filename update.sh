@@ -97,8 +97,8 @@ update_progress
 # Update version file
 # Create .secshell directory if it doesn't exist
 mkdir -p ~/.secshell &> /dev/null || handle_error "Failed to create ~/.secshell directory."
-# Get the latest commit hash or version and save it to .ver file
-git rev-parse HEAD > ~/.secshell/.ver 2> /dev/null || handle_error "Failed to update version information."
+# Get the version from GitHub and save it to .ver file
+curl -s https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/refs/heads/main/VERSION > ~/.secshell/.ver 2> /dev/null || handle_error "Failed to update version information."
 update_progress
 
 # Clean up
