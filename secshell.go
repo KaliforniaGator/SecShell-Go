@@ -212,6 +212,7 @@ func (s *SecShell) updateSecShell() {
 	}
 
 	s.printAlert("Update completed successfully. Restart SecShell to use the new version.")
+	s.checkForUpdates()
 }
 
 // ProgressReader is a wrapper around an io.Reader that reports progress
