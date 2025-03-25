@@ -138,20 +138,31 @@ func (s *SecShell) updateSecShell() {
 	}
 
 	// Check if version is up to date at the beginning
-	localVersion, _ := os.ReadFile(s.versionFile)
-
-	resp, err := http.Get("https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/refs/heads/main/VERSION")
+	localVersion, err := os.ReadFile(s.versionFile)
 	if err != nil {
-		s.printError(fmt.Sprintf("Failed to check version: %s", err))
-		return
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	githubVersion := strings.TrimSpace(string(body))
+		// If local version file doesn't exist or can't be read, assume update is needed
+		s.printAlert("Local version information not found. Proceeding with update...")
+	} else {
+		// Fetch the latest version from GitHub
+		resp, err := http.Get("https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/refs/heads/main/VERSION")
+		if err != nil {
+			s.printError(fmt.Sprintf("Failed to check version: %s", err))
+			return
+		}
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			s.printError(fmt.Sprintf("Failed to read version data: %s", err))
+			return
+		}
+		githubVersion := strings.TrimSpace(string(body))
+		localVersionStr := strings.TrimSpace(string(localVersion))
 
-	if strings.TrimSpace(string(localVersion)) == githubVersion {
-		s.runDrawbox("You're already up to date!", "bold_green")
-		return
+		// Compare versions
+		if localVersionStr == githubVersion {
+			s.runDrawbox("You're already up to date!", "bold_green")
+			return
+		}
 	}
 
 	// Create a temporary file for the update script
@@ -174,7 +185,7 @@ func (s *SecShell) updateSecShell() {
 	}
 
 	// Execute request
-	resp, err = client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		s.printError(fmt.Sprintf("Failed to download update script: %s", err))
 		return
