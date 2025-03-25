@@ -33,7 +33,7 @@ update_progress() {
         *) STEP_DESC="Processing" ;;
     esac
     echo -ne "$CURRENT_STEP/$TOTAL_STEPS: $STEP_DESC"
-    drawbox progress $CURRENT_STEP $TOTAL_STEPS 50 "█" "░" yellow
+    drawbox progress $CURRENT_STEP $TOTAL_STEPS 50 "█" "░" green
     echo -ne "\033[0K\r"
 }
 
