@@ -4,9 +4,36 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"secshell/drawbox"
 	"strconv"
 	"strings"
 )
+
+func runCommand(command string) {
+	cmd := exec.Command("sh", "-c", command)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		drawbox.PrintError("Failed to execute service command: " + err.Error())
+	} else {
+		drawbox.PrintAlert("Service command executed successfully.")
+	}
+}
+
+func RunServicesCommand(action string, serviceName string) {
+
+	drawbox.RunDrawbox("Services", "bold_white")
+
+	var command string
+	if action == "status" {
+		command = "systemctl status " + serviceName
+	} else if action == "start" || action == "stop" || action == "restart" {
+		command = "sudo systemctl " + action + " " + serviceName
+	}
+
+	runCommand(command)
+
+}
 
 // GetServices retrieves and displays system services
 func GetServices() {
