@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -17,7 +16,11 @@ import (
 	"time"
 
 	"secshell/colors"
+	"secshell/drawbox"
+	"secshell/help"
 	"secshell/services"
+	"secshell/ui"
+	"secshell/update"
 
 	"github.com/msteinert/pam"
 	"golang.org/x/term"
@@ -32,10 +35,6 @@ const (
 	KeyBackspace = "\b"   // Add backspace key constant
 	KeyLeft      = "\x1b[D"
 	KeyRight     = "\x1b[C"
-
-	DefaultVersion = "1.0.0" // Default version if not specified
-	// Update script URL
-	UpdateScript = "https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/refs/heads/main/update.sh"
 )
 
 // SecShell struct to hold shell state and configurations
@@ -76,201 +75,12 @@ func NewSecShell(blacklistPath, whitelistPath string) *SecShell {
 	return shell
 }
 
-// checkForUpdates checks if there's a new version available
-func (s *SecShell) checkForUpdates() {
-	// Check if version file exists first
-	if _, err := os.Stat(s.versionFile); os.IsNotExist(err) {
-		// Version file doesn't exist, create it with latest version from GitHub
-		resp, err := http.Get("https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/refs/heads/main/VERSION")
-		if err != nil {
-			// If offline, ensure we're using the default version
-			s.updateVersionFile(DefaultVersion)
-			return
-		}
-		defer resp.Body.Close()
-
-		// Read the response
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			s.updateVersionFile(DefaultVersion)
-			return
-		}
-
-		// Update the version file with the latest version
-		latestVersion := strings.TrimSpace(string(body))
-		if latestVersion != "" {
-			s.updateVersionFile(latestVersion)
-		} else {
-			s.updateVersionFile(DefaultVersion)
-		}
-	}
-	// If version file exists, don't update it as update.sh will handle that
-}
-
-// updateVersionFile updates the .ver file with the given version
-func (s *SecShell) updateVersionFile(version string) {
-	err := os.WriteFile(s.versionFile, []byte(version+"\n"), 0644)
-	if err != nil {
-		s.printError(fmt.Sprintf("Failed to update version file: %s", err))
-	}
-}
-
-// getCurrentVersion gets the current version from the .ver file
-func (s *SecShell) getCurrentVersion() string {
-	content, err := os.ReadFile(s.versionFile)
-	if err != nil {
-		return DefaultVersion
-	}
-	return strings.TrimSpace(string(content))
-}
-
-// Display the current version of the shell
-func (s *SecShell) displayVersion() {
-	version := s.getCurrentVersion()
-	s.runDrawbox(fmt.Sprintf("SecShell Version: %s", version), "bold_white")
-}
-
-// Update the current version of the shell
-func (s *SecShell) updateSecShell() {
-	if !isAdmin() {
-		s.printError("Permission denied: Admin privileges required for updates.")
-		return
-	}
-
-	// Check if version is up to date at the beginning
-	localVersion, err := os.ReadFile(s.versionFile)
-	if err != nil {
-		// If local version file doesn't exist or can't be read, assume update is needed
-		s.printAlert("Local version information not found. Proceeding with update...")
-	} else {
-		// Fetch the latest version from GitHub
-		resp, err := http.Get("https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/refs/heads/main/VERSION")
-		if err != nil {
-			s.printError(fmt.Sprintf("Failed to check version: %s", err))
-			return
-		}
-		defer resp.Body.Close()
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			s.printError(fmt.Sprintf("Failed to read version data: %s", err))
-			return
-		}
-		githubVersion := strings.TrimSpace(string(body))
-		localVersionStr := strings.TrimSpace(string(localVersion))
-
-		// Compare versions
-		if localVersionStr == githubVersion {
-			s.runDrawbox("You're already up to date!", "bold_green")
-			return
-		}
-	}
-
-	// Create a temporary file for the update script
-	tmpFile, err := os.CreateTemp("", "secshell-update-*.sh")
-	if err != nil {
-		s.printError(fmt.Sprintf("Failed to create temporary file: %s", err))
-		return
-	}
-	defer os.Remove(tmpFile.Name()) // Clean up temp file when done
-
-	// Download the update script with progress
-	s.printAlert("Downloading update script...")
-
-	// Initialize HTTP client and request
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", UpdateScript, nil)
-	if err != nil {
-		s.printError(fmt.Sprintf("Failed to create request: %s", err))
-		return
-	}
-
-	// Execute request
-	resp, err := client.Do(req)
-	if err != nil {
-		s.printError(fmt.Sprintf("Failed to download update script: %s", err))
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		s.printError(fmt.Sprintf("Failed to download update script. Status: %s", resp.Status))
-		return
-	}
-
-	// Get content length for progress bar
-	contentLength := resp.ContentLength
-	if contentLength <= 0 {
-		contentLength = 1000 // Default size if unknown
-	}
-
-	// Create progress tracking reader
-	progressReader := &ProgressReader{
-		Reader: resp.Body,
-		Total:  contentLength,
-		UpdateFunc: func(bytesRead, total int64) {
-			percent := int(math.Min(float64(bytesRead)/float64(total)*100, 100))
-			// Run drawbox progress command
-			cmd := exec.Command("drawbox", "progress", fmt.Sprintf("%d", percent), "100", "50", "block_full", "block_light", "green")
-			cmd.Stdout = os.Stdout
-			cmd.Run()
-		},
-	}
-
-	// Save the update script to the temporary file
-	_, err = io.Copy(tmpFile, progressReader)
-	if err != nil {
-		s.printError(fmt.Sprintf("Failed to save update script: %s", err))
-		return
-	}
-	tmpFile.Close()
-
-	// Make the script executable
-	if err := os.Chmod(tmpFile.Name(), 0755); err != nil {
-		s.printError(fmt.Sprintf("Failed to make update script executable: %s", err))
-		return
-	}
-
-	// Run the update script
-	s.printAlert("Running update script...")
-	cmd := exec.Command(tmpFile.Name())
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		s.printError(fmt.Sprintf("Update failed: %s", err))
-		return
-	}
-
-	s.printAlert("Update completed successfully. Restart SecShell to use the new version.")
-	s.checkForUpdates()
-}
-
-// ProgressReader is a wrapper around an io.Reader that reports progress
-type ProgressReader struct {
-	Reader     io.Reader
-	Total      int64
-	BytesRead  int64
-	UpdateFunc func(bytesRead, total int64)
-}
-
-// Read implements the io.Reader interface
-func (pr *ProgressReader) Read(p []byte) (int, error) {
-	n, err := pr.Reader.Read(p)
-	pr.BytesRead += int64(n)
-
-	// Call the update function with the current progress
-	if pr.UpdateFunc != nil {
-		pr.UpdateFunc(pr.BytesRead, pr.Total)
-	}
-
-	return n, err
-}
-
 // ensureFilesExist checks and creates blacklist and whitelist files if they don't exist
 func (s *SecShell) ensureFilesExist() {
 	// Ensure the config directory exists
 	configDir := filepath.Dir(s.blacklist)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
-		s.printError(fmt.Sprintf("Failed to create config directory: %s", err))
+		drawbox.PrintError(fmt.Sprintf("Failed to create config directory: %s", err))
 		return
 	}
 
@@ -279,7 +89,7 @@ func (s *SecShell) ensureFilesExist() {
 	// Ensure directory exists
 	exePath := getExecutablePath()
 	if err := os.MkdirAll(exePath, 0755); err != nil {
-		s.printError(fmt.Sprintf("Failed to create directory for config files: %s", err))
+		drawbox.PrintError(fmt.Sprintf("Failed to create directory for config files: %s", err))
 		return
 	}
 
@@ -287,10 +97,10 @@ func (s *SecShell) ensureFilesExist() {
 	if _, err := os.Stat(s.blacklist); os.IsNotExist(err) {
 		file, err := os.Create(s.blacklist)
 		if err != nil {
-			s.printError(fmt.Sprintf("Failed to create blacklist file: %s", err))
+			drawbox.PrintError(fmt.Sprintf("Failed to create blacklist file: %s", err))
 		} else {
 			file.Close()
-			s.printAlert(fmt.Sprintf("Created new blacklist file at %s", s.blacklist))
+			drawbox.PrintAlert(fmt.Sprintf("Created new blacklist file at %s", s.blacklist))
 		}
 	}
 
@@ -298,20 +108,20 @@ func (s *SecShell) ensureFilesExist() {
 	if _, err := os.Stat(s.whitelist); os.IsNotExist(err) {
 		file, err := os.Create(s.whitelist)
 		if err != nil {
-			s.printError(fmt.Sprintf("Failed to create whitelist file: %s", err))
+			drawbox.PrintError(fmt.Sprintf("Failed to create whitelist file: %s", err))
 		} else {
 			for _, cmd := range defaultWhitelistCommands {
 				file.WriteString(cmd + "\n")
 			}
 			file.Close()
-			s.printAlert(fmt.Sprintf("Created new whitelist file at %s with default commands", s.whitelist))
+			drawbox.PrintAlert(fmt.Sprintf("Created new whitelist file at %s with default commands", s.whitelist))
 		}
 	} else {
 		// Update existing whitelist with any missing default commands
 		existingCommands := make(map[string]bool)
 		file, err := os.OpenFile(s.whitelist, os.O_RDWR|os.O_APPEND, 0666)
 		if err != nil {
-			s.printError(fmt.Sprintf("Failed to open whitelist file: %s", err))
+			drawbox.PrintError(fmt.Sprintf("Failed to open whitelist file: %s", err))
 			return
 		}
 		defer file.Close()
@@ -332,21 +142,21 @@ func (s *SecShell) ensureFilesExist() {
 	if _, err := os.Stat(s.versionFile); os.IsNotExist(err) {
 		file, err := os.Create(s.versionFile)
 		if err != nil {
-			s.printError(fmt.Sprintf("Failed to create version file: %s", err))
+			drawbox.PrintError(fmt.Sprintf("Failed to create version file: %s", err))
 		} else {
 			file.Close()
-			s.updateVersionFile(DefaultVersion)
-			s.printAlert(fmt.Sprintf("Created new version file at %s", s.versionFile))
+			update.UpdateVersionFile(update.DefaultVersion, s.versionFile)
+			drawbox.PrintAlert(fmt.Sprintf("Created new version file at %s", s.versionFile))
 		}
 	}
-	s.checkForUpdates()
+	update.CheckForUpdates(s.versionFile)
 }
 
 // loadBlacklist loads blacklisted commands from a file
 func (s *SecShell) loadBlacklist(filename string) {
 	file, err := os.Open(filename)
 	if err != nil {
-		s.printError(fmt.Sprintf("Failed to open blacklist file: %s", filename))
+		drawbox.PrintError(fmt.Sprintf("Failed to open blacklist file: %s", filename))
 		return
 	}
 	defer file.Close()
@@ -364,7 +174,7 @@ func (s *SecShell) loadBlacklist(filename string) {
 func (s *SecShell) loadWhitelist(filename string) {
 	file, err := os.Open(filename)
 	if err != nil {
-		s.printAlert(fmt.Sprintf("Notice: No whitelist file found at %s. Using default allowed commands.", filename))
+		drawbox.PrintAlert(fmt.Sprintf("Notice: No whitelist file found at %s. Using default allowed commands.", filename))
 		return
 	}
 	defer file.Close()
@@ -378,7 +188,7 @@ func (s *SecShell) loadWhitelist(filename string) {
 	}
 
 	if len(s.allowedCommands) == 0 {
-		s.printAlert("Warning: Whitelist file is empty. Allowing hard-coded commands and any command within allowed directories.")
+		drawbox.PrintAlert("Warning: Whitelist file is empty. Allowing hard-coded commands and any command within allowed directories.")
 		s.allowedCommands = []string{"ls", "cd", "pwd", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "cat", "echo", "grep", "find", "chmod", "chown", "ps", "kill", "top", "df", "du", "ifconfig", "netstat", "ping", "ip", "clear", "vim", "nano", "emacs", "nvim"}
 	}
 }
@@ -422,7 +232,7 @@ func isAdmin() bool {
 // run starts the shell and listens for user input
 func (s *SecShell) run() {
 	// Display welcome screen
-	s.displayWelcomeScreen()
+	ui.DisplayWelcomeScreen(update.GetCurrentVersion(s.versionFile))
 
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTSTP)
@@ -442,49 +252,13 @@ func (s *SecShell) run() {
 	fmt.Print("\033[H\033[2J")
 }
 
-// Change the displayPrompt function:
-func (s *SecShell) displayPrompt() {
-	user := os.Getenv("USER")
-	if user == "" {
-		user = "unknown"
-	}
-	host, _ := os.Hostname()
-	cwd, err := os.Getwd()
-	if err != nil {
-		s.printError("Failed to get current working directory")
-		return
-	}
-
-	/* fmt.Print(colors.BoldGreen + "┌─[SecShell]" + colors.Reset + " " +
-	colors.BoldBlue + "(" + user + ")" + colors.Reset + " " +
-	colors.BoldWhite + "[" + cwd + "]" + colors.Reset + "\n" +
-	colors.BoldGreen + "└─" + colors.Reset + "$ ") */
-
-	// Background color for the bar
-	textReset := colors.Reset
-	bgReset := colors.BgReset
-	frameColor := colors.BoldGreen
-	bgColor := colors.BgGray2
-	endCapColor := colors.Gray2   // End caps should match the background
-	logoColor := colors.BoldGreen // Text should contrast with the background
-	userColor := colors.BoldCyan  // User/host should have a different color
-	dirColor := colors.BoldYellow // Directory should have a different color
-
-	// Print top bar with seamless end caps and proper alignment
-	fmt.Printf("\n%s╭─%s%s%s [SecShell] %s %s@%s %s%s %s %s%s%s\n",
-		frameColor, endCapColor, bgColor, logoColor, userColor, user, host, frameColor, dirColor, cwd, bgReset, endCapColor, textReset)
-
-	// Print bottom input line
-	fmt.Printf("%s╰─%s$ %s", frameColor, colors.BoldWhite, textReset)
-}
-
 // getInput reads user input from the terminal
 func (s *SecShell) getInput() string {
-	s.displayPrompt()
+	ui.DisplayPrompt()
 
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
-		s.printError(fmt.Sprintf("Failed to set terminal to raw mode: %s", err))
+		drawbox.PrintError(fmt.Sprintf("Failed to set terminal to raw mode: %s", err))
 		return ""
 	}
 	defer term.Restore(int(os.Stdin.Fd()), oldState)
@@ -495,7 +269,7 @@ func (s *SecShell) getInput() string {
 	for {
 		n, err := os.Stdin.Read(buf)
 		if err != nil {
-			s.printError(fmt.Sprintf("Failed to read input: %s", err))
+			drawbox.PrintError(fmt.Sprintf("Failed to read input: %s", err))
 			return ""
 		}
 
@@ -599,8 +373,8 @@ func (s *SecShell) completeCommand(line string, pos int) (string, int) {
 		// Replace the last word with the first match
 		words[len(words)-1] = matches[0]
 		newLine := strings.Join(words, " ")
-		s.clearLine()
-		s.clearLineAndPrintBottom()
+		ui.ClearLine()
+		ui.ClearLineAndPrintBottom()
 		fmt.Print(newLine)
 
 		// If there are multiple matches, show them below
@@ -608,9 +382,9 @@ func (s *SecShell) completeCommand(line string, pos int) (string, int) {
 			for _, match := range matches {
 				fmt.Print(match + "  ")
 			}
-			s.clearLine()
-			s.clearLineAndPrintBottom() // Clear line and print the bottom prompt
-			fmt.Print(newLine)          // Reprint the new input with the first match
+			ui.ClearLine()
+			ui.ClearLineAndPrintBottom() // Clear line and print the bottom prompt
+			fmt.Print(newLine)           // Reprint the new input with the first match
 		}
 
 		return newLine, len(newLine)
@@ -625,8 +399,8 @@ func (s *SecShell) completeCommand(line string, pos int) (string, int) {
 		// Replace the last word with the first match
 		words[len(words)-1] = matches[0]
 		newLine := strings.Join(words, " ")
-		s.clearLine()
-		s.clearLineAndPrintBottom()
+		ui.ClearLine()
+		ui.ClearLineAndPrintBottom()
 		fmt.Print(newLine)
 
 		// If there are multiple matches, show them below
@@ -634,9 +408,9 @@ func (s *SecShell) completeCommand(line string, pos int) (string, int) {
 			for _, match := range matches {
 				fmt.Print(match + "  ")
 			}
-			s.clearLine()
-			s.clearLineAndPrintBottom() // Clear line and print the bottom prompt
-			fmt.Print(newLine)          // Reprint the new input with the first match
+			ui.ClearLine()
+			ui.ClearLineAndPrintBottom() // Clear line and print the bottom prompt
+			fmt.Print(newLine)           // Reprint the new input with the first match
 		}
 
 		return newLine, len(newLine)
@@ -685,7 +459,7 @@ func (s *SecShell) changeDirectory(args []string) {
 	if len(args) < 2 {
 		home := os.Getenv("HOME")
 		if home == "" {
-			s.printError("cd failed: HOME environment variable not set")
+			drawbox.PrintError("cd failed: HOME environment variable not set")
 			return
 		}
 		dir = home
@@ -694,20 +468,20 @@ func (s *SecShell) changeDirectory(args []string) {
 	}
 
 	if err := os.Chdir(dir); err != nil {
-		s.printError(fmt.Sprintf("cd failed: %s", err))
+		drawbox.PrintError(fmt.Sprintf("cd failed: %s", err))
 	}
 }
 
 // displayHistory shows the command history
 func (s *SecShell) displayHistory() {
-	s.runDrawbox("Command History", "bold_white")
+	drawbox.RunDrawbox("Command History", "bold_white")
 	for i, cmd := range s.history {
 		fmt.Printf("%d: %s\n", i+1, cmd)
 	}
 }
 
 func (s *SecShell) searchHistory(query string) {
-	s.runDrawbox("History Search: "+query, "bold_white")
+	drawbox.RunDrawbox("History Search: "+query, "bold_white")
 	found := false
 
 	for i, cmd := range s.history {
@@ -719,18 +493,18 @@ func (s *SecShell) searchHistory(query string) {
 	}
 
 	if !found {
-		s.printAlert("No matching commands found.")
+		drawbox.PrintAlert("No matching commands found.")
 	}
 }
 
 func (s *SecShell) runHistoryCommand(number int) bool {
 	if number <= 0 || number > len(s.history) {
-		s.printError(fmt.Sprintf("Invalid history number: %d", number))
+		drawbox.PrintError(fmt.Sprintf("Invalid history number: %d", number))
 		return false
 	}
 
 	cmd := s.history[number-1]
-	s.printAlert(fmt.Sprintf("Running: %s", cmd))
+	drawbox.PrintAlert(fmt.Sprintf("Running: %s", cmd))
 	s.processCommand(cmd)
 	return true
 }
@@ -738,7 +512,7 @@ func (s *SecShell) runHistoryCommand(number int) bool {
 func (s *SecShell) interactiveHistorySearch() {
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
-		s.printError(fmt.Sprintf("Failed to set terminal to raw mode: %s", err))
+		drawbox.PrintError(fmt.Sprintf("Failed to set terminal to raw mode: %s", err))
 		return
 	}
 	defer term.Restore(int(os.Stdin.Fd()), oldState)
@@ -756,14 +530,14 @@ func (s *SecShell) interactiveHistorySearch() {
 		fmt.Print("\033[H\033[2J\033[3J") // Clear screen and scrollback buffer
 		// Display header with drawbox
 		fmt.Print("\n")
-		s.clearLine()
+		ui.ClearLine()
 		fmt.Print(colors.BoldGreen + "┌─[Interactive History Search]" + colors.Reset + "\n")
-		s.clearLine()
+		ui.ClearLine()
 		fmt.Printf(colors.BoldGreen+"└─"+colors.Reset+"$ %s", query)
 
 		// Print instructions
 		fmt.Print("\n")
-		s.clearLine()
+		ui.ClearLine()
 		fmt.Println("Type to search, Up/Down arrows to navigate, Enter to select, Esc to cancel")
 
 		// Filter history based on query
@@ -777,16 +551,16 @@ func (s *SecShell) interactiveHistorySearch() {
 		// Display results with selection highlight
 		for i, cmd := range filteredHistory {
 			if i == selectedIndex {
-				s.clearLine()
+				ui.ClearLine()
 				fmt.Printf("%s→ %d: %s%s\n", colors.BoldGreen, i+1, cmd, colors.Reset)
 			} else {
-				s.clearLine()
+				ui.ClearLine()
 				fmt.Printf("  %d: %s\n", i+1, cmd)
 			}
 		}
 
 		if len(filteredHistory) == 0 {
-			s.clearLine()
+			ui.ClearLine()
 			fmt.Println("  No matching commands found.")
 		}
 	}
@@ -799,7 +573,7 @@ func (s *SecShell) interactiveHistorySearch() {
 	for {
 		n, err := os.Stdin.Read(buf)
 		if err != nil {
-			s.printError(fmt.Sprintf("Failed to read input: %s", err))
+			drawbox.PrintError(fmt.Sprintf("Failed to read input: %s", err))
 			return
 		}
 
@@ -817,7 +591,7 @@ func (s *SecShell) interactiveHistorySearch() {
 					fmt.Print("\033[?25h") // Make sure cursor is visible
 					term.Restore(int(os.Stdin.Fd()), oldState)
 					fmt.Print("\033[H\033[2J\033[3J") // Clear screen and scrollback buffer
-					s.printAlert("Running: " + selectedCmd)
+					drawbox.PrintAlert("Running: " + selectedCmd)
 					s.processCommand(selectedCmd)
 					return
 				}
@@ -898,14 +672,14 @@ func highlightText(text, query string) string {
 // exportVariable sets an environment variable
 func (s *SecShell) exportVariable(args []string) {
 	if len(args) < 2 {
-		s.printError("Usage: export VAR=value")
+		drawbox.PrintError("Usage: export VAR=value")
 		return
 	}
 
 	varValue := s.sanitizeInput(args[1], false)
 	equalsPos := strings.Index(varValue, "=")
 	if equalsPos == -1 {
-		s.printError("Invalid export syntax. Use VAR=value")
+		drawbox.PrintError("Invalid export syntax. Use VAR=value")
 		return
 	}
 
@@ -913,15 +687,15 @@ func (s *SecShell) exportVariable(args []string) {
 	value := varValue[equalsPos+1:]
 
 	if err := os.Setenv(varName, value); err != nil {
-		s.printError(fmt.Sprintf("Failed to set environment variable: %s", err))
+		drawbox.PrintError(fmt.Sprintf("Failed to set environment variable: %s", err))
 	} else {
-		s.printAlert(fmt.Sprintf("Successfully exported %s=%s", varName, value))
+		drawbox.PrintAlert(fmt.Sprintf("Successfully exported %s=%s", varName, value))
 	}
 }
 
 // listEnvVariables lists all environment variables
 func (s *SecShell) listEnvVariables() {
-	s.runDrawbox("Environment Variables", "bold_white")
+	drawbox.RunDrawbox("Environment Variables", "bold_white")
 	for _, env := range os.Environ() {
 		fmt.Println(env)
 	}
@@ -930,15 +704,15 @@ func (s *SecShell) listEnvVariables() {
 // unsetEnvVariable unsets an environment variable
 func (s *SecShell) unsetEnvVariable(args []string) {
 	if len(args) < 2 {
-		s.printError("Usage: unset VAR")
+		drawbox.PrintError("Usage: unset VAR")
 		return
 	}
 
 	varName := s.sanitizeInput(args[1], false)
 	if err := os.Unsetenv(varName); err != nil {
-		s.printError(fmt.Sprintf("Failed to unset environment variable: %s", err))
+		drawbox.PrintError(fmt.Sprintf("Failed to unset environment variable: %s", err))
 	} else {
-		s.printAlert(fmt.Sprintf("Successfully unset environment variable: %s", varName))
+		drawbox.PrintAlert(fmt.Sprintf("Successfully unset environment variable: %s", varName))
 	}
 }
 
@@ -946,9 +720,9 @@ func (s *SecShell) unsetEnvVariable(args []string) {
 func (s *SecShell) reloadBlacklist() {
 	s.blacklistedCommands = nil
 	s.loadBlacklist(s.blacklist)
-	s.printAlert("Successfully reloaded blacklist commands")
+	drawbox.PrintAlert("Successfully reloaded blacklist commands")
 	if len(s.blacklistedCommands) > 0 {
-		s.printAlert(fmt.Sprintf("Loaded %d blacklisted commands", len(s.blacklistedCommands)))
+		drawbox.PrintAlert(fmt.Sprintf("Loaded %d blacklisted commands", len(s.blacklistedCommands)))
 	}
 }
 
@@ -963,10 +737,10 @@ func (s *SecShell) editBlacklist() {
 
 // listBlacklistCommands lists all blacklisted commands
 func (s *SecShell) listBlacklistCommands() {
-	s.runDrawbox("Blacklisted Commands", "bold_white")
+	drawbox.RunDrawbox("Blacklisted Commands", "bold_white")
 	file, err := os.Open(s.blacklist)
 	if err != nil {
-		s.printError(fmt.Sprintf("Error: Could not open file '%s'.", s.blacklist))
+		drawbox.PrintError(fmt.Sprintf("Error: Could not open file '%s'.", s.blacklist))
 		return
 	}
 	defer file.Close()
@@ -983,9 +757,9 @@ func (s *SecShell) listBlacklistCommands() {
 func (s *SecShell) reloadWhitelist() {
 	s.allowedCommands = []string{}
 	s.loadWhitelist(s.whitelist)
-	s.printAlert("Successfully reloaded whitelist commands")
+	drawbox.PrintAlert("Successfully reloaded whitelist commands")
 	if len(s.allowedCommands) > 0 {
-		s.printAlert(fmt.Sprintf("Loaded %d whitelisted commands", len(s.allowedCommands)))
+		drawbox.PrintAlert(fmt.Sprintf("Loaded %d whitelisted commands", len(s.allowedCommands)))
 	}
 }
 
@@ -1000,7 +774,7 @@ func (s *SecShell) editWhitelist() {
 
 // listWhitelistCommands lists all whitelisted commands
 func (s *SecShell) listWhitelistCommands() {
-	s.runDrawbox("Whitelisted Commands", "bold_white")
+	drawbox.RunDrawbox("Whitelisted Commands", "bold_white")
 	for i, cmd := range s.allowedCommands {
 		fmt.Printf(" %d. %s\n", i+1, cmd)
 	}
@@ -1010,7 +784,7 @@ func (s *SecShell) listWhitelistCommands() {
 func (s *SecShell) processCommand(input string) {
 	input = strings.TrimSpace(input)
 	if input == "" {
-		s.printAlert("Please enter a valid command")
+		drawbox.PrintAlert("Please enter a valid command")
 		return
 	}
 
@@ -1019,10 +793,10 @@ func (s *SecShell) processCommand(input string) {
 		if input == "!!" {
 			if len(s.history) > 1 { // Ensure there's a valid previous command
 				lastCommand := s.history[len(s.history)-2] // Get the second-to-last command
-				s.printAlert(fmt.Sprintf("Running: %s", lastCommand))
+				drawbox.PrintAlert(fmt.Sprintf("Running: %s", lastCommand))
 				s.processCommand(lastCommand) // Execute it safely
 			} else {
-				s.printError("No previous command to execute.")
+				drawbox.PrintError("No previous command to execute.")
 			}
 		} else if num, err := strconv.Atoi(input[1:]); err == nil {
 			s.runHistoryCommand(num)
@@ -1050,7 +824,7 @@ func (s *SecShell) processCommand(input string) {
 		}
 
 		if s.isCommandBlacklisted(args[0]) {
-			s.printError(fmt.Sprintf("Command is blacklisted: %s", args[0]))
+			drawbox.PrintError(fmt.Sprintf("Command is blacklisted: %s", args[0]))
 			return
 		}
 
@@ -1059,15 +833,15 @@ func (s *SecShell) processCommand(input string) {
 
 		switch args[0] {
 		case "--version":
-			s.displayVersion()
+			update.DisplayVersion(s.versionFile)
 		case "--update":
-			s.updateSecShell()
+			update.UpdateSecShell(isAdmin(), s.versionFile)
 		case "services":
 			s.manageServices(args)
 		case "jobs":
 			s.listJobs()
 		case "help":
-			s.displayHelp()
+			help.DisplayHelp()
 		case "cd":
 			s.changeDirectory(args)
 		case "history":
@@ -1077,14 +851,14 @@ func (s *SecShell) processCommand(input string) {
 				switch args[1] {
 				case "-s":
 					if len(args) < 3 {
-						s.printError("Usage: history -s <query>")
+						drawbox.PrintError("Usage: history -s <query>")
 						return
 					}
 					s.searchHistory(strings.Join(args[2:], " ")) // Search history for the given query
 				case "-i":
 					s.interactiveHistorySearch() // Run interactive history search
 				default:
-					s.printError("Invalid history option. Use -s for search or -i for interactive mode.")
+					drawbox.PrintError("Invalid history option. Use -s for search or -i for interactive mode.")
 				}
 			}
 		case "export":
@@ -1100,7 +874,7 @@ func (s *SecShell) processCommand(input string) {
 		case "edit-blacklist", "edit-whitelist", "reload-whitelist", "reload-blacklist", "exit":
 			// Require admin privileges for these commands
 			if !isAdmin() {
-				s.printError("Permission denied: Admin privileges required.")
+				drawbox.PrintError("Permission denied: Admin privileges required.")
 				return
 			}
 
@@ -1120,7 +894,7 @@ func (s *SecShell) processCommand(input string) {
 			s.toggleSecurity()
 		case "download":
 			if len(args) != 2 {
-				s.printError("Usage: download <url>")
+				drawbox.PrintError("Usage: download <url>")
 				return
 			}
 			s.downloadFile(args[1])
@@ -1166,7 +940,7 @@ func (s *SecShell) parseQuotedArgs(args []string) []string {
 // manageServices manages system services
 func (s *SecShell) manageServices(args []string) {
 	if len(args) < 2 {
-		s.printError("Usage: services <start|stop|restart|status|list> <service_name>")
+		drawbox.PrintError("Usage: services <start|stop|restart|status|list> <service_name>")
 		return
 	}
 
@@ -1177,35 +951,22 @@ func (s *SecShell) manageServices(args []string) {
 	}
 
 	if action != "start" && action != "stop" && action != "restart" && action != "status" && action != "list" {
-		s.printError("Invalid action. Use start, stop, restart, status, or list.")
+		drawbox.PrintError("Invalid action. Use start, stop, restart, status, or list.")
 		return
 	}
 
-	var command string
 	if action == "list" {
 		services.GetServices()
 	} else if action == "status" {
-		command = "systemctl status " + serviceName
+		services.RunServicesCommand("status", serviceName)
 	} else {
-		command = "sudo systemctl " + action + " " + serviceName
-	}
-
-	if action != "list" {
-		s.runDrawbox("Service Manager", "bold_white")
-		cmd := exec.Command("sh", "-c", command)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		if err := cmd.Run(); err != nil {
-			s.printError("Failed to execute service command.")
-		} else {
-			s.printAlert("Service command executed successfully.")
-		}
+		services.RunServicesCommand(action, serviceName)
 	}
 }
 
 // listJobs lists all active background jobs
 func (s *SecShell) listJobs() {
-	s.runDrawbox("Jobs", "bold_white")
+	drawbox.RunDrawbox("Jobs", "bold_white")
 	fmt.Println("Active Jobs:")
 	for pid, job := range s.jobs {
 		fmt.Printf("PID: %d - %s\n", pid, job)
@@ -1253,7 +1014,7 @@ func (s *SecShell) executePipedCommands(commands []string) {
 	for i := 0; i < len(cmds)-1; i++ {
 		stdout, err := cmds[i].StdoutPipe()
 		if err != nil {
-			s.printError(fmt.Sprintf("Failed to set up pipeline: %s", err))
+			drawbox.PrintError(fmt.Sprintf("Failed to set up pipeline: %s", err))
 			return
 		}
 		cmds[i+1].Stdin = stdout
@@ -1268,7 +1029,7 @@ func (s *SecShell) executePipedCommands(commands []string) {
 	// Start all commands
 	for _, cmd := range cmds {
 		if err := cmd.Start(); err != nil {
-			s.printError(fmt.Sprintf("Failed to start command: %s", err))
+			drawbox.PrintError(fmt.Sprintf("Failed to start command: %s", err))
 			return
 		}
 	}
@@ -1277,7 +1038,7 @@ func (s *SecShell) executePipedCommands(commands []string) {
 	for _, cmd := range cmds {
 		if err := cmd.Wait(); err != nil {
 			if _, ok := err.(*exec.ExitError); !ok {
-				s.printError(fmt.Sprintf("Command execution failed: %s", err))
+				drawbox.PrintError(fmt.Sprintf("Command execution failed: %s", err))
 			}
 		}
 	}
@@ -1291,7 +1052,7 @@ func (s *SecShell) executePipedCommands(commands []string) {
 // executeSystemCommand executes a system command
 func (s *SecShell) executeSystemCommand(args []string, background bool) {
 	if !s.isCommandAllowed(args[0]) {
-		s.printError(fmt.Sprintf("Command not permitted: %s", args[0]))
+		drawbox.PrintError(fmt.Sprintf("Command not permitted: %s", args[0]))
 		return
 	}
 
@@ -1332,7 +1093,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 			if i+1 < len(args) {
 				file, err := os.Create(args[i+1])
 				if err != nil {
-					s.printError(fmt.Sprintf("Failed to create file: %s", err))
+					drawbox.PrintError(fmt.Sprintf("Failed to create file: %s", err))
 					return
 				}
 				defer file.Close()
@@ -1343,7 +1104,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 			if i+1 < len(args) {
 				file, err := os.Open(args[i+1])
 				if err != nil {
-					s.printError(fmt.Sprintf("Failed to open file: %s", err))
+					drawbox.PrintError(fmt.Sprintf("Failed to open file: %s", err))
 					return
 				}
 				defer file.Close()
@@ -1355,6 +1116,13 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 		}
 	}
 
+	// Expand environment variables for echo command
+	if args[0] == "echo" {
+		for i, arg := range cmdArgs {
+			cmdArgs[i] = os.ExpandEnv(arg)
+		}
+	}
+
 	// Create command with proper arguments
 	cmd := exec.Command(args[0], cmdArgs...)
 	cmd.Stdin = stdin
@@ -1363,110 +1131,16 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 
 	if background {
 		if err := cmd.Start(); err != nil {
-			s.printError(fmt.Sprintf("Failed to start background job: %s", err))
+			drawbox.PrintError(fmt.Sprintf("Failed to start background job: %s", err))
 			return
 		}
 		s.jobs[cmd.Process.Pid] = args[0]
-		s.printAlert(fmt.Sprintf("[%d] %s running in background", cmd.Process.Pid, args[0]))
+		drawbox.PrintAlert(fmt.Sprintf("[%d] %s running in background", cmd.Process.Pid, args[0]))
 	} else {
 		if err := cmd.Run(); err != nil {
-			s.printError(fmt.Sprintf("Command execution failed: %s", err))
+			drawbox.PrintError(fmt.Sprintf("Command execution failed: %s", err))
 		}
 	}
-}
-
-// displayHelp shows the help message
-func (s *SecShell) displayHelp() {
-	s.runDrawbox("SecShell Help", "bold_white")
-	fmt.Fprintf(os.Stdout, `
-Built-in Commands:
-  %shelp%s       - Show this help message
-  %sexit%s       - Exit the shell
-  %sservices%s   - Manage system services
-               		Usage: services <start|stop|restart|status|list> <service_name>
-
-  %sjobs%s       - List active background jobs
-  %scd%s         - Change directory
-               		Usage: cd [directory]
-
-  %shistory%s    - Show command history
-  			Usage: history [-s <query>] [-i]
-			   -s: Search history for a query
-			   -i: Interactive history search
-			   ![number]: Execute command by number
-			   !!: Execute last command
-
-  %sexport%s     - Set an environment variable
-               		Usage: export VAR=value
-
-  %senv%s        - List all environment variables
-  %sunset%s      - Unset an environment variable
-               		Usage: unset VAR
-
-  %sblacklist%s  - List blacklisted commands
-  %swhitelist%s  - List whitelisted commands
-  %sedit-blacklist%s - Edit the blacklist file
-  %sedit-whitelist%s - Edit the whitelist file
-  %sreload-blacklist%s - Reload the blacklisted commands
-  %sreload-whitelist%s - Reload the whitelisted commands
-
-  %sdownload%s    - Download a file from URL
-               		Usage: download <url>
-
-%sAllowed System Commands:%s
-  ls, ps, netstat, tcpdump, cd, clear, ifconfig
-
-%sSecurity Features:%s
-  - Command whitelisting
-  - Input sanitization
-  - Process isolation
-  - Job tracking
-  - Service Management
-  - Background job execution
-  - Piped command execution
-  - Input/output redirection
-
-%sExamples:%s
-  > ls -l
-  > jobs
-  > services list
-  > export MY_VAR=value
-  > env
-  > unset MY_VAR
-  > history
-  > blacklist
-  > edit-blacklist
-  > reload-blacklist
-  > whitelist
-  > edit-whitelist
-  > reload-whitelist
-  > exit
-
-%sNote:%s
-All commands are subject to security checks and sanitization.
-Only executables from trusted directories are permitted.
-`,
-		colors.BoldWhite, colors.Reset, // help
-		colors.BoldWhite, colors.Reset, // exit
-		colors.BoldWhite, colors.Reset, // services
-		colors.BoldWhite, colors.Reset, // jobs
-		colors.BoldWhite, colors.Reset, // cd
-		colors.BoldWhite, colors.Reset, // history
-		colors.BoldWhite, colors.Reset, // export
-		colors.BoldWhite, colors.Reset, // env
-		colors.BoldWhite, colors.Reset, // unset
-		colors.BoldWhite, colors.Reset, // blacklist
-		colors.BoldWhite, colors.Reset, // whitelist
-		colors.BoldWhite, colors.Reset, // edit-blacklist
-		colors.BoldWhite, colors.Reset, // edit-whitelist
-		colors.BoldWhite, colors.Reset, // reload-blacklist
-		colors.BoldWhite, colors.Reset, // reload-whitelist
-		colors.BoldWhite, colors.Reset, // download
-		colors.Cyan, colors.Reset, // Allowed System Commands
-		colors.Cyan, colors.Reset, // Security Features
-		colors.Cyan, colors.Reset, // Examples
-		colors.Cyan, colors.Reset, // Note
-	)
 }
 
 // isCommandAllowed checks if a command is allowed
@@ -1481,7 +1155,7 @@ func (s *SecShell) isCommandAllowed(cmd string) bool {
 
 	for _, netCmd := range networkCommands {
 		if cmd == netCmd {
-			s.printError("Network access restricted for non-admin users.")
+			drawbox.PrintError("Network access restricted for non-admin users.")
 			return false
 		}
 	}
@@ -1524,7 +1198,7 @@ var securityEnabled = true
 // toggleSecurity prompts for a password before allowing admins to toggle security.
 func (s *SecShell) toggleSecurity() {
 	if !isAdmin() {
-		s.printError("Permission denied: Only admins can toggle security settings.")
+		drawbox.PrintError("Permission denied: Only admins can toggle security settings.")
 		return
 	}
 
@@ -1533,7 +1207,7 @@ func (s *SecShell) toggleSecurity() {
 	bytePassword, err := term.ReadPassword(int(os.Stdin.Fd()))
 	fmt.Println() // Move to the next line after password input
 	if err != nil {
-		s.printError("Failed to read password.")
+		drawbox.PrintError("Failed to read password.")
 		return
 	}
 
@@ -1541,16 +1215,16 @@ func (s *SecShell) toggleSecurity() {
 
 	// Authenticate the user
 	if !authenticateUser(password) {
-		s.printError("Authentication failed. Incorrect password.")
+		drawbox.PrintError("Authentication failed. Incorrect password.")
 		return
 	}
 
 	// Toggle security state
 	securityEnabled = !securityEnabled
 	if securityEnabled {
-		s.printAlert("Security enforcement ENABLED.")
+		drawbox.PrintAlert("Security enforcement ENABLED.")
 	} else {
-		s.printAlert("Security enforcement DISABLED. All commands are now allowed.")
+		drawbox.PrintAlert("Security enforcement DISABLED. All commands are now allowed.")
 	}
 }
 
@@ -1581,40 +1255,6 @@ func authenticateUser(password string) bool {
 	return true // Authentication successful
 }
 
-// runDrawbox runs the drawbox command to display a message box
-func (s *SecShell) runDrawbox(title, color string) {
-	fmt.Print("\n") // Add newline before box
-
-	// Use exec.LookPath to find the drawbox executable in the PATH
-	drawboxPath, err := exec.LookPath("drawbox")
-	if err != nil {
-		// If drawbox is not found, fallback to the custom box drawing
-		fmt.Fprintf(os.Stdout, "%s╔══%s %s %s══╗%s\n",
-			colors.BoldWhite, colors.Reset, title, colors.BoldWhite, colors.Reset)
-		return
-	}
-
-	// Execute the drawbox command
-	cmd := exec.Command(drawboxPath, title, color)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		// Fallback if drawbox fails
-		fmt.Fprintf(os.Stdout, "%s╔══%s %s %s══╗%s\n",
-			colors.BoldWhite, colors.Reset, title, colors.BoldWhite, colors.Reset)
-	}
-}
-
-// printAlert prints an alert message
-func (s *SecShell) printAlert(message string) {
-	s.runDrawbox("ALERT: "+message, "bold_yellow")
-}
-
-// printError prints an error message
-func (s *SecShell) printError(message string) {
-	s.runDrawbox("ERROR: "+message, "bold_red")
-}
-
 // Add this function near the top of the file after the imports
 func getExecutablePath() string {
 	homeDir, err := os.UserHomeDir()
@@ -1622,45 +1262,6 @@ func getExecutablePath() string {
 		return "." // Fallback to current directory if home directory cannot be determined
 	}
 	return filepath.Join(homeDir, ".secshell") // Use ~/.secshell for config files
-}
-
-// Add this after the printError method and before main:
-func (s *SecShell) displayWelcomeScreen() {
-	// Clear the screen first
-	fmt.Print("\033[H\033[2J")
-
-	// ASCII art logo
-	logo := `
-    ███████╗███████╗ ██████╗███████╗██╗  ██╗███████╗██╗     ██╗     
-    ██╔════╝██╔════╝██╔════╝██╔════╝██║  ██║██╔════╝██║     ██║     
-    ███████╗█████╗  ██║     ███████╗███████║█████╗  ██║     ██║     
-    ╚════██║██╔══╝  ██║     ╚════██║██╔══██║██╔══╝  ██║     ██║     
-    ███████║███████╗╚██████╗███████║██║  ██║███████╗███████╗███████╗
-    ╚══════╝╚══════╝ ╚═════╝╚══════╝╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝
-    `
-
-	fmt.Printf("%s%s%s\n", colors.BoldYellow, logo, colors.Reset)
-	// Add version display
-	version := s.getCurrentVersion()
-	fmt.Printf("\n%sVersion: %s%s\n", colors.BoldWhite, version, colors.Reset)
-	// Display welcome message
-	s.runDrawbox("Welcome to SecShell - A Secure Command Shell", "bold_green")
-	fmt.Printf("\n%sFeatures:%s\n", colors.BoldWhite, colors.Reset)
-	features := []string{
-		"✓ Command whitelisting and blacklisting",
-		"✓ Secure input handling",
-		"✓ Process isolation",
-		"✓ Service management",
-		"✓ Background job support",
-		"✓ Command history",
-		"✓ Tab completion",
-	}
-
-	for _, feature := range features {
-		fmt.Printf("  %s%s%s\n", colors.BoldGreen, feature, colors.Reset)
-	}
-
-	fmt.Printf("\n%sType 'help' for available commands%s\n\n", colors.BoldCyan, colors.Reset)
 }
 
 // Add this new method:
@@ -1680,22 +1281,22 @@ func (s *SecShell) downloadFile(url string) {
 	// Create the file
 	out, err := os.Create(fileName)
 	if err != nil {
-		s.printError(fmt.Sprintf("Error creating file: %v", err))
+		drawbox.PrintError(fmt.Sprintf("Error creating file: %v", err))
 		return
 	}
 	defer out.Close()
 
 	// Get the data
-	s.printAlert(fmt.Sprintf("Downloading %s...", url))
+	drawbox.PrintAlert(fmt.Sprintf("Downloading %s...", url))
 	resp, err := http.Get(url)
 	if err != nil {
-		s.printError(fmt.Sprintf("Error downloading file: %v", err))
+		drawbox.PrintError(fmt.Sprintf("Error downloading file: %v", err))
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		s.printError(fmt.Sprintf("Bad status: %s", resp.Status))
+		drawbox.PrintError(fmt.Sprintf("Bad status: %s", resp.Status))
 		return
 	}
 
@@ -1715,7 +1316,7 @@ func (s *SecShell) downloadFile(url string) {
 	// Copy data with progress updates
 	_, err = io.Copy(out, io.TeeReader(resp.Body, counter))
 	if err != nil {
-		s.printError(fmt.Sprintf("Error saving file: %v", err))
+		drawbox.PrintError(fmt.Sprintf("Error saving file: %v", err))
 		return
 	}
 
@@ -1724,7 +1325,7 @@ func (s *SecShell) downloadFile(url string) {
 	speed := float64(size) / duration / 1024 / 1024 // MB/s
 
 	fmt.Print("\r\033[K") // Clear progress line
-	s.printAlert(fmt.Sprintf("Downloaded %s (%.2f MB/s)", fileName, speed))
+	drawbox.PrintAlert(fmt.Sprintf("Downloaded %s (%.2f MB/s)", fileName, speed))
 }
 
 // Replace the WriteCounter struct and its Write method:
@@ -1763,21 +1364,6 @@ func (wc *WriteCounter) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-// Print only top:
-func (s *SecShell) clearLine() {
-	// Clear the entire current line and return carriage
-	fmt.Print("\033[2K\r")
-
-}
-
-// Add this new method:
-func (s *SecShell) clearLineAndPrintBottom() {
-	// Clear the entire current line and return carriage
-	fmt.Print("\033[2K\r")
-	// Print only the bottom prompt exactly as defined
-	fmt.Print(colors.BoldGreen + "└─" + colors.Reset + "$ ")
-}
-
 // main function to start the shell
 func main() {
 	// Check for version flags
@@ -1787,7 +1373,7 @@ func main() {
 			filepath.Join(configDir, ".blacklist"),
 			filepath.Join(configDir, ".whitelist"),
 		)
-		shell.displayVersion()
+		update.DisplayVersion(shell.versionFile)
 		return
 	}
 	// Check for update flag
@@ -1797,7 +1383,7 @@ func main() {
 			filepath.Join(configDir, ".blacklist"),
 			filepath.Join(configDir, ".whitelist"),
 		)
-		shell.updateSecShell()
+		update.UpdateSecShell(isAdmin(), shell.versionFile)
 		return
 	}
 
