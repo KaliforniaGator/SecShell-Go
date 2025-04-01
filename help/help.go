@@ -18,6 +18,8 @@ Built-in Commands:
                		Usage: services <start|stop|restart|status|list> <service_name>
 
   %sjobs%s       - List active background jobs
+                        Usage: jobs <list|stop|status|start|clear-finished> [PID]
+
   %scd%s         - Change directory
                		Usage: cd [directory]
 
