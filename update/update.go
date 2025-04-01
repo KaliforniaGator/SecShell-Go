@@ -15,6 +15,8 @@ const (
 	DefaultVersion = "1.0.0" // Default version if not specified
 	// Update script URL
 	UpdateScript = "https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/refs/heads/main/update.sh"
+	// Version URL
+	VersionURL = "https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/refs/heads/main/VERSION"
 )
 
 // checkForUpdates checks if there's a new version available
@@ -22,7 +24,7 @@ func CheckForUpdates(versionFile string) {
 	// Check if version file exists first
 	if _, err := os.Stat(versionFile); os.IsNotExist(err) {
 		// Version file doesn't exist, create it with latest version from GitHub
-		resp, err := http.Get("https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/refs/heads/main/VERSION")
+		resp, err := http.Get(VersionURL)
 		if err != nil {
 			// If offline, ensure we're using the default version
 			UpdateVersionFile(DefaultVersion, versionFile)
@@ -63,6 +65,21 @@ func GetCurrentVersion(versionFile string) string {
 		return DefaultVersion
 	}
 	return strings.TrimSpace(string(content))
+}
+
+func GetLatestVersion() string {
+	resp, err := http.Get(VersionURL)
+	if err != nil {
+		drawbox.PrintError(fmt.Sprintf("Failed to check version: %s", err))
+		return DefaultVersion
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		drawbox.PrintError(fmt.Sprintf("Failed to read version data: %s", err))
+		return DefaultVersion
+	}
+	return strings.TrimSpace(string(body))
 }
 
 // Display the current version of the shell
