@@ -308,7 +308,8 @@ func (s *SecShell) getInput() string {
 
 	line := ""
 	pos := 0
-	buf := make([]byte, 1024) // Increased buffer size to handle pasting
+	buf := make([]byte, 8192) // Increased buffer size to handle pasting
+
 	for {
 		n, err := os.Stdin.Read(buf)
 		if err != nil {
@@ -318,6 +319,14 @@ func (s *SecShell) getInput() string {
 
 		// Handle input bytes one by one
 		for i := 0; i < n; i++ {
+			// Handle bracketed paste mode
+			if i+5 < n &&
+				buf[i] == 27 && buf[i+1] == '[' && buf[i+2] == '2' &&
+				buf[i+3] == '0' && buf[i+4] == '0' && buf[i+5] == '~' {
+				i += 6
+				continue
+			}
+			// Handle regular input
 			switch buf[i] {
 			case 3: // Ctrl+C
 				fmt.Print("\r\n\n")
@@ -1501,16 +1510,31 @@ func (wc *WriteCounter) Write(p []byte) (int, error) {
 		if newProgress != *wc.progress {
 			*wc.progress = newProgress
 
-			// Clear line and show progress
-			fmt.Printf("\r\033[K[")
-			for i := 0; i < 50; i++ {
-				if i < *wc.progress/2 {
-					fmt.Print("=")
-				} else {
-					fmt.Print(" ")
+			// Print progress percentage for debugging
+			fmt.Printf("\rDownloaded: %d/%d bytes (%d%%)",
+				wc.Downloaded, wc.Total, newProgress)
+
+			// Try to use drawbox command for progress
+			cmd := exec.Command("drawbox", "progress",
+				fmt.Sprintf("%d", newProgress),
+				"100", "50", "block_full", "block_light", "cyan")
+			cmd.Stdout = os.Stdout // Ensure output is visible
+			cmd.Stderr = os.Stderr
+
+			if err := cmd.Run(); err != nil {
+				// Fallback to built-in progress bar if drawbox fails
+				fmt.Printf("\r\033[K[")
+				width := 50
+				completed := int(float64(width) * float64(wc.Downloaded) / float64(wc.Total))
+				for i := 0; i < width; i++ {
+					if i < completed {
+						fmt.Print("=")
+					} else {
+						fmt.Print(" ")
+					}
 				}
+				fmt.Printf("] %3d%%", newProgress)
 			}
-			fmt.Printf("] %d%%", *wc.progress)
 		}
 	}
 	return n, nil
