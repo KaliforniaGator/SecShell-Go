@@ -231,8 +231,20 @@ func isAdmin() bool {
 
 // run starts the shell and listens for user input
 func (s *SecShell) run() {
+
+	currentVersion := update.GetCurrentVersion(s.versionFile)
+	latestVersion := update.GetLatestVersion()
+	needsUpdate := false
+
+	// Does SecShell need to be updated?
+	if currentVersion != latestVersion {
+		needsUpdate = true
+	} else {
+		needsUpdate = false
+	}
+
 	// Display welcome screen
-	ui.DisplayWelcomeScreen(update.GetCurrentVersion(s.versionFile))
+	ui.DisplayWelcomeScreen(currentVersion, needsUpdate)
 
 	// Create a signal channel
 	signalChan := make(chan os.Signal, 1)
