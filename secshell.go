@@ -18,6 +18,7 @@ import (
 	"secshell/colors"
 	"secshell/drawbox"
 	"secshell/help"
+	"secshell/jobs"
 	"secshell/services"
 	"secshell/ui"
 	"secshell/update"
@@ -39,7 +40,7 @@ const (
 
 // SecShell struct to hold shell state and configurations
 type SecShell struct {
-	jobs                map[int]string
+	jobs                map[int]*jobs.Job
 	running             bool
 	allowedDirs         []string
 	allowedCommands     []string
@@ -60,10 +61,9 @@ var builtInCommands = []string{
 // NewSecShell initializes a new SecShell instance
 func NewSecShell(blacklistPath, whitelistPath string) *SecShell {
 	shell := &SecShell{
-		jobs:        make(map[int]string),
+		jobs:        make(map[int]*jobs.Job),
 		running:     true,
 		allowedDirs: []string{"/usr/bin/", "/bin/", "/opt/"},
-		//allowedCommands: []string{"ls", "cd", "pwd", "download"},
 		blacklist:   blacklistPath,
 		whitelist:   whitelistPath,
 		versionFile: filepath.Join(filepath.Dir(blacklistPath), ".ver"),
@@ -234,12 +234,17 @@ func (s *SecShell) run() {
 	// Display welcome screen
 	ui.DisplayWelcomeScreen(update.GetCurrentVersion(s.versionFile))
 
+	// Create a signal channel
 	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTSTP)
+	signal.Notify(signalChan, syscall.SIGINT)
 
+	// Handle signals in a goroutine
 	go func() {
-		for sig := range signalChan {
-			fmt.Printf("\nReceived signal %d. Use 'exit' to quit. Press ENTER to continue...\n", sig)
+		for range signalChan {
+			// Just ignore SIGINT - this prevents the shell from exiting
+			fmt.Print("\r\n\n")
+			fmt.Printf("%s Command exited with Ctrl+C %s\n", colors.BoldYellow, colors.Reset)
+			fmt.Print("\r\n")
 		}
 	}()
 
@@ -276,6 +281,12 @@ func (s *SecShell) getInput() string {
 		// Handle input bytes one by one
 		for i := 0; i < n; i++ {
 			switch buf[i] {
+			case 3: // Ctrl+C
+				fmt.Print("\r\n\n")
+				fmt.Printf("%s To exit, type 'exit' %s\n", colors.BoldRed, colors.Reset)
+				fmt.Print("\r\n")
+				ui.DisplayPrompt()
+				ui.ClearLineAndPrintBottom()
 			case 27: // ESC sequence
 				if i+2 < n { // Check if we have enough bytes for an escape sequence
 					if buf[i+1] == '[' {
@@ -793,6 +804,10 @@ func (s *SecShell) processCommand(input string) {
 		if input == "!!" {
 			if len(s.history) > 1 { // Ensure there's a valid previous command
 				lastCommand := s.history[len(s.history)-2] // Get the second-to-last command
+				if lastCommand == "!!" {
+					drawbox.PrintError("Cannot execute '!!' recursively")
+					return
+				}
 				drawbox.PrintAlert(fmt.Sprintf("Running: %s", lastCommand))
 				s.processCommand(lastCommand) // Execute it safely
 			} else {
@@ -839,7 +854,7 @@ func (s *SecShell) processCommand(input string) {
 		case "services":
 			s.manageServices(args)
 		case "jobs":
-			s.listJobs()
+			s.manageJobs(args)
 		case "help":
 			help.DisplayHelp()
 		case "cd":
@@ -964,15 +979,6 @@ func (s *SecShell) manageServices(args []string) {
 	}
 }
 
-// listJobs lists all active background jobs
-func (s *SecShell) listJobs() {
-	drawbox.RunDrawbox("Jobs", "bold_white")
-	fmt.Println("Active Jobs:")
-	for pid, job := range s.jobs {
-		fmt.Printf("PID: %d - %s\n", pid, job)
-	}
-}
-
 // executePipedCommands executes a series of piped commands
 func (s *SecShell) executePipedCommands(commands []string) {
 	var cmds []*exec.Cmd
@@ -1026,6 +1032,15 @@ func (s *SecShell) executePipedCommands(commands []string) {
 	lastCmd.Stdout = os.Stdout
 	lastCmd.Stderr = os.Stderr
 
+	// Set up process group for all commands in the pipeline
+	for _, cmd := range cmds {
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	}
+
+	// Set up signal handling
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT)
+
 	// Start all commands
 	for _, cmd := range cmds {
 		if err := cmd.Start(); err != nil {
@@ -1034,14 +1049,29 @@ func (s *SecShell) executePipedCommands(commands []string) {
 		}
 	}
 
+	// Forward SIGINT to the process group
+	go func() {
+		for range sigChan {
+			for _, cmd := range cmds {
+				if cmd.Process != nil {
+					syscall.Kill(-cmd.Process.Pid, syscall.SIGINT)
+				}
+			}
+		}
+	}()
+
 	// Wait for all commands to finish
 	for _, cmd := range cmds {
-		if err := cmd.Wait(); err != nil {
+		err := cmd.Wait()
+		if err != nil && !isSignalKilled(err) {
 			if _, ok := err.(*exec.ExitError); !ok {
 				drawbox.PrintError(fmt.Sprintf("Command execution failed: %s", err))
 			}
 		}
 	}
+
+	signal.Stop(sigChan)
+	close(sigChan)
 
 	// Close any opened files
 	for _, file := range files {
@@ -1129,15 +1159,62 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 	cmd.Stdout = stdout
 	cmd.Stderr = os.Stderr
 
+	// Create a new process group
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
 	if background {
 		if err := cmd.Start(); err != nil {
 			drawbox.PrintError(fmt.Sprintf("Failed to start background job: %s", err))
 			return
 		}
-		s.jobs[cmd.Process.Pid] = args[0]
-		drawbox.PrintAlert(fmt.Sprintf("[%d] %s running in background", cmd.Process.Pid, args[0]))
+		jobs.AddJob(s.jobs, cmd.Process.Pid, args[0], cmd.Process)
+
+		// Goroutine to wait for the command to finish and update its status
+		go func(pid int) {
+			err := cmd.Wait()
+			exitCode := 0
+			if err != nil {
+				if exitError, ok := err.(*exec.ExitError); ok {
+					exitCode = exitError.ExitCode()
+				}
+				drawbox.PrintError(fmt.Sprintf("Command execution failed: %s", err))
+			}
+
+			// Update job status
+			if job, ok := s.jobs[pid]; ok {
+				job.Lock()
+				job.EndTime = time.Now()
+				job.ExitCode = exitCode
+				if err != nil {
+					job.Status = fmt.Sprintf("failed with code %d", exitCode)
+				} else {
+					job.Status = "completed"
+				}
+				job.Unlock()
+			}
+		}(cmd.Process.Pid)
 	} else {
-		if err := cmd.Run(); err != nil {
+		// Set up signal handling for foreground processes
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT)
+
+		if err := cmd.Start(); err != nil {
+			drawbox.PrintError(fmt.Sprintf("Command execution failed: %s", err))
+			return
+		}
+
+		// Forward SIGINT to the process group
+		go func() {
+			for range sigChan {
+				syscall.Kill(-cmd.Process.Pid, syscall.SIGINT)
+			}
+		}()
+
+		err := cmd.Wait()
+		signal.Stop(sigChan)
+		close(sigChan)
+
+		if err != nil && !isSignalKilled(err) {
 			drawbox.PrintError(fmt.Sprintf("Command execution failed: %s", err))
 		}
 	}
@@ -1362,6 +1439,38 @@ func (wc *WriteCounter) Write(p []byte) (int, error) {
 		}
 	}
 	return n, nil
+}
+
+// manageJobs manages background jobs
+func (s *SecShell) manageJobs(args []string) {
+	if len(args) < 2 {
+		jobs.RunJobsCommand("list", 0, s.jobs)
+	} else if args[1] == "--help" {
+		jobs.ShowHelp()
+	} else {
+		action := args[1]
+		pid := 0
+		if len(args) > 2 {
+			pidStr := args[2]
+			var err error
+			pid, err = strconv.Atoi(pidStr)
+			if err != nil {
+				drawbox.PrintError("Invalid PID. Please enter a valid integer.")
+				return
+			}
+		}
+		jobs.RunJobsCommand(action, pid, s.jobs)
+	}
+}
+
+// Helper function to check if error was due to signal
+func isSignalKilled(err error) bool {
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
+			return status.Signaled() && status.Signal() == syscall.SIGINT
+		}
+	}
+	return false
 }
 
 // main function to start the shell
