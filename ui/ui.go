@@ -8,7 +8,14 @@ import (
 )
 
 // Add this after the printError method and before main:
-func DisplayWelcomeScreen(version string) {
+func DisplayWelcomeScreen(version string, needsUpdate bool) {
+	// Check for Update
+	versionIcon := ""
+	if needsUpdate {
+		versionIcon = drawbox.PrintIcon("warning")
+	} else {
+		versionIcon = drawbox.PrintIcon("success")
+	}
 	// Clear the screen first
 	fmt.Print("\033[H\033[2J")
 
@@ -24,7 +31,7 @@ func DisplayWelcomeScreen(version string) {
 
 	fmt.Printf("%s%s%s\n", colors.BoldYellow, logo, colors.Reset)
 	// Add version display
-	fmt.Printf("\n%sVersion: %s%s\n", colors.BoldWhite, version, colors.Reset)
+	fmt.Printf("\n%sVersion: %s %s%s\n", colors.BoldWhite, version, versionIcon, colors.Reset)
 	// Display welcome message
 	drawbox.RunDrawbox("Welcome to SecShell - A Secure Command Shell", "bold_green")
 	fmt.Printf("\n%sFeatures:%s\n", colors.BoldWhite, colors.Reset)
