@@ -1091,10 +1091,47 @@ func (s *SecShell) executePipedCommands(commands []string) {
 	}
 }
 
+// Determine if command is an editor
+func isTerminalEditor(cmd string) bool {
+	editors := []string{"nano", "vim", "vi", "emacs", "nvim", "pico"}
+	for _, editor := range editors {
+		if cmd == editor {
+			return true
+		}
+	}
+	return false
+}
+
 // executeSystemCommand executes a system command
 func (s *SecShell) executeSystemCommand(args []string, background bool) {
 	if !s.isCommandAllowed(args[0]) {
 		drawbox.PrintError(fmt.Sprintf("Command not permitted: %s", args[0]))
+		return
+	}
+
+	// Special handling for terminal editors
+	if isTerminalEditor(args[0]) {
+		// Restore terminal to normal mode
+		oldState, err := term.GetState(int(os.Stdin.Fd()))
+		if err != nil {
+			drawbox.PrintError(fmt.Sprintf("Failed to get terminal state: %s", err))
+			return
+		}
+		term.Restore(int(os.Stdin.Fd()), oldState)
+
+		// Execute editor
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Stdin = os.Stdin
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+
+		err = cmd.Run()
+
+		// After editor exits, clear screen and redraw prompt
+		fmt.Print("\033[H\033[2J") // Clear screen
+		if err != nil && !isSignalKilled(err) {
+			drawbox.PrintError(fmt.Sprintf("Editor execution failed: %s", err))
+		}
 		return
 	}
 
