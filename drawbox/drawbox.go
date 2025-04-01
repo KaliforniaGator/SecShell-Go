@@ -31,6 +31,28 @@ func RunDrawbox(title, color string) {
 	}
 }
 
+func RunDrawboxCommand(command string, message, bg_color string, color string) string {
+
+	// Use exec.LookPath to find the drawbox executable in the PATH
+	drawboxPath, err := exec.LookPath("drawbox")
+	if err != nil {
+		return fmt.Sprintf("%s PLEASE INSTALL drawbox %s\n", colors.BoldRed, colors.Reset)
+	}
+
+	cmd := exec.Command(drawboxPath, command, message, bg_color, color)
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Sprintf("%s PLEASE INSTALL drawbox %s\n", colors.BoldRed, colors.Reset)
+	}
+
+	return string(output)
+}
+
+func PrintIcon(icon string) string {
+	result := RunDrawboxCommand("unicode", icon, "", "")
+	return result
+}
+
 // printAlert prints an alert message
 func PrintAlert(message string) {
 	RunDrawbox("ALERT: "+message, "bold_yellow")
