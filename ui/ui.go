@@ -88,5 +88,5 @@ func ClearLineAndPrintBottom() {
 	// Clear the entire current line and return carriage
 	fmt.Print("\033[2K\r")
 	// Print only the bottom prompt exactly as defined
-	fmt.Print(colors.BoldGreen + "└─" + colors.Reset + "$ ")
+	fmt.Print(colors.BoldGreen + "╰─" + colors.Reset + "$ ")
 }
