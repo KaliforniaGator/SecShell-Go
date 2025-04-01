@@ -229,19 +229,45 @@ func isAdmin() bool {
 	return false
 }
 
+// Check if update is needed
+func IsUpdateNeeded(currentVersion, latestVersion string) bool {
+	// Already in correct format - no need to strip 'v' prefix
+	currentParts := strings.Split(currentVersion, ".")
+	latestParts := strings.Split(latestVersion, ".")
+
+	// Validate version format
+	if len(currentParts) != 3 || len(latestParts) != 3 {
+		return false
+	}
+
+	// Convert version parts to integers
+	current := make([]int, 3)
+	latest := make([]int, 3)
+
+	for i := 0; i < 3; i++ {
+		var err error
+		current[i], err = strconv.Atoi(currentParts[i])
+		if err != nil {
+			return false
+		}
+		latest[i], err = strconv.Atoi(latestParts[i])
+		if err != nil {
+			return false
+		}
+	}
+
+	// Compare versions
+	return latest[0] > current[0] || // Major version
+		(latest[0] == current[0] && latest[1] > current[1]) || // Minor version
+		(latest[0] == current[0] && latest[1] == current[1] && latest[2] > current[2]) // Patch version
+}
+
 // run starts the shell and listens for user input
 func (s *SecShell) run() {
 
 	currentVersion := update.GetCurrentVersion(s.versionFile)
 	latestVersion := update.GetLatestVersion()
-	needsUpdate := false
-
-	// Does SecShell need to be updated?
-	if currentVersion != latestVersion {
-		needsUpdate = true
-	} else {
-		needsUpdate = false
-	}
+	needsUpdate := IsUpdateNeeded(currentVersion, latestVersion)
 
 	// Display welcome screen
 	ui.DisplayWelcomeScreen(currentVersion, needsUpdate)
