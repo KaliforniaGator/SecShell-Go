@@ -46,12 +46,14 @@ Once installed, you can start SecShell by running:
 ```
 
 ### Built-in Commands
-
+- **allowed** Show allowed Directories, Commands, Built-Ins, and Programs
+  - Usage  `allowed <dirs|commands|bins|builtins>`
 - **help**: Show the help message.
 - **exit**: Exit the shell.
 - **services**: Manage system services.
   - Usage: `services <start|stop|restart|status|list> <service_name>`
 - **jobs**: List active background jobs.
+  - Usage `jobs <list|stop|start|status|clear-finished>`
 - **cd**: Change directory.
   - Usage: `cd [directory]`
 - **history**: Show command history.
@@ -67,7 +69,7 @@ Once installed, you can start SecShell by running:
 - **edit-whitelist**: Edit the whitelist file.
 - **reload-blacklist**: Reload the blacklisted commands.
 - **reload-whitelist**: Reload the whitelisted commands.
-- **download**: Download a file from the internet using `download <filename>`.
+- **download**: Download a file from the internet using `Usage: download [-o output1,output2,...] <url [url2 ...]>`.
 - **toggle-security**: Run commands as an administrator bypassing the whitelisting and blacklisting.
 
 ### Examples
