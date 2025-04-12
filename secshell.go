@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"secshell/colors"
+	"secshell/commands"
 	"secshell/core"
 	"secshell/download"
 	"secshell/drawbox"
@@ -193,6 +194,9 @@ func (s *SecShell) loadWhitelist(filename string) {
 		drawbox.PrintAlert("Warning: Whitelist file is empty. Allowing hard-coded commands and any command within allowed directories.")
 		s.allowedCommands = []string{"ls", "cd", "pwd", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "cat", "echo", "grep", "find", "chmod", "chown", "ps", "kill", "top", "df", "du", "ifconfig", "netstat", "ping", "ip", "clear", "vim", "nano", "emacs", "nvim"}
 	}
+
+	commands.AllowedCommands = s.allowedCommands
+	commands.BuiltInCommands = builtInCommands
 }
 
 // Check if the current user is in an admin group
@@ -384,7 +388,7 @@ func (s *SecShell) getInput() string {
 					}
 				}
 			case 9: // Tab
-				line, pos = s.completeCommand(line, pos)
+				line, pos = commands.CompleteCommand(line, pos)
 			case 13, 10: // Enter (CR or LF)
 				fmt.Println()
 				input := s.sanitizeInput(strings.TrimSpace(line), true)
@@ -406,93 +410,6 @@ func (s *SecShell) getInput() string {
 			}
 		}
 	}
-}
-
-// Modify the completeCommand function:
-func (s *SecShell) completeCommand(line string, pos int) (string, int) {
-	if line == "" {
-		return line, pos
-	}
-
-	words := strings.Fields(line)
-	if len(words) == 0 {
-		return line, pos
-	}
-
-	lastWord := words[len(words)-1]
-	prefix := lastWord
-
-	// Check if we are completing a command or a path
-	if len(words) == 1 {
-		// Command completion
-		matches := s.getCommandMatches(prefix)
-		if len(matches) == 0 {
-			return line, pos
-		}
-
-		// Replace the last word with the first match
-		words[len(words)-1] = matches[0]
-		newLine := strings.Join(words, " ")
-		ui.ClearLine()
-		ui.ClearLineAndPrintBottom()
-		fmt.Print(newLine)
-
-		// If there are multiple matches, show them below
-		if len(matches) > 1 {
-			for _, match := range matches {
-				fmt.Print(match + "  ")
-			}
-			ui.ClearLine()
-			ui.ClearLineAndPrintBottom() // Clear line and print the bottom prompt
-			fmt.Print(newLine)           // Reprint the new input with the first match
-		}
-
-		return newLine, len(newLine)
-
-	} else {
-		// Path completion
-		matches, _ := filepath.Glob(prefix + "*")
-		if len(matches) == 0 {
-			return line, pos
-		}
-
-		// Replace the last word with the first match
-		words[len(words)-1] = matches[0]
-		newLine := strings.Join(words, " ")
-		ui.ClearLine()
-		ui.ClearLineAndPrintBottom()
-		fmt.Print(newLine)
-
-		// If there are multiple matches, show them below
-		if len(matches) > 1 {
-			for _, match := range matches {
-				fmt.Print(match + "  ")
-			}
-			ui.ClearLine()
-			ui.ClearLineAndPrintBottom() // Clear line and print the bottom prompt
-			fmt.Print(newLine)           // Reprint the new input with the first match
-		}
-
-		return newLine, len(newLine)
-	}
-}
-
-// Add this new method to get command matches:
-func (s *SecShell) getCommandMatches(prefix string) []string {
-	var matches []string
-	for _, cmd := range s.allowedCommands {
-		if strings.HasPrefix(cmd, prefix) {
-			matches = append(matches, cmd)
-		}
-	}
-
-	// Include built-in commands
-	for _, cmd := range builtInCommands {
-		if strings.HasPrefix(cmd, prefix) {
-			matches = append(matches, cmd)
-		}
-	}
-	return matches
 }
 
 // sanitizeInput uses the sanitize package to clean input
