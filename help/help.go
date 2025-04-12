@@ -5,10 +5,17 @@ import (
 	"os"
 	"secshell/colors"
 	"secshell/drawbox"
+	"strings"
 )
 
-// displayHelp shows the help message
-func DisplayHelp() {
+// DisplayHelp shows the help message or specific command help
+func DisplayHelp(args ...string) {
+	// If we have arguments, display specific command help
+	if len(args) > 0 && args[0] != "" {
+		displayCommandHelp(args[0])
+		return
+	}
+
 	drawbox.RunDrawbox("SecShell Help", "bold_white")
 	fmt.Fprintf(os.Stdout, `
 Built-in Commands:
@@ -106,4 +113,37 @@ Only executables from trusted directories are permitted.
 		colors.Cyan, colors.Reset, // Examples
 		colors.Cyan, colors.Reset, // Note
 	)
+}
+
+// displayCommandHelp shows help for a specific command
+func displayCommandHelp(command string) {
+	commandHelp := map[string]string{
+		"help":             "Show this help message\nUsage: help [command]",
+		"exit":             "Exit the shell\nUsage: exit",
+		"services":         "Manage system services\nUsage: services <start|stop|restart|status|list> <service_name>",
+		"jobs":             "List active background jobs\nUsage: jobs <list|stop|status|start|clear-finished> [PID]",
+		"cd":               "Change directory\nUsage: cd [directory]",
+		"history":          "Show command history\nUsage: history [-s <query>] [-i]\n   -s: Search history for a query\n   -i: Interactive history search\n   ![number]: Execute command by number\n   !!: Execute last command",
+		"export":           "Set an environment variable\nUsage: export VAR=value",
+		"env":              "List all environment variables",
+		"unset":            "Unset an environment variable\nUsage: unset VAR",
+		"blacklist":        "List blacklisted commands\nUsage: blacklist",
+		"whitelist":        "List whitelisted commands\nUsage: whitelist",
+		"edit-blacklist":   "Edit the blacklist file\nUsage: edit-blacklist",
+		"edit-whitelist":   "Edit the whitelist file\nUsage: edit-whitelist",
+		"reload-blacklist": "Reload the blacklisted commands\nUsage: reload-blacklist",
+		"reload-whitelist": "Reload the whitelisted commands\nUsage: reload-whitelist",
+		"download":         "Download a file from URL\nUsage: download <url>",
+		"--version":        "Show the version of SecShell\nUsage: --version",
+		"--update":         "Update SecShell to the latest version\nUsage: --update",
+	}
+
+	help, exists := commandHelp[strings.ToLower(command)]
+	if !exists {
+		fmt.Fprintf(os.Stdout, "No help available for command: %s\n", command)
+		return
+	}
+
+	drawbox.RunDrawbox(fmt.Sprintf("Help: %s", command), "bold_white")
+	fmt.Fprintf(os.Stdout, "\n%s\n", help)
 }
