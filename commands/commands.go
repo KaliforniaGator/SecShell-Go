@@ -2,14 +2,57 @@ package commands
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
+	"secshell/core"
 	"secshell/help"
+	"secshell/sanitize"
 	"secshell/ui"
 	"strings"
 )
 
+var AllowedDirs = []string{}
 var AllowedCommands = []string{}
 var BuiltInCommands = []string{}
+var ProgramCommands = []string{}
+
+// Scan AllowedDirs for binaries
+func ScanAllowedDirs() {
+	ProgramCommands = []string{} // Reset program commands
+	uniqueCommands := make(map[string]bool)
+
+	for _, dir := range AllowedDirs {
+		files, err := filepath.Glob(filepath.Join(dir, "*"))
+		if err != nil {
+			continue
+		}
+		for _, file := range files {
+			// Check if file is executable
+			info, err := os.Stat(file)
+			if err != nil || info.IsDir() {
+				continue
+			}
+			if info.Mode()&0111 == 0 { // Check if executable bit is set
+				continue
+			}
+
+			// Get base name and sanitize it
+			baseName := filepath.Base(file)
+			sanitized, err := sanitize.SanitizeFileName(baseName)
+			if err != nil {
+				continue
+			}
+			if !uniqueCommands[sanitized] {
+				uniqueCommands[sanitized] = true
+				ProgramCommands = append(ProgramCommands, sanitized)
+			}
+		}
+	}
+}
+
+func Init() {
+	ScanAllowedDirs()
+}
 
 // Modify the completeCommand function:
 func CompleteCommand(line string, pos int) (string, int) {
@@ -110,5 +153,61 @@ func getCommandMatches(prefix string) []string {
 			matches = append(matches, cmd)
 		}
 	}
+
+	// Include program commands
+	for _, cmd := range ProgramCommands {
+		if strings.HasPrefix(cmd, prefix) {
+			matches = append(matches, cmd)
+		}
+	}
 	return matches
+}
+
+// Print Program Commands
+func PrintProgramCommands() {
+	fmt.Println("Program Commands:")
+	core.More(ProgramCommands)
+}
+
+// Print Allowed Directories
+func PrintAllowedDirs() {
+	fmt.Println("Allowed Directories:")
+	for _, dir := range AllowedDirs {
+		fmt.Println(" - " + dir)
+	}
+}
+
+// Print Allowed Commands
+func PrintAllowedCommands() {
+	fmt.Println("Allowed Commands:")
+	for _, cmd := range AllowedCommands {
+		fmt.Println(" - " + cmd)
+	}
+}
+
+// Print Built-in Commands
+func PrintBuiltInCommands() {
+	fmt.Println("Built-in Commands:")
+	for _, cmd := range BuiltInCommands {
+		fmt.Println(" - " + cmd)
+	}
+}
+
+// Print All Commands
+func PrintAllCommands() {
+	fmt.Println(("Allowed Directories:"))
+	ui.NewLine()
+	for _, cmd := range AllowedDirs {
+		fmt.Println(" - " + cmd)
+	}
+	fmt.Println("All Commands:")
+	ui.NewLine()
+	for _, cmd := range AllowedCommands {
+		fmt.Println(" - " + cmd)
+	}
+	fmt.Println("Built-In Commands:")
+	ui.NewLine()
+	for _, cmd := range BuiltInCommands {
+		fmt.Println(" - " + cmd)
+	}
 }
