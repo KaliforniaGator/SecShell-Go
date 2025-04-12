@@ -8,6 +8,27 @@ import (
 	"strings"
 )
 
+var HelpCommands = []string{
+	"help",
+	"exit",
+	"services",
+	"jobs",
+	"cd",
+	"history",
+	"export",
+	"env",
+	"unset",
+	"blacklist",
+	"whitelist",
+	"edit-blacklist",
+	"edit-whitelist",
+	"reload-blacklist",
+	"reload-whitelist",
+	"download",
+	"--version",
+	"--update",
+}
+
 // DisplayHelp shows the help message or specific command help
 func DisplayHelp(args ...string) {
 	// If we have arguments, display specific command help
@@ -122,7 +143,7 @@ func displayCommandHelp(command string) {
 		"exit":             "Exit the shell\nUsage: exit",
 		"services":         "Manage system services\nUsage: services <start|stop|restart|status|list> <service_name>",
 		"jobs":             "List active background jobs\nUsage: jobs <list|stop|status|start|clear-finished> [PID]",
-		"cd":               "Change directory\nUsage: cd [directory]",
+		"cd":               "Change directory\nUsage: cd (--prev | -p) [directory]",
 		"history":          "Show command history\nUsage: history [-s <query>] [-i]\n   -s: Search history for a query\n   -i: Interactive history search\n   ![number]: Execute command by number\n   !!: Execute last command",
 		"export":           "Set an environment variable\nUsage: export VAR=value",
 		"env":              "List all environment variables",
