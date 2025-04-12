@@ -97,3 +97,19 @@ func ClearLineAndPrintBottom() {
 	// Print only the bottom prompt exactly as defined
 	fmt.Print(colors.BoldGreen + "╰─" + colors.Reset + "$ ")
 }
+
+func NewLine() {
+	// Print a new line
+	fmt.Print("\n")
+}
+
+func ClearScreen() {
+	// Clear the screen
+	fmt.Print("\033[H\033[2J")
+}
+
+func ClearScreenAndBuffer() {
+	// Clear the screen and buffer
+	fmt.Print("\033[H\033[2J\033[3J")
+	// Clear the scrollback buffer
+}
