@@ -59,7 +59,7 @@ type SecShell struct {
 var builtInCommands = []string{
 	"allowed", "help", "exit", "services", "jobs", "cd", "history", "export", "env", "unset",
 	"reload-blacklist", "blacklist", "edit-blacklist", "whitelist", "edit-whitelist",
-	"reload-whitelist", "download", "--version", "--update"}
+	"reload-whitelist", "download", "--version", "--update", "time", "date"}
 
 // NewSecShell initializes a new SecShell instance
 func NewSecShell(blacklistPath, whitelistPath string) *SecShell {
@@ -76,6 +76,19 @@ func NewSecShell(blacklistPath, whitelistPath string) *SecShell {
 	shell.loadBlacklist(blacklistPath)
 	shell.loadWhitelist(whitelistPath)
 	return shell
+}
+
+// Get current Time
+func (s *SecShell) getTime() {
+	now := time.Now()
+	drawbox.RunDrawbox(fmt.Sprintf("Current time: %s", now.Format("3:04 PM")), "bold_white")
+}
+
+// Get current Date
+func (s *SecShell) getDate() {
+	now := time.Now()
+	drawbox.RunDrawbox(fmt.Sprintf("Current date: %s", now.Format("02-Jan-2006")), "bold_white")
+
 }
 
 // ensureFilesExist checks and creates blacklist and whitelist files if they don't exist
@@ -803,6 +816,10 @@ func (s *SecShell) processCommand(input string) {
 			}
 		case "cd":
 			core.ChangeDirectory(args)
+		case "time":
+			s.getTime()
+		case "date":
+			s.getDate()
 		case "allowed":
 			if len(args) > 1 {
 				switch args[1] {
