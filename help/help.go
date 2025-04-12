@@ -9,6 +9,7 @@ import (
 )
 
 var HelpCommands = []string{
+	"allowed",
 	"help",
 	"exit",
 	"services",
@@ -40,6 +41,8 @@ func DisplayHelp(args ...string) {
 	drawbox.RunDrawbox("SecShell Help", "bold_white")
 	fmt.Fprintf(os.Stdout, `
 Built-in Commands:
+  %sallowed%s   - List allowed system commands
+					Usage: allowed <dirs|commands|bins|builtins|all>
   %shelp%s       - Show this help message
   %sexit%s       - Exit the shell
   %sservices%s   - Manage system services
@@ -111,6 +114,7 @@ Built-in Commands:
 All commands are subject to security checks and sanitization.
 Only executables from trusted directories are permitted.
 `,
+		colors.BoldWhite, colors.Reset, // allowed
 		colors.BoldWhite, colors.Reset, // help
 		colors.BoldWhite, colors.Reset, // exit
 		colors.BoldWhite, colors.Reset, // services
@@ -139,6 +143,7 @@ Only executables from trusted directories are permitted.
 // displayCommandHelp shows help for a specific command
 func displayCommandHelp(command string) {
 	commandHelp := map[string]string{
+		"allowed":          "List allowed system commands\nUsage: allowed <dirs|commands|bins|builtins|all>",
 		"help":             "Show this help message\nUsage: help [command]",
 		"exit":             "Exit the shell\nUsage: exit",
 		"services":         "Manage system services\nUsage: services <start|stop|restart|status|list> <service_name>",
