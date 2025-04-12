@@ -31,6 +31,9 @@ func RunDrawbox(title, color string) {
 	}
 }
 
+// RunDrawboxCommand runs the drawbox command with the specified parameters
+// and returns the output as a string.
+// It also handles the case where drawbox is not found by returning an error message.
 func RunDrawboxCommand(command string, message, bg_color string, color string) string {
 
 	// Use exec.LookPath to find the drawbox executable in the PATH
@@ -48,6 +51,7 @@ func RunDrawboxCommand(command string, message, bg_color string, color string) s
 	return string(output)
 }
 
+// Print icon onto screen using drawbox
 func PrintIcon(icon string) string {
 	result := RunDrawboxCommand("unicode", icon, "", "")
 	return result
@@ -61,4 +65,16 @@ func PrintAlert(message string) {
 // printError prints an error message
 func PrintError(message string) {
 	RunDrawbox("ERROR: "+message, "bold_red")
+}
+
+func DrawTable(titles string, data []string) {
+	cmdArgs := []string{"table", titles}
+	cmdArgs = append(cmdArgs, data...)
+
+	cmdTable := exec.Command("drawbox", cmdArgs...)
+	cmdTable.Stdout = os.Stdout
+	cmdTable.Stderr = os.Stderr
+	if err := cmdTable.Run(); err != nil {
+		fmt.Println("Error executing drawbox table command:", err)
+	}
 }
