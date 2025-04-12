@@ -57,7 +57,7 @@ type SecShell struct {
 
 // Define a list of built-in commands
 var builtInCommands = []string{
-	"help", "exit", "services", "jobs", "cd", "history", "export", "env", "unset",
+	"allowed", "help", "exit", "services", "jobs", "cd", "history", "export", "env", "unset",
 	"reload-blacklist", "blacklist", "edit-blacklist", "whitelist", "edit-whitelist",
 	"reload-whitelist", "download", "--version", "--update"}
 
