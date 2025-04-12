@@ -42,7 +42,7 @@ func DisplayHelp(args ...string) {
 	fmt.Fprintf(os.Stdout, `
 Built-in Commands:
   %sallowed%s   - List allowed system commands
-					Usage: allowed <dirs|commands|bins|builtins|all>
+			Usage: allowed <dirs|commands|bins|builtins|all>
   %shelp%s       - Show this help message
   %sexit%s       - Exit the shell
   %sservices%s   - Manage system services
