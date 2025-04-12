@@ -66,7 +66,7 @@ func NewSecShell(blacklistPath, whitelistPath string) *SecShell {
 	shell := &SecShell{
 		jobs:        make(map[int]*jobs.Job),
 		running:     true,
-		allowedDirs: []string{"/usr/bin/", "/bin/", "/opt/"},
+		allowedDirs: []string{"/usr/bin/", "/bin/", "/opt/", "/usr/local/bin/"},
 		blacklist:   blacklistPath,
 		whitelist:   whitelistPath,
 		versionFile: filepath.Join(filepath.Dir(blacklistPath), ".ver"),
@@ -197,6 +197,8 @@ func (s *SecShell) loadWhitelist(filename string) {
 
 	commands.AllowedCommands = s.allowedCommands
 	commands.BuiltInCommands = builtInCommands
+	commands.AllowedDirs = s.allowedDirs
+	commands.Init()
 }
 
 // Check if the current user is in an admin group
@@ -757,15 +759,15 @@ func (s *SecShell) processCommand(input string) {
 		return
 	}
 
-	commands := strings.Split(input, "|")
-	for i, command := range commands {
-		commands[i] = strings.TrimSpace(command)
+	splitCommands := strings.Split(input, "|")
+	for i, command := range splitCommands {
+		splitCommands[i] = strings.TrimSpace(command)
 	}
 
-	if len(commands) > 1 {
-		s.executePipedCommands(commands)
+	if len(splitCommands) > 1 {
+		s.executePipedCommands(splitCommands)
 	} else {
-		args := strings.Fields(commands[0])
+		args := strings.Fields(splitCommands[0])
 		if len(args) == 0 {
 			return
 		}
@@ -801,6 +803,28 @@ func (s *SecShell) processCommand(input string) {
 			}
 		case "cd":
 			core.ChangeDirectory(args)
+		case "allowed":
+			if len(args) > 1 {
+				switch args[1] {
+				case "dirs":
+					drawbox.RunDrawbox("Allowed Directories", "bold_white")
+					commands.PrintAllowedDirs()
+				case "commands":
+					drawbox.RunDrawbox("Allowed Commands", "bold_white")
+					commands.PrintAllowedCommands()
+				case "bins":
+					drawbox.RunDrawbox("Allowed Binaries", "bold_white")
+					commands.PrintProgramCommands()
+				case "builtins":
+					drawbox.RunDrawbox("Built-in Commands", "bold_white")
+					commands.PrintBuiltInCommands()
+				case "all":
+					drawbox.RunDrawbox("All Allowed", "bold_white")
+					commands.PrintAllCommands()
+				}
+			} else {
+				drawbox.PrintError("Usage: allowed <dirs|commands|bins|builtins|all>")
+			}
 		case "history":
 			if len(args) == 1 {
 				s.displayHistory()
