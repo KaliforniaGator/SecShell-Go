@@ -77,7 +77,7 @@ func DownloadFile(url, fileName string, linePos int) error {
 
 func DownloadFiles(args []string) {
 	if len(args) < 2 {
-		drawbox.PrintError("Usage: download [-o output1,output2,...] url1 [url2 ...]")
+		drawbox.PrintError("Usage: download [-o output1,output2,...] <url [url2 ...]>")
 		return
 	}
 
