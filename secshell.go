@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -16,9 +15,11 @@ import (
 	"time"
 
 	"secshell/colors"
+	"secshell/download"
 	"secshell/drawbox"
 	"secshell/help"
 	"secshell/jobs"
+	"secshell/sanitize"
 	"secshell/services"
 	"secshell/ui"
 	"secshell/update"
@@ -385,7 +386,7 @@ func (s *SecShell) getInput() string {
 				line, pos = s.completeCommand(line, pos)
 			case 13, 10: // Enter (CR or LF)
 				fmt.Println()
-				input := s.sanitizeInput(strings.TrimSpace(line))
+				input := s.sanitizeInput(strings.TrimSpace(line), true)
 				if input != "" {
 					s.history = append(s.history, input)
 					s.historyIndex = len(s.history)
@@ -493,22 +494,13 @@ func (s *SecShell) getCommandMatches(prefix string) []string {
 	return matches
 }
 
-// sanitizeInput removes forbidden characters from input
+// sanitizeInput uses the sanitize package to clean input
 func (s *SecShell) sanitizeInput(input string, allowSpecialChars ...bool) string {
 	allow := true
 	if len(allowSpecialChars) > 0 {
 		allow = allowSpecialChars[0]
 	}
-
-	forbidden := ";`\\"
-	if !allow {
-		forbidden += "&|><"
-	}
-
-	for _, char := range forbidden {
-		input = strings.ReplaceAll(input, string(char), "")
-	}
-	return input
+	return sanitize.Input(input, allow)
 }
 
 // changeDirectory changes the current working directory
@@ -955,11 +947,7 @@ func (s *SecShell) processCommand(input string) {
 		case "toggle-security":
 			s.toggleSecurity()
 		case "download":
-			if len(args) != 2 {
-				drawbox.PrintError("Usage: download <url>")
-				return
-			}
-			s.downloadFile(args[1])
+			download.DownloadFiles(args)
 		default:
 			// Handle quoted arguments
 			args = s.parseQuotedArgs(args)
@@ -1139,6 +1127,17 @@ func isTerminalEditor(cmd string) bool {
 
 // executeSystemCommand executes a system command
 func (s *SecShell) executeSystemCommand(args []string, background bool) {
+	// Sanitize command and arguments
+	sanitizedArgs := make([]string, len(args))
+	for i, arg := range args {
+		if i == 0 {
+			sanitizedArgs[i] = sanitize.Command(arg)
+		} else {
+			sanitizedArgs[i] = sanitize.Path(arg)
+		}
+	}
+	args = sanitizedArgs
+
 	if !s.isCommandAllowed(args[0]) {
 		drawbox.PrintError(fmt.Sprintf("Command not permitted: %s", args[0]))
 		return
@@ -1311,6 +1310,9 @@ func (s *SecShell) isCommandAllowed(cmd string) bool {
 		return true // Admins bypass whitelist
 	}
 
+	// Sanitize the command first
+	cmd = sanitize.Command(cmd)
+
 	// Define a list of restricted network commands
 	networkCommands := []string{"wget", "curl", "nc", "nmap", "scp", "rsync"}
 
@@ -1423,121 +1425,6 @@ func getExecutablePath() string {
 		return "." // Fallback to current directory if home directory cannot be determined
 	}
 	return filepath.Join(homeDir, ".secshell") // Use ~/.secshell for config files
-}
-
-// Add this new method:
-func (s *SecShell) downloadFile(url string) {
-	// Sanitize URL
-	url = s.sanitizeInput(url, false)
-
-	// Extract filename from URL
-	fileName := filepath.Base(url)
-	if fileName == "" || fileName == "." {
-		fileName = "downloaded_file"
-	}
-
-	// Sanitize filename
-	fileName = s.sanitizeInput(fileName, false)
-
-	// Create the file
-	out, err := os.Create(fileName)
-	if err != nil {
-		drawbox.PrintError(fmt.Sprintf("Error creating file: %v", err))
-		return
-	}
-	defer out.Close()
-
-	// Get the data
-	drawbox.PrintAlert(fmt.Sprintf("Downloading %s...", url))
-	resp, err := http.Get(url)
-	if err != nil {
-		drawbox.PrintError(fmt.Sprintf("Error downloading file: %v", err))
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		drawbox.PrintError(fmt.Sprintf("Bad status: %s", resp.Status))
-		return
-	}
-
-	// Create progress bar
-	size := resp.ContentLength
-	progress := 0
-	startTime := time.Now()
-
-	// Create counter proxy reader with proper initialization
-	counter := &WriteCounter{
-		Total:      size,
-		Downloaded: 0,
-		progress:   &progress,
-		shell:      s,
-	}
-
-	// Copy data with progress updates
-	_, err = io.Copy(out, io.TeeReader(resp.Body, counter))
-	if err != nil {
-		drawbox.PrintError(fmt.Sprintf("Error saving file: %v", err))
-		return
-	}
-
-	// Calculate download speed
-	duration := time.Since(startTime).Seconds()
-	speed := float64(size) / duration / 1024 / 1024 // MB/s
-
-	fmt.Print("\r\033[K") // Clear progress line
-	drawbox.PrintAlert(fmt.Sprintf("Downloaded %s (%.2f MB/s)", fileName, speed))
-}
-
-// Replace the WriteCounter struct and its Write method:
-type WriteCounter struct {
-	Total      int64
-	Downloaded int64
-	progress   *int
-	shell      *SecShell
-}
-
-func (wc *WriteCounter) Write(p []byte) (int, error) {
-	n := len(p)
-	wc.Downloaded += int64(n)
-
-	// Calculate percentage
-	if wc.Total > 0 {
-		percentage := float64(wc.Downloaded) / float64(wc.Total) * 100
-		newProgress := int(percentage)
-
-		// Only update if progress has changed
-		if newProgress != *wc.progress {
-			*wc.progress = newProgress
-
-			// Print progress percentage for debugging
-			fmt.Printf("\rDownloaded: %d/%d bytes (%d%%)",
-				wc.Downloaded, wc.Total, newProgress)
-
-			// Try to use drawbox command for progress
-			cmd := exec.Command("drawbox", "progress",
-				fmt.Sprintf("%d", newProgress),
-				"100", "50", "block_full", "block_light", "cyan")
-			cmd.Stdout = os.Stdout // Ensure output is visible
-			cmd.Stderr = os.Stderr
-
-			if err := cmd.Run(); err != nil {
-				// Fallback to built-in progress bar if drawbox fails
-				fmt.Printf("\r\033[K[")
-				width := 50
-				completed := int(float64(width) * float64(wc.Downloaded) / float64(wc.Total))
-				for i := 0; i < width; i++ {
-					if i < completed {
-						fmt.Print("=")
-					} else {
-						fmt.Print(" ")
-					}
-				}
-				fmt.Printf("] %3d%%", newProgress)
-			}
-		}
-	}
-	return n, nil
 }
 
 // manageJobs manages background jobs
