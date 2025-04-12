@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"secshell/colors"
+	"secshell/core"
 	"secshell/download"
 	"secshell/drawbox"
 	"secshell/help"
@@ -503,25 +504,6 @@ func (s *SecShell) sanitizeInput(input string, allowSpecialChars ...bool) string
 	return sanitize.Input(input, allow)
 }
 
-// changeDirectory changes the current working directory
-func (s *SecShell) changeDirectory(args []string) {
-	var dir string
-	if len(args) < 2 {
-		home := os.Getenv("HOME")
-		if home == "" {
-			drawbox.PrintError("cd failed: HOME environment variable not set")
-			return
-		}
-		dir = home
-	} else {
-		dir = args[1]
-	}
-
-	if err := os.Chdir(dir); err != nil {
-		drawbox.PrintError(fmt.Sprintf("cd failed: %s", err))
-	}
-}
-
 // displayHistory shows the command history
 func (s *SecShell) displayHistory() {
 	drawbox.RunDrawbox("Command History", "bold_white")
@@ -895,9 +877,13 @@ func (s *SecShell) processCommand(input string) {
 		case "jobs":
 			s.manageJobs(args)
 		case "help":
-			help.DisplayHelp()
+			if len(args) > 1 {
+				help.DisplayHelp(args[1])
+			} else {
+				help.DisplayHelp()
+			}
 		case "cd":
-			s.changeDirectory(args)
+			core.ChangeDirectory(args)
 		case "history":
 			if len(args) == 1 {
 				s.displayHistory()
