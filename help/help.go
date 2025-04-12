@@ -76,7 +76,7 @@ Built-in Commands:
   %sreload-whitelist%s - Reload the whitelisted commands
 
   %sdownload%s    - Download a file from URL
-               		Usage: download <url>
+               		Usage: download [-o output1,output2,...] <url [url2 ...]>
 
   %s--version%s   - Show the version of SecShell
   %s--update%s    - Update SecShell to the latest version
@@ -159,7 +159,7 @@ func displayCommandHelp(command string) {
 		"edit-whitelist":   "Edit the whitelist file\nUsage: edit-whitelist",
 		"reload-blacklist": "Reload the blacklisted commands\nUsage: reload-blacklist",
 		"reload-whitelist": "Reload the whitelisted commands\nUsage: reload-whitelist",
-		"download":         "Download a file from URL\nUsage: download <url>",
+		"download":         "Download a file from URL\nUsage: download [-o output1,output2,...] <url [url2 ...]>",
 		"--version":        "Show the version of SecShell\nUsage: --version",
 		"--update":         "Update SecShell to the latest version\nUsage: --update",
 	}
