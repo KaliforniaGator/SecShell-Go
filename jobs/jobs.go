@@ -83,16 +83,6 @@ func ListJobs(jobs map[int]*Job) {
 
 	DrawTable("PID,COMMAND,STATUS,CPU,MEMORY,THREADS", services, "bold_white")
 
-	/* cmdArgs := []string{"table", "PID,COMMAND,STATUS,CPU,MEMORY,THREADS"}
-	cmdArgs = append(cmdArgs, services...)
-	cmdArgs = append(cmdArgs, "hollow")
-
-	cmdTable := exec.Command("drawbox", cmdArgs...)
-	cmdTable.Stdout = os.Stdout
-	cmdTable.Stderr = os.Stderr
-	if err := cmdTable.Run(); err != nil {
-		fmt.Println("Error executing drawbox table command:", err)
-	} */
 }
 
 func AddJob(jobs map[int]*Job, pid int, command string, process *os.Process) {
@@ -216,6 +206,8 @@ func RunJobsCommand(action string, pid int, jobs map[int]*Job) {
 		ListJobs(jobs)
 	case "clear-finished":
 		ClearFinishedJobs(jobs)
+	case "--help", "-h", "help":
+		ShowHelp()
 	default:
 		drawbox.PrintError("Invalid action. Use stop, status, start, list, or clear-finished.")
 	}
