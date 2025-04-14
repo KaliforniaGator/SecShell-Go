@@ -24,6 +24,7 @@ SecShell is a secure shell implementation written in Go, designed to provide a c
 The installation process requires the following dependencies:
 - **GoLang-Go**
 - **systemctl**
+- **Nano Editor**
 - **DrawBox** (from [DrawBox Repository](https://github.com/KaliforniaGator/DrawBox))
 - **PAM Development Library (libpam0g-dev)**
 
