@@ -944,7 +944,7 @@ func (s *SecShell) manageServices(args []string) {
 		serviceName = args[2]
 	}
 
-	if action != "start" && action != "stop" && action != "restart" && action != "status" && action != "list" {
+	if action != "start" && action != "stop" && action != "restart" && action != "status" && action != "list" && action != "help" {
 		drawbox.PrintError("Invalid action. Use start, stop, restart, status, or list.")
 		return
 	}
@@ -953,6 +953,8 @@ func (s *SecShell) manageServices(args []string) {
 		services.GetServices()
 	} else if action == "status" {
 		services.RunServicesCommand("status", serviceName)
+	} else if action == "help" {
+		services.ShowHelp()
 	} else {
 		services.RunServicesCommand(action, serviceName)
 	}

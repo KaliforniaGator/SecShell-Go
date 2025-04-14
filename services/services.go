@@ -133,3 +133,14 @@ func GetServices() {
 		fmt.Println("Error executing drawbox table command:", err)
 	}
 }
+
+func ShowHelp() {
+	drawbox.RunDrawbox("Services Help", "bold_white")
+	fmt.Println("Usage: services [command] [service_name]")
+	fmt.Println("Actions:")
+	fmt.Println("  status [service_name]   Show the status of a service")
+	fmt.Println("  start [service_name]    Start a service")
+	fmt.Println("  stop [service_name]     Stop a service")
+	fmt.Println("  restart [service_name]  Restart a service")
+	fmt.Println("  --help, -h, help        Show this help message")
+}
