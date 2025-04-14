@@ -953,7 +953,7 @@ func (s *SecShell) manageServices(args []string) {
 		services.GetServices()
 	} else if action == "status" {
 		services.RunServicesCommand("status", serviceName)
-	} else if action == "help" {
+	} else if action == "help" || action == "--help" || action == "-h" {
 		services.ShowHelp()
 	} else {
 		services.RunServicesCommand(action, serviceName)
