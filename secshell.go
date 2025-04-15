@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -52,6 +51,7 @@ type SecShell struct {
 	history             []string
 	whitelist           string
 	versionFile         string
+	historyFile         string
 	historyIndex        int
 }
 
@@ -59,22 +59,34 @@ type SecShell struct {
 var builtInCommands = []string{
 	"allowed", "help", "exit", "services", "jobs", "cd", "history", "export", "env", "unset",
 	"reload-blacklist", "blacklist", "edit-blacklist", "whitelist", "edit-whitelist",
-	"reload-whitelist", "download", "--version", "--update", "time", "date"}
+	"reload-whitelist", "download", "time", "date", "--version", "--update"}
+
+var trustedDirs = []string{"/usr/bin/", "/bin/", "/opt/", "/usr/local/bin/"}
 
 // NewSecShell initializes a new SecShell instance
 func NewSecShell(blacklistPath, whitelistPath string) *SecShell {
 	shell := &SecShell{
 		jobs:        make(map[int]*jobs.Job),
 		running:     true,
-		allowedDirs: []string{"/usr/bin/", "/bin/", "/opt/", "/usr/local/bin/"},
+		allowedDirs: trustedDirs,
 		blacklist:   blacklistPath,
 		whitelist:   whitelistPath,
 		versionFile: filepath.Join(filepath.Dir(blacklistPath), ".ver"),
+		historyFile: filepath.Join(filepath.Dir(blacklistPath), ".history"),
 		history:     []string{},
 	}
-	shell.ensureFilesExist()
-	shell.loadBlacklist(blacklistPath)
-	shell.loadWhitelist(whitelistPath)
+	core.EnsureFilesExist(blacklistPath, whitelistPath, shell.versionFile, shell.historyFile)
+	core.LoadBlacklist(blacklistPath)
+	core.LoadWhitelist(whitelistPath)
+	core.LoadHistory(shell.historyFile)
+
+	shell.blacklistedCommands = core.BlacklistedCommands
+	shell.allowedCommands = core.AllowedCommands
+	shell.history = core.History
+	commands.AllowedCommands = core.AllowedCommands
+	commands.BuiltInCommands = builtInCommands
+	commands.AllowedDirs = trustedDirs
+	commands.Init()
 	return shell
 }
 
@@ -89,129 +101,6 @@ func (s *SecShell) getDate() {
 	now := time.Now()
 	drawbox.RunDrawbox(fmt.Sprintf("Current date: %s", now.Format("02-Jan-2006")), "bold_white")
 
-}
-
-// ensureFilesExist checks and creates blacklist and whitelist files if they don't exist
-func (s *SecShell) ensureFilesExist() {
-	// Ensure the config directory exists
-	configDir := filepath.Dir(s.blacklist)
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		drawbox.PrintError(fmt.Sprintf("Failed to create config directory: %s", err))
-		return
-	}
-
-	defaultWhitelistCommands := []string{"ls", "cd", "pwd", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "cat", "echo", "grep", "find", "chmod", "chown", "ps", "kill", "top", "df", "du", "ifconfig", "netstat", "ping", "ip", "clear", "vim", "nano", "emacs", "nvim"}
-
-	// Ensure directory exists
-	exePath := getExecutablePath()
-	if err := os.MkdirAll(exePath, 0755); err != nil {
-		drawbox.PrintError(fmt.Sprintf("Failed to create directory for config files: %s", err))
-		return
-	}
-
-	// Create blacklist if it doesn't exist
-	if _, err := os.Stat(s.blacklist); os.IsNotExist(err) {
-		file, err := os.Create(s.blacklist)
-		if err != nil {
-			drawbox.PrintError(fmt.Sprintf("Failed to create blacklist file: %s", err))
-		} else {
-			file.Close()
-			drawbox.PrintAlert(fmt.Sprintf("Created new blacklist file at %s", s.blacklist))
-		}
-	}
-
-	// Create/update whitelist if needed
-	if _, err := os.Stat(s.whitelist); os.IsNotExist(err) {
-		file, err := os.Create(s.whitelist)
-		if err != nil {
-			drawbox.PrintError(fmt.Sprintf("Failed to create whitelist file: %s", err))
-		} else {
-			for _, cmd := range defaultWhitelistCommands {
-				file.WriteString(cmd + "\n")
-			}
-			file.Close()
-			drawbox.PrintAlert(fmt.Sprintf("Created new whitelist file at %s with default commands", s.whitelist))
-		}
-	} else {
-		// Update existing whitelist with any missing default commands
-		existingCommands := make(map[string]bool)
-		file, err := os.OpenFile(s.whitelist, os.O_RDWR|os.O_APPEND, 0666)
-		if err != nil {
-			drawbox.PrintError(fmt.Sprintf("Failed to open whitelist file: %s", err))
-			return
-		}
-		defer file.Close()
-
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			existingCommands[scanner.Text()] = true
-		}
-
-		for _, cmd := range defaultWhitelistCommands {
-			if !existingCommands[cmd] {
-				file.WriteString(cmd + "\n")
-			}
-		}
-	}
-
-	// Create version file if it doesn't exist
-	if _, err := os.Stat(s.versionFile); os.IsNotExist(err) {
-		file, err := os.Create(s.versionFile)
-		if err != nil {
-			drawbox.PrintError(fmt.Sprintf("Failed to create version file: %s", err))
-		} else {
-			file.Close()
-			update.UpdateVersionFile(update.DefaultVersion, s.versionFile)
-			drawbox.PrintAlert(fmt.Sprintf("Created new version file at %s", s.versionFile))
-		}
-	}
-	update.CheckForUpdates(s.versionFile)
-}
-
-// loadBlacklist loads blacklisted commands from a file
-func (s *SecShell) loadBlacklist(filename string) {
-	file, err := os.Open(filename)
-	if err != nil {
-		drawbox.PrintError(fmt.Sprintf("Failed to open blacklist file: %s", filename))
-		return
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		command := strings.TrimSpace(scanner.Text())
-		if command != "" {
-			s.blacklistedCommands = append(s.blacklistedCommands, command)
-		}
-	}
-}
-
-// loadWhitelist loads whitelisted commands from a file
-func (s *SecShell) loadWhitelist(filename string) {
-	file, err := os.Open(filename)
-	if err != nil {
-		drawbox.PrintAlert(fmt.Sprintf("Notice: No whitelist file found at %s. Using default allowed commands.", filename))
-		return
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		command := strings.TrimSpace(scanner.Text())
-		if command != "" {
-			s.allowedCommands = append(s.allowedCommands, command)
-		}
-	}
-
-	if len(s.allowedCommands) == 0 {
-		drawbox.PrintAlert("Warning: Whitelist file is empty. Allowing hard-coded commands and any command within allowed directories.")
-		s.allowedCommands = []string{"ls", "cd", "pwd", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "cat", "echo", "grep", "find", "chmod", "chown", "ps", "kill", "top", "df", "du", "ifconfig", "netstat", "ping", "ip", "clear", "vim", "nano", "emacs", "nvim"}
-	}
-
-	commands.AllowedCommands = s.allowedCommands
-	commands.BuiltInCommands = builtInCommands
-	commands.AllowedDirs = s.allowedDirs
-	commands.Init()
 }
 
 // Check if the current user is in an admin group
@@ -408,7 +297,8 @@ func (s *SecShell) getInput() string {
 				fmt.Println()
 				input := s.sanitizeInput(strings.TrimSpace(line), true)
 				if input != "" {
-					s.history = append(s.history, input)
+					core.SaveHistory(s.historyFile, input)
+					s.history = core.History
 					s.historyIndex = len(s.history)
 				}
 				return input
@@ -683,64 +573,22 @@ func (s *SecShell) unsetEnvVariable(args []string) {
 // reloadBlacklist reloads the blacklist from the file
 func (s *SecShell) reloadBlacklist() {
 	s.blacklistedCommands = nil
-	s.loadBlacklist(s.blacklist)
+	core.LoadBlacklist(s.blacklist)
+	s.blacklistedCommands = core.BlacklistedCommands
 	drawbox.PrintAlert("Successfully reloaded blacklist commands")
 	if len(s.blacklistedCommands) > 0 {
 		drawbox.PrintAlert(fmt.Sprintf("Loaded %d blacklisted commands", len(s.blacklistedCommands)))
 	}
 }
 
-// editBlacklist opens the blacklist file in an editor
-func (s *SecShell) editBlacklist() {
-	cmd := exec.Command("nano", s.blacklist)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Run()
-}
-
-// listBlacklistCommands lists all blacklisted commands
-func (s *SecShell) listBlacklistCommands() {
-	drawbox.RunDrawbox("Blacklisted Commands", "bold_white")
-	file, err := os.Open(s.blacklist)
-	if err != nil {
-		drawbox.PrintError(fmt.Sprintf("Error: Could not open file '%s'.", s.blacklist))
-		return
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	lineNumber := 0
-	for scanner.Scan() {
-		lineNumber++
-		fmt.Printf(" %d. %s\n", lineNumber, scanner.Text())
-	}
-}
-
 // reloadWhitelist reloads the whitelist from the file
 func (s *SecShell) reloadWhitelist() {
 	s.allowedCommands = []string{}
-	s.loadWhitelist(s.whitelist)
+	core.LoadWhitelist(s.whitelist)
+	s.allowedCommands = core.AllowedCommands
 	drawbox.PrintAlert("Successfully reloaded whitelist commands")
 	if len(s.allowedCommands) > 0 {
 		drawbox.PrintAlert(fmt.Sprintf("Loaded %d whitelisted commands", len(s.allowedCommands)))
-	}
-}
-
-// editWhitelist opens the whitelist file in an editor
-func (s *SecShell) editWhitelist() {
-	cmd := exec.Command("nano", s.whitelist)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Run()
-}
-
-// listWhitelistCommands lists all whitelisted commands
-func (s *SecShell) listWhitelistCommands() {
-	drawbox.RunDrawbox("Whitelisted Commands", "bold_white")
-	for i, cmd := range s.allowedCommands {
-		fmt.Printf(" %d. %s\n", i+1, cmd)
 	}
 }
 
@@ -855,6 +703,8 @@ func (s *SecShell) processCommand(input string) {
 					s.searchHistory(strings.Join(args[2:], " ")) // Search history for the given query
 				case "-i":
 					s.interactiveHistorySearch() // Run interactive history search
+				case "clear":
+					core.ClearHistory(s.historyFile)
 				default:
 					drawbox.PrintError("Invalid history option. Use -s for search or -i for interactive mode.")
 				}
@@ -866,9 +716,9 @@ func (s *SecShell) processCommand(input string) {
 		case "unset":
 			s.unsetEnvVariable(args)
 		case "blacklist":
-			s.listBlacklistCommands()
+			core.ListBlacklistCommands(s.blacklist)
 		case "whitelist":
-			s.listWhitelistCommands()
+			core.ListWhitelistCommands()
 		case "edit-blacklist", "edit-whitelist", "reload-whitelist", "reload-blacklist", "exit":
 			// Require admin privileges for these commands
 			if !isAdmin() {
@@ -878,9 +728,9 @@ func (s *SecShell) processCommand(input string) {
 
 			switch args[0] {
 			case "edit-blacklist":
-				s.editBlacklist()
+				core.EditBlacklist(s.blacklist)
 			case "edit-whitelist":
-				s.editWhitelist()
+				core.EditWhitelist(s.whitelist)
 			case "reload-whitelist":
 				s.reloadWhitelist()
 			case "reload-blacklist":
@@ -1335,15 +1185,6 @@ func authenticateUser(password string) bool {
 	return true // Authentication successful
 }
 
-// Add this function near the top of the file after the imports
-func getExecutablePath() string {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "." // Fallback to current directory if home directory cannot be determined
-	}
-	return filepath.Join(homeDir, ".secshell") // Use ~/.secshell for config files
-}
-
 // manageServices manages system services
 func (s *SecShell) manageServices(args []string) {
 	if len(args) < 2 {
@@ -1396,7 +1237,7 @@ func isSignalKilled(err error) bool {
 func main() {
 	// Check for version flags
 	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
-		configDir := getExecutablePath()
+		configDir := core.GetExecutablePath()
 		shell := NewSecShell(
 			filepath.Join(configDir, ".blacklist"),
 			filepath.Join(configDir, ".whitelist"),
@@ -1406,7 +1247,7 @@ func main() {
 	}
 	// Check for update flag
 	if len(os.Args) > 1 && os.Args[1] == "--update" {
-		configDir := getExecutablePath()
+		configDir := core.GetExecutablePath()
 		shell := NewSecShell(
 			filepath.Join(configDir, ".blacklist"),
 			filepath.Join(configDir, ".whitelist"),
@@ -1416,7 +1257,7 @@ func main() {
 	}
 
 	// Create config directory if it doesn't exist
-	configDir := getExecutablePath()
+	configDir := core.GetExecutablePath()
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		fmt.Printf("Failed to create config directory: %s\n", err)
 		return
