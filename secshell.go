@@ -923,8 +923,18 @@ func isTerminalEditor(cmd string) bool {
 	return false
 }
 
+// Check if command needs terminal reset
+func needsTerminalReset(cmd string) bool {
+	// Commands that need direct terminal access
+	return cmd == "sudo" || isTerminalEditor(cmd)
+}
+
 // executeSystemCommand executes a system command
 func (s *SecShell) executeSystemCommand(args []string, background bool) {
+	if len(args) == 0 {
+		return
+	}
+
 	// Sanitize command and arguments
 	sanitizedArgs := make([]string, len(args))
 	for i, arg := range args {
@@ -942,52 +952,73 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 		return
 	}
 
-	// Special handling for terminal editors
-	if isTerminalEditor(args[0]) {
-		// Restore terminal to normal mode
+	// Special handling for commands that need terminal reset
+	if needsTerminalReset(args[0]) {
+		// Save terminal state
 		oldState, err := term.GetState(int(os.Stdin.Fd()))
 		if err != nil {
 			logging.LogError(err)
 			drawbox.PrintError(fmt.Sprintf("Failed to get terminal state: %s", err))
 			return
 		}
+
+		// Reset terminal to normal mode for password input
 		term.Restore(int(os.Stdin.Fd()), oldState)
 
-		// Execute editor
-		cmd := exec.Command(args[0], args[1:]...)
-		cmd.Stdin = os.Stdin
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
+		// For sudo commands, we need more careful terminal handling
+		if args[0] == "sudo" {
+			// Execute sudo in a way that properly handles the password prompt
+			cmd := exec.Command(args[0], args[1:]...)
+			cmd.Stdin = os.Stdin
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
 
-		err = cmd.Run()
+			// Simple process group setup without Setsid
+			cmd.SysProcAttr = &syscall.SysProcAttr{
+				Setpgid: false, // Don't create a new process group for sudo
+			}
 
-		// After editor exits, clear screen and redraw prompt
-		fmt.Print("\033[H\033[2J") // Clear screen
+			// Run the command directly - this gives sudo full control of the terminal
+			err = cmd.Run()
+
+			// Get a new terminal state after command completes
+			_, _ = term.GetState(int(os.Stdin.Fd()))
+
+			// After sudo exits, clear screen
+			//fmt.Print("\033[H\033[2J")
+
+			if err != nil && !isSignalKilled(err) {
+				logging.LogError(err)
+				drawbox.PrintError(fmt.Sprintf("Command execution failed: %s", err))
+			}
+		} else {
+			// Handle other terminal-dependent commands normally
+			cmd := exec.Command(args[0], args[1:]...)
+			cmd.Stdin = os.Stdin
+			cmd.Stdout = os.Stdout
+			cmd.Stderr = os.Stderr
+			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+			err = cmd.Run()
+		}
+
+		// After command exits, clear screen
+		//fmt.Print("\033[H\033[2J")
+
 		if err != nil && !isSignalKilled(err) {
 			logging.LogError(err)
-			drawbox.PrintError(fmt.Sprintf("Editor execution failed: %s", err))
+			drawbox.PrintError(fmt.Sprintf("Command execution failed: %s", err))
 		}
 		return
 	}
 
+	// Process standard commands
 	cmdArgs := []string{}
 	var stdout io.Writer = os.Stdout
 	var stdin io.Reader = os.Stdin
 
 	// Special handling for ls and grep commands to add color
 	switch args[0] {
-	case "ls":
-		hasColorFlag := false
-		for _, arg := range args[1:] {
-			if strings.HasPrefix(arg, "--color") {
-				hasColorFlag = true
-				break
-			}
-		}
-		if !hasColorFlag {
-			cmdArgs = append(cmdArgs, "--color=auto")
-		}
-	case "grep":
+	case "ls", "grep":
 		hasColorFlag := false
 		for _, arg := range args[1:] {
 			if strings.HasPrefix(arg, "--color") {
@@ -1049,6 +1080,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 	if background {
+		// Handle background jobs (unchanged)
 		if err := cmd.Start(); err != nil {
 			logging.LogError(err)
 			drawbox.PrintError(fmt.Sprintf("Failed to start background job: %s", err))
@@ -1083,9 +1115,11 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 			}
 		}(cmd.Process.Pid)
 	} else {
-		// Set up signal handling for foreground processes
+		// Handle foreground execution
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGINT)
+		defer signal.Stop(sigChan)
+		defer close(sigChan)
 
 		if err := cmd.Start(); err != nil {
 			logging.LogError(err)
@@ -1101,9 +1135,6 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 		}()
 
 		err := cmd.Wait()
-		signal.Stop(sigChan)
-		close(sigChan)
-
 		if err != nil && !isSignalKilled(err) {
 			logging.LogError(err)
 			drawbox.PrintError(fmt.Sprintf("Command execution failed: %s", err))
