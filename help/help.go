@@ -26,6 +26,8 @@ var HelpCommands = []string{
 	"reload-blacklist",
 	"reload-whitelist",
 	"download",
+	"time",
+	"date",
 	"--version",
 	"--update",
 }
@@ -60,6 +62,7 @@ Built-in Commands:
 			   -i: Interactive history search
 			   ![number]: Execute command by number
 			   !!: Execute last command
+			   clear: Clear history
 
   %sexport%s     - Set an environment variable
                		Usage: export VAR=value
@@ -75,6 +78,8 @@ Built-in Commands:
   %sreload-blacklist%s - Reload the blacklisted commands
   %sreload-whitelist%s - Reload the whitelisted commands
 
+  %stime%s       - Show the current time
+  %sdate%s       - Show the current date
   %sdownload%s    - Download a file from URL
                		Usage: download [-o output1,output2,...] <url [url2 ...]>
 
@@ -130,6 +135,8 @@ Only executables from trusted directories are permitted.
 		colors.BoldWhite, colors.Reset, // edit-whitelist
 		colors.BoldWhite, colors.Reset, // reload-blacklist
 		colors.BoldWhite, colors.Reset, // reload-whitelist
+		colors.BoldWhite, colors.Reset, // time
+		colors.BoldWhite, colors.Reset, // date
 		colors.BoldWhite, colors.Reset, // download
 		colors.BoldWhite, colors.Reset, // --version
 		colors.BoldWhite, colors.Reset, // --update
@@ -149,7 +156,7 @@ func displayCommandHelp(command string) {
 		"services":         "Manage system services\nUsage: services <start|stop|restart|status|list> <service_name>",
 		"jobs":             "List active background jobs\nUsage: jobs <list|stop|status|start|clear-finished> [PID]",
 		"cd":               "Change directory\nUsage: cd (--prev | -p) [directory]",
-		"history":          "Show command history\nUsage: history [-s <query>] [-i]\n   -s: Search history for a query\n   -i: Interactive history search\n   ![number]: Execute command by number\n   !!: Execute last command",
+		"history":          "Show command history\nUsage: history [-s <query>] [-i]\n   -s: Search history for a query\n   -i: Interactive history search\n   ![number]: Execute command by number\n   !!: Execute last command\n  clear: Clear history",
 		"export":           "Set an environment variable\nUsage: export VAR=value",
 		"env":              "List all environment variables",
 		"unset":            "Unset an environment variable\nUsage: unset VAR",
@@ -159,6 +166,8 @@ func displayCommandHelp(command string) {
 		"edit-whitelist":   "Edit the whitelist file\nUsage: edit-whitelist",
 		"reload-blacklist": "Reload the blacklisted commands\nUsage: reload-blacklist",
 		"reload-whitelist": "Reload the whitelisted commands\nUsage: reload-whitelist",
+		"time":             "Show the current time\nUsage: time",
+		"date":             "Show the current date\nUsage: date",
 		"download":         "Download a file from URL\nUsage: download [-o output1,output2,...] <url [url2 ...]>",
 		"--version":        "Show the version of SecShell\nUsage: --version",
 		"--update":         "Update SecShell to the latest version\nUsage: --update",
