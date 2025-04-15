@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"secshell/drawbox"
+	"secshell/logging"
 	"strconv"
 	"strings"
 )
@@ -14,8 +15,10 @@ func runCommand(command string) {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
+		logging.LogError(err)
 		drawbox.PrintError("Failed to execute service command: " + err.Error())
 	} else {
+		logging.LogAlert("Service command executed successfully.")
 		drawbox.PrintAlert("Service command executed successfully.")
 	}
 }
@@ -45,6 +48,7 @@ func RunServicesCommand(action string, serviceName string) {
 		drawbox.PrintError("Invalid action: " + action + " Use status, start, stop, restart, list, or help.")
 	}
 
+	logging.LogCommand(command, 0)
 	runCommand(command)
 
 }
@@ -58,6 +62,7 @@ func GetServices() {
 	cmd := exec.Command("systemctl", "list-units", "--type=service", "--all", "--no-pager", "--no-legend")
 	output, err := cmd.Output()
 	if err != nil {
+		logging.LogError(err)
 		fmt.Println("Error executing systemctl command:", err)
 		return
 	}
@@ -138,6 +143,7 @@ func GetServices() {
 	cmdTable.Stdout = os.Stdout
 	cmdTable.Stderr = os.Stderr
 	if err := cmdTable.Run(); err != nil {
+		logging.LogError(err)
 		fmt.Println("Error executing drawbox table command:", err)
 	}
 }

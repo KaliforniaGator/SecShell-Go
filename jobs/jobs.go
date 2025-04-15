@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"secshell/colors"
 	"secshell/drawbox"
+	"secshell/logging"
 	"strconv"
 	"strings"
 	"sync"
@@ -44,6 +45,7 @@ func DrawTable(header string, data []string, bg_color string) {
 	cmdTable.Stdout = os.Stdout
 	cmdTable.Stderr = os.Stderr
 	if err := cmdTable.Run(); err != nil {
+		logging.LogError(err)
 		fmt.Println("Error executing drawbox table command:", err)
 	}
 
@@ -94,18 +96,21 @@ func AddJob(jobs map[int]*Job, pid int, command string, process *os.Process) {
 		Process:   process,
 	}
 	jobs[pid] = job
+	logging.LogAlert(fmt.Sprintf("Job [%d] added: %s", pid, command))
 	drawbox.PrintAlert(fmt.Sprintf("[%d] %s running in background", pid, command))
 }
 
 // RemoveJob removes a job from the jobs map
 func RemoveJob(jobs map[int]*Job, pid int) {
 	delete(jobs, pid)
+	logging.LogAlert(fmt.Sprintf("Job [%d] removed", pid))
 	drawbox.PrintAlert(fmt.Sprintf("Job [%d] removed", pid))
 }
 
 func StopJob(jobs map[int]*Job, pid int) {
 	job, ok := jobs[pid]
 	if !ok {
+		logging.LogAlert(fmt.Sprintf("No such job: %d", pid))
 		drawbox.PrintError(fmt.Sprintf("No such job: %d", pid))
 		return
 	}
@@ -114,23 +119,27 @@ func StopJob(jobs map[int]*Job, pid int) {
 	defer job.Unlock()
 
 	if job.Status != "running" {
+		logging.LogAlert(fmt.Sprintf("Job [%d] is not running", pid))
 		drawbox.PrintAlert(fmt.Sprintf("Job [%d] is not running", pid))
 		return
 	}
 
 	// Send interrupt signal to the process
 	if err := job.Process.Signal(os.Interrupt); err != nil {
+		logging.LogError(err)
 		drawbox.PrintError(fmt.Sprintf("Failed to stop job [%d]: %s", pid, err))
 		return
 	}
 
 	job.Status = "stopped"
+	logging.LogAlert(fmt.Sprintf("Job [%d] stopped", pid))
 	drawbox.PrintAlert(fmt.Sprintf("Job [%d] stopped", pid))
 }
 
 func GetJobStatus(jobs map[int]*Job, pid int) {
 	job, ok := jobs[pid]
 	if !ok {
+		logging.LogAlert(fmt.Sprintf("No such job: %d", pid))
 		drawbox.PrintError(fmt.Sprintf("No such job: %d", pid))
 		return
 	}
@@ -151,6 +160,7 @@ func GetJobStatus(jobs map[int]*Job, pid int) {
 func StartJob(jobs map[int]*Job, pid int) {
 	job, ok := jobs[pid]
 	if !ok {
+		logging.LogAlert(fmt.Sprintf("No such job: %d", pid))
 		drawbox.PrintError(fmt.Sprintf("No such job: %d", pid))
 		return
 	}
@@ -159,6 +169,7 @@ func StartJob(jobs map[int]*Job, pid int) {
 	defer job.Unlock()
 
 	if job.Status == "running" {
+		logging.LogAlert(fmt.Sprintf("Job [%d] is already running", pid))
 		drawbox.PrintAlert(fmt.Sprintf("Job [%d] is already running", pid))
 		return
 	}
@@ -166,11 +177,13 @@ func StartJob(jobs map[int]*Job, pid int) {
 	// Start the process
 	err := job.Process.Signal(syscall.SIGCONT)
 	if err != nil {
+		logging.LogError(err)
 		drawbox.PrintError(fmt.Sprintf("Failed to start job [%d]: %s", pid, err))
 		return
 	}
 
 	job.Status = "running"
+	logging.LogAlert(fmt.Sprintf("Job [%d] started", pid))
 	drawbox.PrintAlert(fmt.Sprintf("Job [%d] started", pid))
 }
 
@@ -235,6 +248,7 @@ func updateJobStats(job *Job) {
 		fields := strings.Fields(string(statm))
 		if len(fields) > 1 {
 			if rss, err := strconv.ParseFloat(fields[1], 64); err == nil {
+				logging.LogError(err)
 				job.Memory = rss * 4.0 / 1024 // Convert to MB
 			}
 		}
@@ -242,6 +256,7 @@ func updateJobStats(job *Job) {
 
 	// Read CPU usage and thread count
 	if stat, err := os.ReadFile(fmt.Sprintf("%s/stat", procPath)); err == nil {
+		logging.LogError(err)
 		fields := strings.Fields(string(stat))
 		if len(fields) > 22 {
 			utime, _ := strconv.ParseFloat(fields[13], 64)
@@ -273,6 +288,7 @@ func updateJobStats(job *Job) {
 			}
 
 			if threads, err := strconv.Atoi(fields[19]); err == nil {
+				logging.LogError(err)
 				job.ThreadCount = threads
 			}
 		}

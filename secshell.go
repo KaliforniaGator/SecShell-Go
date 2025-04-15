@@ -20,6 +20,7 @@ import (
 	"secshell/drawbox"
 	"secshell/help"
 	"secshell/jobs"
+	"secshell/logging"
 	"secshell/sanitize"
 	"secshell/services"
 	"secshell/ui"
@@ -107,6 +108,7 @@ func (s *SecShell) getDate() {
 func isAdmin() bool {
 	currentUser, err := user.Current()
 	if err != nil {
+		logging.LogError(err)
 		return false // Fail-safe: assume not an admin
 	}
 
@@ -118,6 +120,7 @@ func isAdmin() bool {
 	// Get the user's group IDs
 	groups, err := currentUser.GroupIds()
 	if err != nil {
+		logging.LogError(err)
 		return false
 	}
 
@@ -128,6 +131,7 @@ func isAdmin() bool {
 	for _, groupID := range groups {
 		group, err := user.LookupGroupId(groupID)
 		if err == nil {
+			logging.LogError(err)
 			for _, adminGroup := range adminGroups {
 				if group.Name == adminGroup {
 					return true
@@ -158,10 +162,12 @@ func IsUpdateNeeded(currentVersion, latestVersion string) bool {
 		var err error
 		current[i], err = strconv.Atoi(currentParts[i])
 		if err != nil {
+			logging.LogError(err)
 			return false
 		}
 		latest[i], err = strconv.Atoi(latestParts[i])
 		if err != nil {
+			logging.LogError(err)
 			return false
 		}
 	}
@@ -211,6 +217,7 @@ func (s *SecShell) getInput() string {
 
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
+		logging.LogError(err)
 		drawbox.PrintError(fmt.Sprintf("Failed to set terminal to raw mode: %s", err))
 		return ""
 	}
@@ -223,6 +230,7 @@ func (s *SecShell) getInput() string {
 	for {
 		n, err := os.Stdin.Read(buf)
 		if err != nil {
+			logging.LogError(err)
 			drawbox.PrintError(fmt.Sprintf("Failed to read input: %s", err))
 			return ""
 		}
@@ -297,6 +305,7 @@ func (s *SecShell) getInput() string {
 				fmt.Println()
 				input := s.sanitizeInput(strings.TrimSpace(line), true)
 				if input != "" {
+					logging.LogCommand(input, 0)
 					core.SaveHistory(s.historyFile, input)
 					s.history = core.History
 					s.historyIndex = len(s.history)
@@ -366,6 +375,7 @@ func (s *SecShell) runHistoryCommand(number int) bool {
 func (s *SecShell) interactiveHistorySearch() {
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
+		logging.LogError(err)
 		drawbox.PrintError(fmt.Sprintf("Failed to set terminal to raw mode: %s", err))
 		return
 	}
@@ -427,6 +437,7 @@ func (s *SecShell) interactiveHistorySearch() {
 	for {
 		n, err := os.Stdin.Read(buf)
 		if err != nil {
+			logging.LogError(err)
 			drawbox.PrintError(fmt.Sprintf("Failed to read input: %s", err))
 			return
 		}
@@ -526,6 +537,7 @@ func highlightText(text, query string) string {
 // exportVariable sets an environment variable
 func (s *SecShell) exportVariable(args []string) {
 	if len(args) < 2 {
+		logging.LogAlert("Usage: export VAR=value")
 		drawbox.PrintError("Usage: export VAR=value")
 		return
 	}
@@ -533,6 +545,7 @@ func (s *SecShell) exportVariable(args []string) {
 	varValue := s.sanitizeInput(args[1], false)
 	equalsPos := strings.Index(varValue, "=")
 	if equalsPos == -1 {
+		logging.LogAlert("Invalid export syntax. Use VAR=value")
 		drawbox.PrintError("Invalid export syntax. Use VAR=value")
 		return
 	}
@@ -541,8 +554,10 @@ func (s *SecShell) exportVariable(args []string) {
 	value := varValue[equalsPos+1:]
 
 	if err := os.Setenv(varName, value); err != nil {
+		logging.LogError(err)
 		drawbox.PrintError(fmt.Sprintf("Failed to set environment variable: %s", err))
 	} else {
+		logging.LogAlert(fmt.Sprintf("Successfully exported %s=%s", varName, value))
 		drawbox.PrintAlert(fmt.Sprintf("Successfully exported %s=%s", varName, value))
 	}
 }
@@ -558,14 +573,17 @@ func (s *SecShell) listEnvVariables() {
 // unsetEnvVariable unsets an environment variable
 func (s *SecShell) unsetEnvVariable(args []string) {
 	if len(args) < 2 {
+		logging.LogAlert("Usage: unset VAR")
 		drawbox.PrintError("Usage: unset VAR")
 		return
 	}
 
 	varName := s.sanitizeInput(args[1], false)
 	if err := os.Unsetenv(varName); err != nil {
+		logging.LogError(err)
 		drawbox.PrintError(fmt.Sprintf("Failed to unset environment variable: %s", err))
 	} else {
+		logging.LogAlert(fmt.Sprintf("Successfully unset environment variable: %s", varName))
 		drawbox.PrintAlert(fmt.Sprintf("Successfully unset environment variable: %s", varName))
 	}
 }
@@ -575,6 +593,7 @@ func (s *SecShell) reloadBlacklist() {
 	s.blacklistedCommands = nil
 	core.LoadBlacklist(s.blacklist)
 	s.blacklistedCommands = core.BlacklistedCommands
+	logging.LogAlert("Successfully reloaded blacklist commands")
 	drawbox.PrintAlert("Successfully reloaded blacklist commands")
 	if len(s.blacklistedCommands) > 0 {
 		drawbox.PrintAlert(fmt.Sprintf("Loaded %d blacklisted commands", len(s.blacklistedCommands)))
@@ -586,6 +605,7 @@ func (s *SecShell) reloadWhitelist() {
 	s.allowedCommands = []string{}
 	core.LoadWhitelist(s.whitelist)
 	s.allowedCommands = core.AllowedCommands
+	logging.LogAlert("Successfully reloaded whitelist commands")
 	drawbox.PrintAlert("Successfully reloaded whitelist commands")
 	if len(s.allowedCommands) > 0 {
 		drawbox.PrintAlert(fmt.Sprintf("Loaded %d whitelisted commands", len(s.allowedCommands)))
@@ -606,15 +626,18 @@ func (s *SecShell) processCommand(input string) {
 			if len(s.history) > 1 { // Ensure there's a valid previous command
 				lastCommand := s.history[len(s.history)-2] // Get the second-to-last command
 				if lastCommand == "!!" {
+					logging.LogAlert("Cannot execute '!!' recursively.")
 					drawbox.PrintError("Cannot execute '!!' recursively")
 					return
 				}
 				drawbox.PrintAlert(fmt.Sprintf("Running: %s", lastCommand))
 				s.processCommand(lastCommand) // Execute it safely
 			} else {
+				logging.LogAlert("No previous command to execute.")
 				drawbox.PrintError("No previous command to execute.")
 			}
 		} else if num, err := strconv.Atoi(input[1:]); err == nil {
+			logging.LogError(err)
 			s.runHistoryCommand(num)
 		}
 		return
@@ -640,6 +663,7 @@ func (s *SecShell) processCommand(input string) {
 		}
 
 		if s.isCommandBlacklisted(args[0]) {
+			logging.LogAlert(fmt.Sprintf("Blacklisted command: %s", args[0]))
 			drawbox.PrintError(fmt.Sprintf("Command is blacklisted: %s", args[0]))
 			return
 		}
@@ -688,6 +712,7 @@ func (s *SecShell) processCommand(input string) {
 					commands.PrintAllCommands()
 				}
 			} else {
+				logging.LogAlert("Usage: allowed <dirs|commands|bins|builtins|all>")
 				drawbox.PrintError("Usage: allowed <dirs|commands|bins|builtins|all>")
 			}
 		case "history":
@@ -697,6 +722,7 @@ func (s *SecShell) processCommand(input string) {
 				switch args[1] {
 				case "-s":
 					if len(args) < 3 {
+						logging.LogAlert("Usage: history -s <query>")
 						drawbox.PrintError("Usage: history -s <query>")
 						return
 					}
@@ -706,6 +732,7 @@ func (s *SecShell) processCommand(input string) {
 				case "clear":
 					core.ClearHistory(s.historyFile)
 				default:
+					logging.LogAlert("Invalid history option. Use -s for search or -i for interactive mode.")
 					drawbox.PrintError("Invalid history option. Use -s for search or -i for interactive mode.")
 				}
 			}
@@ -722,6 +749,7 @@ func (s *SecShell) processCommand(input string) {
 		case "edit-blacklist", "edit-whitelist", "reload-whitelist", "reload-blacklist", "exit":
 			// Require admin privileges for these commands
 			if !isAdmin() {
+				logging.LogAlert("Permission denied: Admin privileges required.")
 				drawbox.PrintError("Permission denied: Admin privileges required.")
 				return
 			}
@@ -822,6 +850,7 @@ func (s *SecShell) executePipedCommands(commands []string) {
 	for i := 0; i < len(cmds)-1; i++ {
 		stdout, err := cmds[i].StdoutPipe()
 		if err != nil {
+			logging.LogError(err)
 			drawbox.PrintError(fmt.Sprintf("Failed to set up pipeline: %s", err))
 			return
 		}
@@ -846,6 +875,7 @@ func (s *SecShell) executePipedCommands(commands []string) {
 	// Start all commands
 	for _, cmd := range cmds {
 		if err := cmd.Start(); err != nil {
+			logging.LogError(err)
 			drawbox.PrintError(fmt.Sprintf("Failed to start command: %s", err))
 			return
 		}
@@ -867,6 +897,7 @@ func (s *SecShell) executePipedCommands(commands []string) {
 		err := cmd.Wait()
 		if err != nil && !isSignalKilled(err) {
 			if _, ok := err.(*exec.ExitError); !ok {
+				logging.LogError(err)
 				drawbox.PrintError(fmt.Sprintf("Command execution failed: %s", err))
 			}
 		}
@@ -906,6 +937,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 	args = sanitizedArgs
 
 	if !s.isCommandAllowed(args[0]) {
+		logging.LogAlert(fmt.Sprintf("Command not permitted: %s", args[0]))
 		drawbox.PrintError(fmt.Sprintf("Command not permitted: %s", args[0]))
 		return
 	}
@@ -915,6 +947,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 		// Restore terminal to normal mode
 		oldState, err := term.GetState(int(os.Stdin.Fd()))
 		if err != nil {
+			logging.LogError(err)
 			drawbox.PrintError(fmt.Sprintf("Failed to get terminal state: %s", err))
 			return
 		}
@@ -931,6 +964,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 		// After editor exits, clear screen and redraw prompt
 		fmt.Print("\033[H\033[2J") // Clear screen
 		if err != nil && !isSignalKilled(err) {
+			logging.LogError(err)
 			drawbox.PrintError(fmt.Sprintf("Editor execution failed: %s", err))
 		}
 		return
@@ -973,6 +1007,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 			if i+1 < len(args) {
 				file, err := os.Create(args[i+1])
 				if err != nil {
+					logging.LogError(err)
 					drawbox.PrintError(fmt.Sprintf("Failed to create file: %s", err))
 					return
 				}
@@ -984,6 +1019,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 			if i+1 < len(args) {
 				file, err := os.Open(args[i+1])
 				if err != nil {
+					logging.LogError(err)
 					drawbox.PrintError(fmt.Sprintf("Failed to open file: %s", err))
 					return
 				}
@@ -1014,6 +1050,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 
 	if background {
 		if err := cmd.Start(); err != nil {
+			logging.LogError(err)
 			drawbox.PrintError(fmt.Sprintf("Failed to start background job: %s", err))
 			return
 		}
@@ -1024,6 +1061,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 			err := cmd.Wait()
 			exitCode := 0
 			if err != nil {
+				logging.LogError(err)
 				if exitError, ok := err.(*exec.ExitError); ok {
 					exitCode = exitError.ExitCode()
 				}
@@ -1036,6 +1074,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 				job.EndTime = time.Now()
 				job.ExitCode = exitCode
 				if err != nil {
+					logging.LogError(err)
 					job.Status = fmt.Sprintf("failed with code %d", exitCode)
 				} else {
 					job.Status = "completed"
@@ -1049,6 +1088,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 		signal.Notify(sigChan, syscall.SIGINT)
 
 		if err := cmd.Start(); err != nil {
+			logging.LogError(err)
 			drawbox.PrintError(fmt.Sprintf("Command execution failed: %s", err))
 			return
 		}
@@ -1065,6 +1105,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 		close(sigChan)
 
 		if err != nil && !isSignalKilled(err) {
+			logging.LogError(err)
 			drawbox.PrintError(fmt.Sprintf("Command execution failed: %s", err))
 		}
 	}
@@ -1085,6 +1126,7 @@ func (s *SecShell) isCommandAllowed(cmd string) bool {
 
 	for _, netCmd := range networkCommands {
 		if cmd == netCmd {
+			logging.LogAlert("Network access restricted for non-admin users.")
 			drawbox.PrintError("Network access restricted for non-admin users.")
 			return false
 		}
@@ -1101,6 +1143,7 @@ func (s *SecShell) isCommandAllowed(cmd string) bool {
 	for _, dir := range s.allowedDirs {
 		path := filepath.Join(dir, cmd)
 		if _, err := os.Stat(path); err == nil {
+			logging.LogError(err)
 			return true
 		}
 	}
@@ -1128,6 +1171,7 @@ var securityEnabled = true
 // toggleSecurity prompts for a password before allowing admins to toggle security.
 func (s *SecShell) toggleSecurity() {
 	if !isAdmin() {
+		logging.LogAlert("Permission denied: Only admins can toggle security settings.")
 		drawbox.PrintError("Permission denied: Only admins can toggle security settings.")
 		return
 	}
@@ -1137,6 +1181,7 @@ func (s *SecShell) toggleSecurity() {
 	bytePassword, err := term.ReadPassword(int(os.Stdin.Fd()))
 	fmt.Println() // Move to the next line after password input
 	if err != nil {
+		logging.LogError(err)
 		drawbox.PrintError("Failed to read password.")
 		return
 	}
@@ -1145,6 +1190,7 @@ func (s *SecShell) toggleSecurity() {
 
 	// Authenticate the user
 	if !authenticateUser(password) {
+		logging.LogAlert("Authentication failed. Incorrect password.")
 		drawbox.PrintError("Authentication failed. Incorrect password.")
 		return
 	}
@@ -1152,8 +1198,10 @@ func (s *SecShell) toggleSecurity() {
 	// Toggle security state
 	securityEnabled = !securityEnabled
 	if securityEnabled {
+		logging.LogAlert("Security enforcement ENABLED.")
 		drawbox.PrintAlert("Security enforcement ENABLED.")
 	} else {
+		logging.LogAlert("Security enforcement DISABLED. All commands are now allowed.")
 		drawbox.PrintAlert("Security enforcement DISABLED. All commands are now allowed.")
 	}
 }
@@ -1162,6 +1210,7 @@ func authenticateUser(password string) bool {
 	// Get current user
 	currentUser, err := user.Current()
 	if err != nil {
+		logging.LogError(err)
 		fmt.Println("Error getting current user:", err)
 		return false
 	}
@@ -1171,6 +1220,7 @@ func authenticateUser(password string) bool {
 		return password, nil
 	})
 	if err != nil {
+		logging.LogError(err)
 		fmt.Println("PAM transaction start failed:", err)
 		return false
 	}
@@ -1178,6 +1228,7 @@ func authenticateUser(password string) bool {
 	// Attempt authentication
 	err = transaction.Authenticate(0)
 	if err != nil {
+		logging.LogError(err)
 		fmt.Println("Authentication failed:", err)
 		return false
 	}
@@ -1215,6 +1266,7 @@ func (s *SecShell) manageJobs(args []string) {
 			var err error
 			pid, err = strconv.Atoi(pidStr)
 			if err != nil {
+				logging.LogError(err)
 				drawbox.PrintError("Invalid PID. Please enter a valid integer.")
 				return
 			}
@@ -1225,6 +1277,7 @@ func (s *SecShell) manageJobs(args []string) {
 
 // Helper function to check if error was due to signal
 func isSignalKilled(err error) bool {
+	logging.LogError(err)
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
 			return status.Signaled() && status.Signal() == syscall.SIGINT
@@ -1259,6 +1312,7 @@ func main() {
 	// Create config directory if it doesn't exist
 	configDir := core.GetExecutablePath()
 	if err := os.MkdirAll(configDir, 0755); err != nil {
+		logging.LogError(err)
 		fmt.Printf("Failed to create config directory: %s\n", err)
 		return
 	}

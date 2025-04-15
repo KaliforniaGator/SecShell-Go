@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"secshell/drawbox"
+	"secshell/logging"
 	"secshell/sanitize"
 	"secshell/ui"
 	"strings"
@@ -19,12 +20,14 @@ func DownloadFile(url, fileName string, linePos int) error {
 	// Sanitize URL and filename
 	sanitizedURL, err := sanitize.SanitizeURL(url)
 	if err != nil {
+		logging.LogError(err)
 		fmt.Print("\x1b[?25h") // Show cursor on error
 		return fmt.Errorf("invalid URL: %v", err)
 	}
 
 	sanitizedFileName, err := sanitize.SanitizeFileName(fileName)
 	if err != nil {
+		logging.LogError(err)
 		fmt.Print("\x1b[?25h") // Show cursor on error
 		return fmt.Errorf("invalid filename: %v", err)
 	}
@@ -38,6 +41,7 @@ func DownloadFile(url, fileName string, linePos int) error {
 	// Create the file
 	out, err := os.Create(sanitizedFileName)
 	if err != nil {
+		logging.LogError(err)
 		fmt.Print("\x1b[?25h") // Show cursor on error
 		return fmt.Errorf("error creating file: %v", err)
 	}
@@ -46,6 +50,7 @@ func DownloadFile(url, fileName string, linePos int) error {
 	// Start download
 	resp, err := http.Get(sanitizedURL)
 	if err != nil {
+		logging.LogError(err)
 		fmt.Print("\x1b[?25h") // Show cursor on error
 		return fmt.Errorf("error downloading: %v", err)
 	}
@@ -65,6 +70,7 @@ func DownloadFile(url, fileName string, linePos int) error {
 
 	_, err = io.Copy(out, io.TeeReader(resp.Body, counter))
 	if err != nil {
+		logging.LogError(err)
 		fmt.Print("\x1b[?25h") // Show cursor on error
 		return fmt.Errorf("error copying data: %v", err)
 	}
@@ -146,6 +152,7 @@ func DownloadFiles(args []string) {
 			defer wg.Done()
 			err := DownloadFile(downloads[idx].url, downloads[idx].fileName, line)
 			if err != nil {
+				logging.LogError(err)
 				// Move to correct line and print error
 				fmt.Printf("\x1b[%d;0H\nError downloading %s: %v\n", line+1, downloads[idx].fileName, err)
 			}
@@ -191,6 +198,7 @@ func (wc *WriteCounter) Write(p []byte) (int, error) {
 			cmd.Stderr = os.Stderr
 
 			if err := cmd.Run(); err != nil {
+				logging.LogError(err)
 				// Fallback to built-in progress bar if drawbox fails
 				width := 50
 				completed := int(float64(width) * float64(wc.Downloaded) / float64(wc.Total))
