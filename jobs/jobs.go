@@ -193,16 +193,19 @@ func ClearFinishedJobs(jobs map[int]*Job) {
 }
 
 func RunJobsCommand(action string, pid int, jobs map[int]*Job) {
-	drawbox.RunDrawbox("Jobs", "bold_white")
 
 	switch action {
 	case "stop":
+		drawbox.RunDrawbox("Stop Job", "bold_white")
 		StopJob(jobs, pid)
 	case "status":
+		drawbox.RunDrawbox("Job Status", "bold_white")
 		GetJobStatus(jobs, pid)
 	case "start":
+		drawbox.RunDrawbox("Start Job", "bold_white")
 		StartJob(jobs, pid)
 	case "list":
+		drawbox.RunDrawbox("List Jobs", "bold_white")
 		ListJobs(jobs)
 	case "clear-finished":
 		ClearFinishedJobs(jobs)
