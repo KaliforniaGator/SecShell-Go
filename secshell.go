@@ -1201,22 +1201,6 @@ func (s *SecShell) manageServices(args []string) {
 	}
 }
 
-// manageServices manages system services
-func (s *SecShell) manageServices(args []string) {
-	if len(args) < 2 {
-		services.RunServicesCommand("list", "")
-	} else if args[1] == "--help" {
-		services.ShowHelp()
-	} else {
-		action := args[1]
-		serviceName := ""
-		if len(args) > 2 {
-			serviceName = args[2]
-		}
-		services.RunServicesCommand(action, serviceName)
-	}
-}
-
 // manageJobs manages background jobs
 func (s *SecShell) manageJobs(args []string) {
 	if len(args) < 2 {
