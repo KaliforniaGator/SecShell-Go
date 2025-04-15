@@ -18,6 +18,7 @@ import (
 	"secshell/core"
 	"secshell/download"
 	"secshell/drawbox"
+	"secshell/env"
 	"secshell/help"
 	"secshell/jobs"
 	"secshell/logging"
@@ -534,60 +535,6 @@ func highlightText(text, query string) string {
 	return result.String()
 }
 
-// exportVariable sets an environment variable
-func (s *SecShell) exportVariable(args []string) {
-	if len(args) < 2 {
-		logging.LogAlert("Usage: export VAR=value")
-		drawbox.PrintError("Usage: export VAR=value")
-		return
-	}
-
-	varValue := s.sanitizeInput(args[1], false)
-	equalsPos := strings.Index(varValue, "=")
-	if equalsPos == -1 {
-		logging.LogAlert("Invalid export syntax. Use VAR=value")
-		drawbox.PrintError("Invalid export syntax. Use VAR=value")
-		return
-	}
-
-	varName := varValue[:equalsPos]
-	value := varValue[equalsPos+1:]
-
-	if err := os.Setenv(varName, value); err != nil {
-		logging.LogError(err)
-		drawbox.PrintError(fmt.Sprintf("Failed to set environment variable: %s", err))
-	} else {
-		logging.LogAlert(fmt.Sprintf("Successfully exported %s=%s", varName, value))
-		drawbox.PrintAlert(fmt.Sprintf("Successfully exported %s=%s", varName, value))
-	}
-}
-
-// listEnvVariables lists all environment variables
-func (s *SecShell) listEnvVariables() {
-	drawbox.RunDrawbox("Environment Variables", "bold_white")
-	for _, env := range os.Environ() {
-		fmt.Println(env)
-	}
-}
-
-// unsetEnvVariable unsets an environment variable
-func (s *SecShell) unsetEnvVariable(args []string) {
-	if len(args) < 2 {
-		logging.LogAlert("Usage: unset VAR")
-		drawbox.PrintError("Usage: unset VAR")
-		return
-	}
-
-	varName := s.sanitizeInput(args[1], false)
-	if err := os.Unsetenv(varName); err != nil {
-		logging.LogError(err)
-		drawbox.PrintError(fmt.Sprintf("Failed to unset environment variable: %s", err))
-	} else {
-		logging.LogAlert(fmt.Sprintf("Successfully unset environment variable: %s", varName))
-		drawbox.PrintAlert(fmt.Sprintf("Successfully unset environment variable: %s", varName))
-	}
-}
-
 // reloadBlacklist reloads the blacklist from the file
 func (s *SecShell) reloadBlacklist() {
 	s.blacklistedCommands = nil
@@ -737,11 +684,35 @@ func (s *SecShell) processCommand(input string) {
 				}
 			}
 		case "export":
-			s.exportVariable(args)
+			env.ExportVariable(args)
 		case "env":
-			s.listEnvVariables()
+			env.ListEnvVariables()
 		case "unset":
-			s.unsetEnvVariable(args)
+			env.UnsetEnvVariable(args)
+		case "logs":
+			if len(args) < 2 {
+				logging.LogAlert("Usage: logs <list|clear>")
+				drawbox.PrintError("Usage: logs <list|clear>")
+				return
+			} else {
+				switch args[1] {
+				case "list":
+					err := logging.PrintLog()
+					if err != nil {
+						logging.LogError(err)
+						drawbox.PrintError("Failed to read log file")
+					}
+				case "clear":
+					err := logging.ClearLog(isAdmin())
+					if err != nil {
+						logging.LogError(err)
+						drawbox.PrintError("Failed to clear log file")
+					} else {
+						logging.LogAlert("Log file cleared successfully")
+						drawbox.PrintAlert("Log file cleared successfully")
+					}
+				}
+			}
 		case "blacklist":
 			core.ListBlacklistCommands(s.blacklist)
 		case "whitelist":

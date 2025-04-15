@@ -1,10 +1,12 @@
 package logging
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
 	"secshell/core"
+	"secshell/drawbox"
 	"time"
 )
 
@@ -94,6 +96,70 @@ func saveLog(entry LogEntry) error {
 	if _, err := f.WriteString(logLine); err != nil {
 		return fmt.Errorf("failed to write to log file: %v", err)
 	}
+
+	return nil
+}
+
+// Get log entries reads the log file and returns each line as a string in a slice
+func GetLogEntries() ([]string, error) {
+	LogEntries := []string{}
+
+	// Open the log file for reading
+	f, err := os.Open(logFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// If file doesn't exist, return empty slice with no error
+			return LogEntries, nil
+		}
+		return nil, fmt.Errorf("failed to open log file: %v", err)
+	}
+	defer f.Close()
+
+	// Read the file line by line
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		LogEntries = append(LogEntries, scanner.Text())
+	}
+
+	// Check for errors during scanning
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading log file: %v", err)
+	}
+
+	return LogEntries, nil
+}
+
+// Print Log prints the log entries to the console
+func PrintLog() error {
+	entries, err := GetLogEntries()
+	if err != nil {
+		LogError(err)
+		drawbox.PrintError("Failed to read log file")
+	}
+	if len(entries) == 0 {
+		drawbox.PrintAlert("No log entries found")
+		return nil
+	}
+	drawbox.RunDrawbox("Log Entries:", "bold_white")
+	core.More(entries)
+	return nil
+}
+
+// ClearLog truncates the log file, removing all contents
+// Only works if the isAdmin parameter is set to true
+func ClearLog(isAdmin bool) error {
+	if !isAdmin {
+		LogAlert("Insufficient permissions to clear logs")
+		drawbox.PrintError("Insufficient permissions to clear logs")
+		return fmt.Errorf("insufficient permissions: admin privileges required to clear logs")
+	}
+
+	f, err := os.OpenFile(logFile, os.O_TRUNC|os.O_WRONLY, 0644)
+	if err != nil {
+		LogError(err)
+		return fmt.Errorf("failed to open log file for clearing: %v", err)
+	}
+	defer f.Close()
 
 	return nil
 }
