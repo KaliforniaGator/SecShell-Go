@@ -931,35 +931,6 @@ func (s *SecShell) parseQuotedArgs(args []string) []string {
 	return parsedArgs
 }
 
-// manageServices manages system services
-func (s *SecShell) manageServices(args []string) {
-	if len(args) < 2 {
-		drawbox.PrintError("Usage: services <start|stop|restart|status|list> <service_name>")
-		return
-	}
-
-	action := args[1]
-	serviceName := ""
-	if len(args) > 2 {
-		serviceName = args[2]
-	}
-
-	if action != "start" && action != "stop" && action != "restart" && action != "status" && action != "list" && action != "help" {
-		drawbox.PrintError("Invalid action. Use start, stop, restart, status, or list.")
-		return
-	}
-
-	if action == "list" {
-		services.GetServices()
-	} else if action == "status" {
-		services.RunServicesCommand("status", serviceName)
-	} else if action == "help" || action == "--help" || action == "-h" {
-		services.ShowHelp()
-	} else {
-		services.RunServicesCommand(action, serviceName)
-	}
-}
-
 // executePipedCommands executes a series of piped commands
 func (s *SecShell) executePipedCommands(commands []string) {
 	var cmds []*exec.Cmd
@@ -1371,6 +1342,22 @@ func getExecutablePath() string {
 		return "." // Fallback to current directory if home directory cannot be determined
 	}
 	return filepath.Join(homeDir, ".secshell") // Use ~/.secshell for config files
+}
+
+// manageServices manages system services
+func (s *SecShell) manageServices(args []string) {
+	if len(args) < 2 {
+		services.RunServicesCommand("list", "")
+	} else if args[1] == "--help" {
+		services.ShowHelp()
+	} else {
+		action := args[1]
+		serviceName := ""
+		if len(args) > 2 {
+			serviceName = args[2]
+		}
+		services.RunServicesCommand(action, serviceName)
+	}
 }
 
 // manageJobs manages background jobs
