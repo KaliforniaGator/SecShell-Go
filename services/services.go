@@ -22,13 +22,27 @@ func runCommand(command string) {
 
 func RunServicesCommand(action string, serviceName string) {
 
-	drawbox.RunDrawbox("Services", "bold_white")
-
 	var command string
-	if action == "status" {
+
+	switch action {
+	case "list":
+		GetServices()
+	case "status":
+		drawbox.RunDrawbox("Service Status", "bold_white")
 		command = "systemctl status " + serviceName
-	} else if action == "start" || action == "stop" || action == "restart" {
-		command = "sudo systemctl " + action + " " + serviceName
+	case "start":
+		drawbox.RunDrawbox("Starting Service", "bold_white")
+		command = "sudo systemctl start " + serviceName
+	case "stop":
+		drawbox.RunDrawbox("Stopping Service", "bold_white")
+		command = "sudo systemctl stop " + serviceName
+	case "restart":
+		drawbox.RunDrawbox("Restarting Service", "bold_white")
+		command = "sudo systemctl restart " + serviceName
+	case "--help", "-h", "help":
+		ShowHelp()
+	default:
+		drawbox.PrintError("Invalid action: " + action + " Use status, start, stop, restart, list, or help.")
 	}
 
 	runCommand(command)
@@ -38,13 +52,7 @@ func RunServicesCommand(action string, serviceName string) {
 // GetServices retrieves and displays system services
 func GetServices() {
 	// Execute the drawbox command for the header
-	cmdHeader := exec.Command("drawbox", "Services")
-	cmdHeader.Stdout = os.Stdout
-	cmdHeader.Stderr = os.Stderr
-	if err := cmdHeader.Run(); err != nil {
-		fmt.Println("Error executing drawbox command:", err)
-		return
-	}
+	drawbox.RunDrawbox("Services", "bold_white")
 
 	// Get all services
 	cmd := exec.Command("systemctl", "list-units", "--type=service", "--all", "--no-pager", "--no-legend")
