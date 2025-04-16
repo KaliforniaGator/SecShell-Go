@@ -30,19 +30,20 @@ func DisplayWelcomeScreen(version string, needsUpdate bool) {
     `
 
 	fmt.Printf("%s%s%s\n", colors.BoldYellow, logo, colors.Reset)
-	// Add version display
-	fmt.Printf("\n%sVersion: %s %s%s\n", colors.BoldWhite, version, versionIcon, colors.Reset)
 	// Display welcome message
 	drawbox.RunDrawbox("Welcome to SecShell - A Secure Command Shell", "bold_green")
+	// Add version display
+	fmt.Printf("\n%sVersion: %s %s%s\n", colors.BoldWhite, version, versionIcon, colors.Reset)
 	fmt.Printf("\n%sFeatures:%s\n", colors.BoldWhite, colors.Reset)
 	features := []string{
 		"✓ Command whitelisting and blacklisting",
-		"✓ Secure input handling",
+		"✓ Input sanitization",
 		"✓ Process isolation",
-		"✓ Service management",
-		"✓ Background job support",
-		"✓ Command history",
-		"✓ Tab completion",
+		"✓ Service and Job management",
+		"✓ Logging and auditing",
+		"✓ Interactive Command history",
+		"✓ Tab Command / Patch completions",
+		"✓ Built-In Penetration testing tools",
 	}
 
 	for _, feature := range features {
