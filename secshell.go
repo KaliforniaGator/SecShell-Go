@@ -18,9 +18,11 @@ import (
 	"secshell/core"
 	"secshell/download"
 	"secshell/drawbox"
+	"secshell/env"
 	"secshell/help"
 	"secshell/jobs"
 	"secshell/logging"
+	"secshell/pentest"
 	"secshell/sanitize"
 	"secshell/services"
 	"secshell/ui"
@@ -60,7 +62,9 @@ type SecShell struct {
 var builtInCommands = []string{
 	"allowed", "help", "exit", "services", "jobs", "cd", "history", "export", "env", "unset",
 	"reload-blacklist", "blacklist", "edit-blacklist", "whitelist", "edit-whitelist",
-	"reload-whitelist", "download", "time", "date", "--version", "--update"}
+	"reload-whitelist", "download", "time", "date", "--version", "--update",
+	// Add pentesting commands
+	"portscan", "hostscan", "webscan", "payload", "session"}
 
 var trustedDirs = []string{"/usr/bin/", "/bin/", "/opt/", "/usr/local/bin/"}
 
@@ -534,60 +538,6 @@ func highlightText(text, query string) string {
 	return result.String()
 }
 
-// exportVariable sets an environment variable
-func (s *SecShell) exportVariable(args []string) {
-	if len(args) < 2 {
-		logging.LogAlert("Usage: export VAR=value")
-		drawbox.PrintError("Usage: export VAR=value")
-		return
-	}
-
-	varValue := s.sanitizeInput(args[1], false)
-	equalsPos := strings.Index(varValue, "=")
-	if equalsPos == -1 {
-		logging.LogAlert("Invalid export syntax. Use VAR=value")
-		drawbox.PrintError("Invalid export syntax. Use VAR=value")
-		return
-	}
-
-	varName := varValue[:equalsPos]
-	value := varValue[equalsPos+1:]
-
-	if err := os.Setenv(varName, value); err != nil {
-		logging.LogError(err)
-		drawbox.PrintError(fmt.Sprintf("Failed to set environment variable: %s", err))
-	} else {
-		logging.LogAlert(fmt.Sprintf("Successfully exported %s=%s", varName, value))
-		drawbox.PrintAlert(fmt.Sprintf("Successfully exported %s=%s", varName, value))
-	}
-}
-
-// listEnvVariables lists all environment variables
-func (s *SecShell) listEnvVariables() {
-	drawbox.RunDrawbox("Environment Variables", "bold_white")
-	for _, env := range os.Environ() {
-		fmt.Println(env)
-	}
-}
-
-// unsetEnvVariable unsets an environment variable
-func (s *SecShell) unsetEnvVariable(args []string) {
-	if len(args) < 2 {
-		logging.LogAlert("Usage: unset VAR")
-		drawbox.PrintError("Usage: unset VAR")
-		return
-	}
-
-	varName := s.sanitizeInput(args[1], false)
-	if err := os.Unsetenv(varName); err != nil {
-		logging.LogError(err)
-		drawbox.PrintError(fmt.Sprintf("Failed to unset environment variable: %s", err))
-	} else {
-		logging.LogAlert(fmt.Sprintf("Successfully unset environment variable: %s", varName))
-		drawbox.PrintAlert(fmt.Sprintf("Successfully unset environment variable: %s", varName))
-	}
-}
-
 // reloadBlacklist reloads the blacklist from the file
 func (s *SecShell) reloadBlacklist() {
 	s.blacklistedCommands = nil
@@ -737,11 +687,35 @@ func (s *SecShell) processCommand(input string) {
 				}
 			}
 		case "export":
-			s.exportVariable(args)
+			env.ExportVariable(args)
 		case "env":
-			s.listEnvVariables()
+			env.ListEnvVariables()
 		case "unset":
-			s.unsetEnvVariable(args)
+			env.UnsetEnvVariable(args)
+		case "logs":
+			if len(args) < 2 {
+				logging.LogAlert("Usage: logs <list|clear>")
+				drawbox.PrintError("Usage: logs <list|clear>")
+				return
+			} else {
+				switch args[1] {
+				case "list":
+					err := logging.PrintLog()
+					if err != nil {
+						logging.LogError(err)
+						drawbox.PrintError("Failed to read log file")
+					}
+				case "clear":
+					err := logging.ClearLog(isAdmin())
+					if err != nil {
+						logging.LogError(err)
+						drawbox.PrintError("Failed to clear log file")
+					} else {
+						logging.LogAlert("Log file cleared successfully")
+						drawbox.PrintAlert("Log file cleared successfully")
+					}
+				}
+			}
 		case "blacklist":
 			core.ListBlacklistCommands(s.blacklist)
 		case "whitelist":
@@ -770,6 +744,84 @@ func (s *SecShell) processCommand(input string) {
 			s.toggleSecurity()
 		case "download":
 			download.DownloadFiles(args)
+		case "portscan":
+			if len(args) < 2 {
+				drawbox.PrintError("Usage: portscan <target> [port-range]")
+				return
+			}
+			portRange := ""
+			if len(args) >= 3 {
+				portRange = args[2]
+			}
+			pentest.RunPortScan(args[1], portRange)
+
+		case "hostscan":
+			if len(args) < 2 {
+				drawbox.PrintError("Usage: hostscan <network-range>")
+				return
+			}
+			pentest.RunHostDiscovery(args[1])
+
+		case "webscan":
+			if len(args) < 2 {
+				drawbox.PrintError("Usage: webscan <url>")
+				return
+			}
+			pentest.WebScan(args[1])
+
+		case "payload":
+			if len(args) < 3 {
+				drawbox.PrintError("Usage: payload <ip-address> <port>")
+				return
+			}
+			pentest.GenerateReverseShellPayload(args[1], args[2])
+
+		case "session":
+			if len(args) < 2 {
+				pentest.ListSessions()
+				return
+			}
+
+			switch args[1] {
+			case "-l":
+				pentest.ListSessions()
+			case "-i":
+				if len(args) < 3 {
+					drawbox.PrintError("Usage: session -i <id>")
+					return
+				}
+				id, err := strconv.Atoi(args[2])
+				if err != nil {
+					logging.LogError(err)
+					drawbox.PrintError("Invalid session ID")
+					return
+				}
+				pentest.InteractWithSession(id)
+			case "-c":
+				if len(args) < 3 {
+					drawbox.PrintError("Usage: session -c <port>")
+					return
+				}
+				port := args[2]
+				id := pentest.ListenForConnections(port)
+				if id != -1 {
+					drawbox.PrintAlert(fmt.Sprintf("Created session %d", id))
+				}
+			case "-k":
+				if len(args) < 3 {
+					drawbox.PrintError("Usage: session -k <id>")
+					return
+				}
+				id, err := strconv.Atoi(args[2])
+				if err != nil {
+					logging.LogError(err)
+					drawbox.PrintError("Invalid session ID")
+					return
+				}
+				pentest.CloseSession(id)
+			default:
+				drawbox.PrintError("Unknown session command. Use -l, -i, -c, or -k")
+			}
 		default:
 			// Handle quoted arguments
 			args = s.parseQuotedArgs(args)

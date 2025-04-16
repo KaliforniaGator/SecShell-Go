@@ -8,6 +8,15 @@ import (
 	"strings"
 )
 
+// HelpTopic structure to store detailed information about commands
+type HelpTopic struct {
+	Command     string
+	Description string
+	Usage       string
+	Examples    []string
+	Category    string
+}
+
 var HelpCommands = []string{
 	"allowed",
 	"help",
@@ -30,6 +39,212 @@ var HelpCommands = []string{
 	"date",
 	"--version",
 	"--update",
+	"logs",
+	"portscan",
+	"hostscan",
+	"webscan",
+	"payload",
+	"session",
+}
+
+// HelpTopics contains detailed help information for each command
+var HelpTopics = map[string]HelpTopic{
+	"allowed": {
+		Command:     "allowed",
+		Description: "List allowed system commands",
+		Usage:       "allowed <dirs|commands|bins|builtins|all>",
+		Examples:    []string{"allowed dirs", "allowed commands", "allowed all"},
+		Category:    "Security",
+	},
+	"help": {
+		Command:     "help",
+		Description: "Show help message or specific command help",
+		Usage:       "help [command]",
+		Examples:    []string{"help", "help cd", "help services"},
+		Category:    "System",
+	},
+	"exit": {
+		Command:     "exit",
+		Description: "Exit the shell",
+		Usage:       "exit",
+		Examples:    []string{"exit"},
+		Category:    "System",
+	},
+	"services": {
+		Command:     "services",
+		Description: "Manage system services",
+		Usage:       "services <start|stop|restart|status|list> <service_name>",
+		Examples:    []string{"services list", "services status ssh", "services restart apache2"},
+		Category:    "System",
+	},
+	"jobs": {
+		Command:     "jobs",
+		Description: "List active background jobs",
+		Usage:       "jobs <list|stop|status|start|clear-finished> [PID]",
+		Examples:    []string{"jobs", "jobs list", "jobs status 1234", "jobs stop 1234"},
+		Category:    "Process",
+	},
+	"cd": {
+		Command:     "cd",
+		Description: "Change directory",
+		Usage:       "cd (--prev | -p) [directory]",
+		Examples:    []string{"cd /tmp", "cd ~", "cd --prev", "cd -p"},
+		Category:    "FileSystem",
+	},
+	"history": {
+		Command:     "history",
+		Description: "Show command history",
+		Usage:       "history [-s <query>] [-i]\n   -s: Search history for a query\n   -i: Interactive history search\n   ![number]: Execute command by number\n   !!: Execute last command\n   clear: Clear history",
+		Examples:    []string{"history", "history -s ls", "history -i", "!5", "!!", "history clear"},
+		Category:    "System",
+	},
+	"export": {
+		Command:     "export",
+		Description: "Set an environment variable",
+		Usage:       "export VAR=value",
+		Examples:    []string{"export PATH=$PATH:/usr/local/bin", "export DEBUG=true"},
+		Category:    "Environment",
+	},
+	"env": {
+		Command:     "env",
+		Description: "List all environment variables",
+		Usage:       "env",
+		Examples:    []string{"env"},
+		Category:    "Environment",
+	},
+	"unset": {
+		Command:     "unset",
+		Description: "Unset an environment variable",
+		Usage:       "unset VAR",
+		Examples:    []string{"unset DEBUG", "unset TEMP_VAR"},
+		Category:    "Environment",
+	},
+	"blacklist": {
+		Command:     "blacklist",
+		Description: "List blacklisted commands",
+		Usage:       "blacklist",
+		Examples:    []string{"blacklist"},
+		Category:    "Security",
+	},
+	"whitelist": {
+		Command:     "whitelist",
+		Description: "List whitelisted commands",
+		Usage:       "whitelist",
+		Examples:    []string{"whitelist"},
+		Category:    "Security",
+	},
+	"edit-blacklist": {
+		Command:     "edit-blacklist",
+		Description: "Edit the blacklist file (admin only)",
+		Usage:       "edit-blacklist",
+		Examples:    []string{"edit-blacklist"},
+		Category:    "Security",
+	},
+	"edit-whitelist": {
+		Command:     "edit-whitelist",
+		Description: "Edit the whitelist file (admin only)",
+		Usage:       "edit-whitelist",
+		Examples:    []string{"edit-whitelist"},
+		Category:    "Security",
+	},
+	"reload-blacklist": {
+		Command:     "reload-blacklist",
+		Description: "Reload the blacklisted commands (admin only)",
+		Usage:       "reload-blacklist",
+		Examples:    []string{"reload-blacklist"},
+		Category:    "Security",
+	},
+	"reload-whitelist": {
+		Command:     "reload-whitelist",
+		Description: "Reload the whitelisted commands (admin only)",
+		Usage:       "reload-whitelist",
+		Examples:    []string{"reload-whitelist"},
+		Category:    "Security",
+	},
+	"download": {
+		Command:     "download",
+		Description: "Download a file from URL",
+		Usage:       "download [-o output1,output2,...] <url [url2 ...]>",
+		Examples:    []string{"download https://example.com/file.txt", "download -o file1.txt,file2.txt https://example.com/file1 https://example.com/file2"},
+		Category:    "Network",
+	},
+	"time": {
+		Command:     "time",
+		Description: "Show the current time",
+		Usage:       "time",
+		Examples:    []string{"time"},
+		Category:    "System",
+	},
+	"date": {
+		Command:     "date",
+		Description: "Show the current date",
+		Usage:       "date",
+		Examples:    []string{"date"},
+		Category:    "System",
+	},
+	"--version": {
+		Command:     "--version",
+		Description: "Show the version of SecShell",
+		Usage:       "--version",
+		Examples:    []string{"--version"},
+		Category:    "System",
+	},
+	"--update": {
+		Command:     "--update",
+		Description: "Update SecShell to the latest version",
+		Usage:       "--update",
+		Examples:    []string{"--update"},
+		Category:    "System",
+	},
+	"logs": {
+		Command:     "logs",
+		Description: "Manage SecShell logs",
+		Usage:       "logs <list|clear>",
+		Examples:    []string{"logs list", "logs clear"},
+		Category:    "System",
+	},
+	"toggle-security": {
+		Command:     "toggle-security",
+		Description: "Toggle security enforcement (admin only)",
+		Usage:       "toggle-security",
+		Examples:    []string{"toggle-security"},
+		Category:    "Security",
+	},
+	"portscan": {
+		Command:     "portscan",
+		Description: "Scan ports on a target host",
+		Usage:       "portscan <target> [port-range]",
+		Examples:    []string{"portscan 192.168.1.1", "portscan example.com 1-1000"},
+		Category:    "Pentesting",
+	},
+	"hostscan": {
+		Command:     "hostscan",
+		Description: "Discover hosts on a network",
+		Usage:       "hostscan <network-range>",
+		Examples:    []string{"hostscan 192.168.1.0/24"},
+		Category:    "Pentesting",
+	},
+	"webscan": {
+		Command:     "webscan",
+		Description: "Perform basic web security scanning",
+		Usage:       "webscan <url>",
+		Examples:    []string{"webscan https://example.com"},
+		Category:    "Pentesting",
+	},
+	"payload": {
+		Command:     "payload",
+		Description: "Generate reverse shell payload",
+		Usage:       "payload <ip-address> <port>",
+		Examples:    []string{"payload 192.168.1.100 4444"},
+		Category:    "Pentesting",
+	},
+	"session": {
+		Command:     "session",
+		Description: "Manage reverse shell sessions",
+		Usage:       "session [-l|-i <id>|-c <port>|-k <id>]\n   -l: List sessions\n   -i: Interact with session\n   -c: Create/listen for new session\n   -k: Kill/terminate session",
+		Examples:    []string{"session -l", "session -i 1", "session -c 4444", "session -k 1"},
+		Category:    "Pentesting",
+	},
 }
 
 // DisplayHelp shows the help message or specific command help
@@ -41,144 +256,78 @@ func DisplayHelp(args ...string) {
 	}
 
 	drawbox.RunDrawbox("SecShell Help", "bold_white")
-	fmt.Fprintf(os.Stdout, `
-Built-in Commands:
-  %sallowed%s   - List allowed system commands
-			Usage: allowed <dirs|commands|bins|builtins|all>
-  %shelp%s       - Show this help message
-  %sexit%s       - Exit the shell
-  %sservices%s   - Manage system services
-               		Usage: services <start|stop|restart|status|list> <service_name>
 
-  %sjobs%s       - List active background jobs
-                        Usage: jobs <list|stop|status|start|clear-finished> [PID]
+	// Group commands by category
+	commandsByCategory := make(map[string][]string)
 
-  %scd%s         - Change directory
-               		Usage: cd [directory]
+	// Add all commands to their respective categories
+	for cmd, topic := range HelpTopics {
+		commandsByCategory[topic.Category] = append(commandsByCategory[topic.Category], cmd)
+	}
 
-  %shistory%s    - Show command history
-  			Usage: history [-s <query>] [-i]
-			   -s: Search history for a query
-			   -i: Interactive history search
-			   ![number]: Execute command by number
-			   !!: Execute last command
-			   clear: Clear history
+	// Print commands by category
+	fmt.Println("\nAvailable Commands:")
 
-  %sexport%s     - Set an environment variable
-               		Usage: export VAR=value
+	// Order of categories to display
+	categories := []string{"System", "FileSystem", "Process", "Environment", "Security", "Network", "Pentesting"}
 
-  %senv%s        - List all environment variables
-  %sunset%s      - Unset an environment variable
-               		Usage: unset VAR
+	for _, category := range categories {
+		commands, exists := commandsByCategory[category]
+		if exists && len(commands) > 0 {
+			fmt.Printf("\n%s%s Commands:%s\n", colors.Cyan, category, colors.Reset)
 
-  %sblacklist%s  - List blacklisted commands
-  %swhitelist%s  - List whitelisted commands
-  %sedit-blacklist%s - Edit the blacklist file
-  %sedit-whitelist%s - Edit the whitelist file
-  %sreload-blacklist%s - Reload the blacklisted commands
-  %sreload-whitelist%s - Reload the whitelisted commands
+			// Print each command in this category
+			for _, cmd := range commands {
+				if topic, exists := HelpTopics[cmd]; exists {
+					fmt.Printf("  %s%-12s%s - %s\n",
+						colors.BoldWhite,
+						topic.Command,
+						colors.Reset,
+						topic.Description)
+				}
+			}
+		}
+	}
 
-  %stime%s       - Show the current time
-  %sdate%s       - Show the current date
-  %sdownload%s    - Download a file from URL
-               		Usage: download [-o output1,output2,...] <url [url2 ...]>
+	fmt.Printf("\n%sAllowed System Commands:%s\n", colors.Cyan, colors.Reset)
+	fmt.Println("  ls, ps, netstat, tcpdump, cd, clear, ifconfig")
 
-  %s--version%s   - Show the version of SecShell
-  %s--update%s    - Update SecShell to the latest version
+	fmt.Printf("\n%sSecurity Features:%s\n", colors.Cyan, colors.Reset)
+	fmt.Println("  - Command whitelisting")
+	fmt.Println("  - Input sanitization")
+	fmt.Println("  - Process isolation")
+	fmt.Println("  - Job tracking")
+	fmt.Println("  - Service Management")
+	fmt.Println("  - Background job execution")
+	fmt.Println("  - Piped command execution")
+	fmt.Println("  - Input/output redirection")
 
-%sAllowed System Commands:%s
-  ls, ps, netstat, tcpdump, cd, clear, ifconfig
-
-%sSecurity Features:%s
-  - Command whitelisting
-  - Input sanitization
-  - Process isolation
-  - Job tracking
-  - Service Management
-  - Background job execution
-  - Piped command execution
-  - Input/output redirection
-
-%sExamples:%s
-  > ls -l
-  > jobs
-  > services list
-  > export MY_VAR=value
-  > env
-  > unset MY_VAR
-  > history
-  > blacklist
-  > edit-blacklist
-  > reload-blacklist
-  > whitelist
-  > edit-whitelist
-  > reload-whitelist
-  > exit
-
-%sNote:%s
-All commands are subject to security checks and sanitization.
-Only executables from trusted directories are permitted.
-`,
-		colors.BoldWhite, colors.Reset, // allowed
-		colors.BoldWhite, colors.Reset, // help
-		colors.BoldWhite, colors.Reset, // exit
-		colors.BoldWhite, colors.Reset, // services
-		colors.BoldWhite, colors.Reset, // jobs
-		colors.BoldWhite, colors.Reset, // cd
-		colors.BoldWhite, colors.Reset, // history
-		colors.BoldWhite, colors.Reset, // export
-		colors.BoldWhite, colors.Reset, // env
-		colors.BoldWhite, colors.Reset, // unset
-		colors.BoldWhite, colors.Reset, // blacklist
-		colors.BoldWhite, colors.Reset, // whitelist
-		colors.BoldWhite, colors.Reset, // edit-blacklist
-		colors.BoldWhite, colors.Reset, // edit-whitelist
-		colors.BoldWhite, colors.Reset, // reload-blacklist
-		colors.BoldWhite, colors.Reset, // reload-whitelist
-		colors.BoldWhite, colors.Reset, // time
-		colors.BoldWhite, colors.Reset, // date
-		colors.BoldWhite, colors.Reset, // download
-		colors.BoldWhite, colors.Reset, // --version
-		colors.BoldWhite, colors.Reset, // --update
-		colors.Cyan, colors.Reset, // Allowed System Commands
-		colors.Cyan, colors.Reset, // Security Features
-		colors.Cyan, colors.Reset, // Examples
-		colors.Cyan, colors.Reset, // Note
-	)
+	fmt.Printf("\n%sUsage:%s Type '%shelp <command>%s' for more details on a specific command\n",
+		colors.Cyan, colors.Reset, colors.BoldWhite, colors.Reset)
 }
 
 // displayCommandHelp shows help for a specific command
 func displayCommandHelp(command string) {
-	commandHelp := map[string]string{
-		"allowed":          "List allowed system commands\nUsage: allowed <dirs|commands|bins|builtins|all>",
-		"help":             "Show this help message\nUsage: help [command]",
-		"exit":             "Exit the shell\nUsage: exit",
-		"services":         "Manage system services\nUsage: services <start|stop|restart|status|list> <service_name>",
-		"jobs":             "List active background jobs\nUsage: jobs <list|stop|status|start|clear-finished> [PID]",
-		"cd":               "Change directory\nUsage: cd (--prev | -p) [directory]",
-		"history":          "Show command history\nUsage: history [-s <query>] [-i]\n   -s: Search history for a query\n   -i: Interactive history search\n   ![number]: Execute command by number\n   !!: Execute last command\n  clear: Clear history",
-		"export":           "Set an environment variable\nUsage: export VAR=value",
-		"env":              "List all environment variables",
-		"unset":            "Unset an environment variable\nUsage: unset VAR",
-		"blacklist":        "List blacklisted commands\nUsage: blacklist",
-		"whitelist":        "List whitelisted commands\nUsage: whitelist",
-		"edit-blacklist":   "Edit the blacklist file\nUsage: edit-blacklist",
-		"edit-whitelist":   "Edit the whitelist file\nUsage: edit-whitelist",
-		"reload-blacklist": "Reload the blacklisted commands\nUsage: reload-blacklist",
-		"reload-whitelist": "Reload the whitelisted commands\nUsage: reload-whitelist",
-		"time":             "Show the current time\nUsage: time",
-		"date":             "Show the current date\nUsage: date",
-		"download":         "Download a file from URL\nUsage: download [-o output1,output2,...] <url [url2 ...]>",
-		"--version":        "Show the version of SecShell\nUsage: --version",
-		"--update":         "Update SecShell to the latest version\nUsage: --update",
-	}
+	command = strings.ToLower(command)
+	topic, exists := HelpTopics[command]
 
-	help, exists := commandHelp[strings.ToLower(command)]
 	if !exists {
 		fmt.Fprintf(os.Stdout, "No help available for command: %s\n", command)
 		return
 	}
 
 	drawbox.RunDrawbox(fmt.Sprintf("Help: %s", command), "bold_white")
-	fmt.Fprintf(os.Stdout, "\n%s\n", help)
+
+	fmt.Printf("\n%sDescription:%s %s\n\n", colors.BoldWhite, colors.Reset, topic.Description)
+	fmt.Printf("%sUsage:%s %s\n\n", colors.BoldWhite, colors.Reset, topic.Usage)
+
+	if len(topic.Examples) > 0 {
+		fmt.Printf("%sExamples:%s\n", colors.BoldWhite, colors.Reset)
+		for _, example := range topic.Examples {
+			fmt.Printf("  > %s\n", example)
+		}
+	}
+
+	fmt.Printf("\n%sCategory:%s %s\n", colors.BoldWhite, colors.Reset, topic.Category)
+	fmt.Println()
 }
