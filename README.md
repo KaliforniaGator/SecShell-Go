@@ -1,130 +1,140 @@
 ![Preview](https://github.com/user-attachments/assets/c5444355-b435-4fbf-84a0-cf1f1ad23233)
 
-# SecShell - A Secure Shell Implementation written in Go
+# 🚨 SecShell - Secure Shell for Modern Systems (Go)
 
-SecShell is a secure shell implementation written in Go, designed to provide a controlled and secure environment for executing system commands. It incorporates various security features such as command whitelisting, input sanitization, and process isolation to ensure that only trusted commands are executed.
+**SecShell** is a next-generation secure shell written in Go, engineered for professionals who demand robust security, fine-grained control, and operational transparency. It provides a hardened environment for command execution, featuring advanced whitelisting, process isolation, and real-time job/service management.
 
-## Features
+---
 
-- **Command Whitelisting**: Only commands listed in the whitelist or located in trusted directories are allowed to execute.
-- **Input Sanitization**: Removes potentially harmful characters from user input to prevent injection attacks.
-- **Process Isolation**: Executes commands in isolated processes to minimize the risk of system compromise.
-- **Job Tracking**: Tracks background jobs and allows users to manage them.
-- **Service Management**: Provides commands to start, stop, restart, and check the status of system services.
-- **Background Job Execution**: Supports running commands in the background.
-- **Piped Command Execution**: Allows chaining commands using pipes.
-- **Input/Output Redirection**: Supports input and output redirection for commands.
-- **Command History**: Keeps a history of executed commands for easy retrieval.
-- **Environment Variable Management**: Allows users to set, unset, and list environment variables.
+## 🔑 Key Features
 
-## Installation
+- **Command Whitelisting & Blacklisting**: Only explicitly allowed commands or those in trusted directories can run. Blacklisted commands are strictly blocked.
+- **Input Sanitization**: All user input is sanitized to prevent injection and exploitation.
+- **Process Isolation**: Each command runs in its own process, minimizing risk.
+- **Job Management**: Track, control, and inspect background jobs.
+- **Service Management**: Start, stop, restart, and check system services securely.
+- **Piped & Background Execution**: Full support for pipes (`|`), redirection (`>`, `<`), and background jobs (`&`).
+- **Command History & Search**: Persistent history with interactive and query-based search.
+- **Environment Variable Control**: Set, unset, and list environment variables.
+- **Security Toggle (Admin Only)**: Temporarily bypass security checks with authentication.
+- **Pentesting Utilities**: Built-in port, host, and web scanners, plus reverse shell payload generation and session management.
+- **Update & Version Control**: Self-update and version display commands.
+- **Comprehensive Logging**: All actions are logged for audit and review.
+
+---
+
+## 🛡️ Built-in Commands
+________________________________________________________________________________________________________________________________
+| Command                | Description / Usage                                                                                 |
+|------------------------|-----------------------------------------------------------------------------------------------------|
+| `allowed`              | Show allowed directories, commands, built-ins, or binaries.<br>                                     |
+|                        | Usage: `allowed <dirs|commands|bins|builtins|all>`                                                  |
+| `help`                 | Show help message or help for a specific command.<br>Usage: `help [command]`                        |
+| `exit`                 | Exit the shell (admin only).                                                                        |
+| `services`             | Manage system services.<br>Usage: `services <start|stop|restart|status|list> <service_name>`        |
+| `jobs`                 | Manage background jobs.<br>Usage: `jobs <list|stop|start|status|clear-finished> [pid]`              |
+| `cd`                   | Change directory.<br>Usage: `cd [directory]`                                                        |
+| `history`              | Show command history.<br>Usage: `history`, `history -s <query>`, `history -i`, `history clear`      |
+| `export`               | Set an environment variable.<br>Usage: `export VAR=value`                                           |
+| `env`                  | List all environment variables.                                                                     |
+| `unset`                | Unset an environment variable.<br>Usage: `unset VAR`                                                |
+| `logs`                 | List or clear logs.<br>Usage: `logs <list|clear>`                                                   |
+| `blacklist`            | List blacklisted commands.                                                                          |
+| `whitelist`            | List whitelisted commands.                                                                          |
+| `edit-blacklist`       | Edit the blacklist file (admin only).                                                               |
+| `edit-whitelist`       | Edit the whitelist file (admin only).                                                               |
+| `reload-blacklist`     | Reload the blacklist (admin only).                                                                  |
+| `reload-whitelist`     | Reload the whitelist (admin only).                                                                  |
+| `download`             | Download files from the internet.<br>Usage: `download [-o output1,output2,...] <url [url2 ...]>`    |
+| `toggle-security`      | Toggle security enforcement (admin only, password required).                                        |
+| `time`                 | Show current time.                                                                                  |
+| `date`                 | Show current date.                                                                                  |
+| `--version`            | Display current version.                                                                            |
+| `--update`             | Update SecShell to the latest version.                                                              |
+| **Pentesting Tools**   |                                                                                                     |
+| `portscan`             | Scan ports on a target.<br>Usage: `portscan <target> [port-range]`                                  |
+| `hostscan`             | Discover hosts in a network.<br>Usage: `hostscan <network-range>`                                   |
+| `webscan`              | Scan a web target.<br>Usage: `webscan <url>`                                                        |
+| `payload`              | Generate reverse shell payload.<br>Usage: `payload <ip-address> <port>`                             |
+| `session`              | Manage pentest sessions.<br>                                                                        |
+|                        | Usage: `session -l`, `session -i <id>`, `session -c <port>`, `session -k <id>`                      |
+--------------------------------------------------------------------------------------------------------------------------------
+---
+
+## ⚡ Quick Start
 
 ### Requirements
 
-The installation process requires the following dependencies:
-- **GoLang-Go**
+- **Go (Golang)**
 - **systemctl**
 - **Nano Editor**
-- **DrawBox** (from [DrawBox Repository](https://github.com/KaliforniaGator/DrawBox))
-- **PAM Development Library (libpam0g-dev)**
+- **DrawBox** ([DrawBox Repository](https://github.com/KaliforniaGator/DrawBox))
+- **PAM Development Library (`libpam0g-dev`)**
 
 ### One-Step Installation
-
-To install all dependencies and SecShell in one step, run the following command:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/main/update.sh | bash
 ```
 
-This will install the required dependencies, clone the SecShell-Go repository, and compile the project automatically.
-
-## Usage
-
-Once installed, you can start SecShell by running:
-
-```bash
-./secshell
-```
-
-### Built-in Commands
-- **allowed** Show allowed Directories, Commands, Built-Ins, and Programs
-  - Usage  `allowed <dirs|commands|bins|builtins>`
-- **help**: Show the help message.
-- **exit**: Exit the shell.
-- **services**: Manage system services.
-  - Usage: `services <start|stop|restart|status|list> <service_name>`
-- **jobs**: List active background jobs.
-  - Usage `jobs <list|stop|start|status|clear-finished>`
-- **cd**: Change directory.
-  - Usage: `cd [directory]`
-- **history**: Show command history.
-  - Usage: `history [-s query]` or `history -i` for interactive mode.
-- **export**: Set an environment variable.
-  - Usage: `export VAR=value`
-- **env**: List all environment variables.
-- **unset**: Unset an environment variable.
-  - Usage: `unset VAR`
-- **blacklist**: List blacklisted commands.
-- **whitelist**: List whitelisted commands.
-- **edit-blacklist**: Edit the blacklist file.
-- **edit-whitelist**: Edit the whitelist file.
-- **reload-blacklist**: Reload the blacklisted commands.
-- **reload-whitelist**: Reload the whitelisted commands.
-- **download**: Download a file from the internet using `Usage: download [-o output1,output2,...] <url [url2 ...]>`.
-- **toggle-security**: Run commands as an administrator bypassing the whitelisting and blacklisting.
-
-### Examples
-
-- List files in the current directory:
-  ```bash
-  ls -l
-  ```
-
-- Start a service:
-  ```bash
-  services start nginx
-  ```
-
-- Set an environment variable:
-  ```bash
-  export MY_VAR=value
-  ```
-
-- Run a command in the background:
-  ```bash
-  sleep 10 &
-  ```
-
-- View command history:
-  ```bash
-  history
-  ```
-
-## Configuration
-
-SecShell uses two configuration files to manage allowed and disallowed commands:
-
-- **.whitelist**: Contains a list of allowed commands.
-- **.blacklist**: Contains a list of disallowed commands.
-
-These files are automatically created if they do not exist when the shell is first run. You can edit these files using the `edit-whitelist` and `edit-blacklist` commands.
-
-## Security Features
-
-- **Command Whitelisting**: Only commands listed in the whitelist or located in trusted directories are allowed to execute.
-- **Input Sanitization**: Removes potentially harmful characters from user input to prevent injection attacks.
-- **Process Isolation**: Executes commands in isolated processes to minimize the risk of system compromise.
-- **Job Tracking**: Tracks background jobs and allows users to manage them.
-- **Service Management**: Provides commands to start, stop, restart, and check the status of system services.
-
-## Contributing
-
-Contributions are welcome! If you have any suggestions, bug reports, or feature requests, please open an issue or submit a pull request.
-
-## License
-
-This project is licensed under the **GNU Affero General Public License (AGPL)**. See the [LICENSE](LICENSE) file for more details.
+This will install dependencies, clone SecShell-Go, and build the project.
 
 ---
 
-Enjoy using SecShell! If you have any questions or need further assistance, feel free to reach out.
+## 🚀 Usage
+
+Start SecShell:
+
+```bash
+secshell
+```
+
+### Example Commands
+
+- List files: `ls -l`
+- Start a service: `services start nginx`
+- Set an environment variable: `export MY_VAR=value`
+- Run a command in the background: `sleep 10 &`
+- View command history: `history`
+- Search history: `history -s nginx`
+- Interactive history search: `history -i`
+- Download a file: `download https://example.com/file.txt`
+- Scan ports: `portscan 192.168.1.1 1-1000`
+- Toggle security (admin): `toggle-security`
+
+---
+
+## ⚙️ Configuration
+
+SecShell uses two config files:
+
+- `.whitelist` — List of allowed commands.
+- `.blacklist` — List of disallowed commands.
+
+Edit with `edit-whitelist` or `edit-blacklist` (admin only). Files are auto-created if missing.
+
+---
+
+## 🔒 Security Model
+
+- **Strict Whitelisting**: Only commands in `.whitelist` or trusted directories are allowed.
+- **Blacklist Enforcement**: Blacklisted commands are always blocked.
+- **Admin Bypass**: Admins can temporarily disable security (with authentication).
+- **Network Command Restrictions**: Sensitive network tools (e.g., `wget`, `curl`, `nmap`) are restricted for non-admins.
+- **Audit Logging**: All actions are logged for review.
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please open issues or submit pull requests for improvements, bug fixes, or new features.
+
+---
+
+## 📄 License
+
+SecShell is licensed under the **GNU Affero General Public License (AGPL)**. See [LICENSE](LICENSE) for details.
+
+---
+
+**Serious about security. Built for professionals.**
