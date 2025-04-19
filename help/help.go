@@ -212,10 +212,29 @@ var HelpTopics = map[string]HelpTopic{
 	},
 	"portscan": {
 		Command:     "portscan",
-		Description: "Scan ports on a target host",
-		Usage:       "portscan <target> [port-range]",
-		Examples:    []string{"portscan 192.168.1.1", "portscan example.com 1-1000"},
-		Category:    "Pentesting",
+		Description: "Advanced port scanner with service detection and OS fingerprinting",
+		Usage: `portscan [options] <target>
+Options:
+    -p <ports>     Port range (e.g., 80,443 or 1-1000)
+    -udp           Scan UDP ports instead of TCP
+    -t <1-5>       Timing (1=slow/stealthy, 5=fast/aggressive)
+    -v             Enable version detection
+    -syn          Use TCP SYN scanning (requires root)
+    -os           Attempt OS fingerprinting
+    -e            Use enhanced service detection
+    -j            Output in JSON format
+    -html         Output in HTML format
+    -o <file>     Save results to file`,
+		Examples: []string{
+			"portscan example.com",
+			"portscan -p 80,443,8080 192.168.1.1",
+			"portscan -syn -os -e example.com",
+			"portscan -udp -p 53,161 example.com",
+			"portscan -t 4 -v -os example.com",
+			"portscan -e -j -o results.json example.com",
+			"portscan -syn -html -o scan.html example.com",
+		},
+		Category: "Pentesting",
 	},
 	"hostscan": {
 		Command:     "hostscan",
@@ -226,10 +245,31 @@ var HelpTopics = map[string]HelpTopic{
 	},
 	"webscan": {
 		Command:     "webscan",
-		Description: "Perform basic web security scanning",
-		Usage:       "webscan <url>",
-		Examples:    []string{"webscan https://example.com"},
-		Category:    "Pentesting",
+		Description: "Advanced web application security scanner",
+		Usage: `webscan [options] <url>
+Options:
+    -t, --timeout <seconds>     Set request timeout (default: 10)
+    -H, --header <header>       Add custom header (format: "Key: Value")
+    -k, --insecure             Skip SSL verification
+    -A, --user-agent <agent>   Set custom User-Agent
+    --threads <number>         Number of concurrent scans (default: 10)
+    -w, --wordlist <file>      Use custom wordlist for directory scanning
+    -m, --methods <methods>    Test specific HTTP methods (comma-separated)
+    -v, --verbose             Enable verbose output
+    --follow-redirects        Follow redirects
+    --cookie <cookie>         Set custom cookie
+    --auth <token>           Set Authorization header
+    -f, --format <format>     Output format (text|json|html)
+    -o, --output <file>       Save results to file`,
+		Examples: []string{
+			"webscan example.com",
+			"webscan -k -t 20 https://example.com",
+			"webscan -H 'X-Custom: value' --auth 'Bearer token' example.com",
+			"webscan -w wordlist.txt -v example.com",
+			"webscan -m 'GET,POST,PUT' example.com",
+			"webscan -f json -o results.json example.com",
+		},
+		Category: "Pentesting",
 	},
 	"payload": {
 		Command:     "payload",

@@ -746,14 +746,71 @@ func (s *SecShell) processCommand(input string) {
 			download.DownloadFiles(args)
 		case "portscan":
 			if len(args) < 2 {
-				drawbox.PrintError("Usage: portscan <target> [port-range]")
+				drawbox.PrintError("Usage: portscan [-p ports] [-udp] [-t timing] [-v] [-j|-html] [-o file] [-syn] [-os] [-e] <target>")
 				return
 			}
-			portRange := ""
-			if len(args) >= 3 {
-				portRange = args[2]
+
+			options := &pentest.ScanOptions{
+				Protocol:       "tcp",
+				Timing:         3,
+				ShowVersion:    false,
+				Format:         "text",
+				OutputFile:     "",
+				SynScan:        false,
+				DetectOS:       false,
+				EnhancedDetect: false,
 			}
-			pentest.RunPortScan(args[1], portRange)
+
+			target := ""
+			portRange := ""
+
+			// Parse arguments
+			for i := 1; i < len(args); i++ {
+				switch args[i] {
+				case "-p":
+					if i+1 < len(args) {
+						portRange = args[i+1]
+						i++
+					}
+				case "-udp":
+					options.Protocol = "udp"
+				case "-t":
+					if i+1 < len(args) {
+						if t, err := strconv.Atoi(args[i+1]); err == nil && t >= 1 && t <= 5 {
+							options.Timing = t
+							i++
+						}
+					}
+				case "-v":
+					options.ShowVersion = true
+				case "-j":
+					options.Format = "json"
+				case "-html":
+					options.Format = "html"
+				case "-syn":
+					options.SynScan = true
+				case "-os":
+					options.DetectOS = true
+				case "-e":
+					options.EnhancedDetect = true
+				case "-o":
+					if i+1 < len(args) {
+						options.OutputFile = args[i+1]
+						i++
+					}
+				default:
+					if !strings.HasPrefix(args[i], "-") {
+						target = args[i]
+					}
+				}
+			}
+
+			if target == "" {
+				drawbox.PrintError("No target specified")
+				return
+			}
+
+			pentest.RunPortScan(target, portRange, options)
 
 		case "hostscan":
 			if len(args) < 2 {
@@ -764,10 +821,99 @@ func (s *SecShell) processCommand(input string) {
 
 		case "webscan":
 			if len(args) < 2 {
-				drawbox.PrintError("Usage: webscan <url>")
+				help.DisplayHelp("webscan")
 				return
 			}
-			pentest.WebScan(args[1])
+
+			options := &pentest.WebScanOptions{
+				Timeout:       10,
+				Threads:       10,
+				CustomHeaders: make(map[string]string),
+				SkipSSL:       false,
+				MaxDepth:      5,
+				TestMethods:   []string{"GET", "POST", "HEAD"},
+				SafetyChecks:  true,
+			}
+
+			target := ""
+			for i := 1; i < len(args); i++ {
+				switch args[i] {
+				case "-t", "--timeout":
+					if i+1 < len(args) {
+						if t, err := strconv.Atoi(args[i+1]); err == nil {
+							options.Timeout = t
+						}
+						i++
+					}
+				case "-H", "--header":
+					if i+1 < len(args) {
+						parts := strings.SplitN(args[i+1], ":", 2)
+						if len(parts) == 2 {
+							options.CustomHeaders[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+						}
+						i++
+					}
+				case "-k", "--insecure":
+					options.SkipSSL = true
+				case "-A", "--user-agent":
+					if i+1 < len(args) {
+						options.UserAgent = args[i+1]
+						i++
+					}
+				case "--threads":
+					if i+1 < len(args) {
+						if t, err := strconv.Atoi(args[i+1]); err == nil {
+							options.Threads = t
+						}
+						i++
+					}
+				case "-w", "--wordlist":
+					if i+1 < len(args) {
+						options.WordlistPath = args[i+1]
+						i++
+					}
+				case "-m", "--methods":
+					if i+1 < len(args) {
+						options.TestMethods = strings.Split(args[i+1], ",")
+						i++
+					}
+				case "-v", "--verbose":
+					options.VerboseMode = true
+				case "--follow-redirects":
+					options.FollowRedirect = true
+				case "--cookie":
+					if i+1 < len(args) {
+						options.Cookies = args[i+1]
+						i++
+					}
+				case "--auth":
+					if i+1 < len(args) {
+						options.Authentication = args[i+1]
+						i++
+					}
+				case "-f", "--format":
+					if i+1 < len(args) {
+						options.OutputFormat = args[i+1]
+						i++
+					}
+				case "-o", "--output":
+					if i+1 < len(args) {
+						options.OutputFile = args[i+1]
+						i++
+					}
+				default:
+					if !strings.HasPrefix(args[i], "-") {
+						target = args[i]
+					}
+				}
+			}
+
+			if target == "" {
+				drawbox.PrintError("No target specified")
+				return
+			}
+
+			pentest.WebScan(target, options)
 
 		case "payload":
 			if len(args) < 3 {
