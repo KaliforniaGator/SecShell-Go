@@ -13,6 +13,7 @@ import (
 	"syscall"
 	"time"
 
+	"secshell/admin"
 	"secshell/colors"
 	"secshell/commands"
 	"secshell/core"
@@ -106,45 +107,6 @@ func (s *SecShell) getDate() {
 	now := time.Now()
 	drawbox.RunDrawbox(fmt.Sprintf("Current date: %s", now.Format("02-Jan-2006")), "bold_white")
 
-}
-
-// Check if the current user is in an admin group
-func isAdmin() bool {
-	currentUser, err := user.Current()
-	if err != nil {
-		logging.LogError(err)
-		return false // Fail-safe: assume not an admin
-	}
-
-	// Root (UID 0) is always an admin
-	if currentUser.Uid == "0" {
-		return true
-	}
-
-	// Get the user's group IDs
-	groups, err := currentUser.GroupIds()
-	if err != nil {
-		logging.LogError(err)
-		return false
-	}
-
-	// Define admin groups (adjust as needed)
-	adminGroups := []string{"sudo", "admin", "wheel", "root"}
-
-	// Check if the user belongs to an admin group
-	for _, groupID := range groups {
-		group, err := user.LookupGroupId(groupID)
-		if err == nil {
-			logging.LogError(err)
-			for _, adminGroup := range adminGroups {
-				if group.Name == adminGroup {
-					return true
-				}
-			}
-		}
-	}
-
-	return false
 }
 
 // Check if update is needed
@@ -621,7 +583,7 @@ func (s *SecShell) processCommand(input string) {
 
 		// Check if command requires admin privileges
 		if restrictedCommands[args[0]] {
-			if !isAdmin() {
+			if !admin.IsAdmin() {
 				logging.LogAlert(fmt.Sprintf("Permission denied: '%s' requires admin privileges", args[0]))
 				drawbox.PrintError(fmt.Sprintf("Permission denied: '%s' requires admin privileges", args[0]))
 				return
@@ -647,7 +609,7 @@ func (s *SecShell) processCommand(input string) {
 		case "--version":
 			update.DisplayVersion(s.versionFile)
 		case "--update":
-			update.UpdateSecShell(isAdmin(), s.versionFile)
+			update.UpdateSecShell(admin.IsAdmin(), s.versionFile)
 		case "services":
 			s.manageServices(args)
 		case "jobs":
@@ -728,7 +690,7 @@ func (s *SecShell) processCommand(input string) {
 						drawbox.PrintError("Failed to read log file")
 					}
 				case "clear":
-					err := logging.ClearLog(isAdmin())
+					err := logging.ClearLog(admin.IsAdmin())
 					if err != nil {
 						logging.LogError(err)
 						drawbox.PrintError("Failed to clear log file")
@@ -744,7 +706,7 @@ func (s *SecShell) processCommand(input string) {
 			core.ListWhitelistCommands()
 		case "edit-blacklist", "edit-whitelist", "reload-whitelist", "reload-blacklist", "exit":
 			// Require admin privileges for these commands
-			if !isAdmin() {
+			if !admin.IsAdmin() {
 				logging.LogAlert("Permission denied: Admin privileges required.")
 				drawbox.PrintError("Permission denied: Admin privileges required.")
 				return
@@ -1188,7 +1150,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 		// For sudo or su commands, we need more careful terminal handling
 		if args[0] == "sudo" || args[0] == "su" {
 			// Check if user is admin before allowing sudo/su
-			if !isAdmin() {
+			if !admin.IsAdmin() {
 				logging.LogAlert("Permission denied: Only admins can use sudo/su commands")
 				drawbox.PrintError("Permission denied: Only admins can use sudo/su commands")
 				return
@@ -1378,7 +1340,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 // isCommandAllowed checks if a command is allowed
 func (s *SecShell) isCommandAllowed(cmd string) bool {
 	// Bypass security checks for built-in commands
-	if isAdmin() && !securityEnabled {
+	if admin.IsAdmin() && !securityEnabled {
 		return true // Admins bypass whitelist
 	}
 
@@ -1418,7 +1380,7 @@ func (s *SecShell) isCommandAllowed(cmd string) bool {
 // isCommandBlacklisted checks if a command is blacklisted
 func (s *SecShell) isCommandBlacklisted(cmd string) bool {
 	// Bypass security checks for built-in commands
-	if isAdmin() && !securityEnabled {
+	if admin.IsAdmin() && !securityEnabled {
 		return false // Admins bypass blacklist
 	}
 
@@ -1434,7 +1396,7 @@ var securityEnabled = true
 
 // toggleSecurity prompts for a password before allowing admins to toggle security.
 func (s *SecShell) toggleSecurity() {
-	if !isAdmin() {
+	if !admin.IsAdmin() {
 		logging.LogAlert("Permission denied: Only admins can toggle security settings.")
 		drawbox.PrintError("Permission denied: Only admins can toggle security settings.")
 		return
@@ -1569,7 +1531,7 @@ func main() {
 			filepath.Join(configDir, ".blacklist"),
 			filepath.Join(configDir, ".whitelist"),
 		)
-		update.UpdateSecShell(isAdmin(), shell.versionFile)
+		update.UpdateSecShell(admin.IsAdmin(), shell.versionFile)
 		return
 	}
 
