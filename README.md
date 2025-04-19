@@ -31,8 +31,8 @@ ________________________________________________________________________________
 |                        | Usage: `allowed <dirs|commands|bins|builtins|all>`                                                  |
 | `help`                 | Show help message or help for a specific command.<br>Usage: `help [command]`                        |
 | `exit`                 | Exit the shell (admin only).                                                                        |
-| `services`             | Manage system services.<br>Usage: `services <start|stop|restart|status|list> <service_name>`        |
-| `jobs`                 | Manage background jobs.<br>Usage: `jobs <list|stop|start|status|clear-finished> [pid]`              |
+| `services`             | Manage system services.<br>Usage: `services <start,stop,restart,status,list> <service_name>`        |
+| `jobs`                 | Manage background jobs.<br>Usage: `jobs <list,stop,start,status,clear-finished> [pid]`              |
 | `cd`                   | Change directory.<br>Usage: `cd [directory]`                                                        |
 | `history`              | Show command history.<br>Usage: `history`, `history -s <query>`, `history -i`, `history clear`      |
 | `export`               | Set an environment variable.<br>Usage: `export VAR=value`                                           |
