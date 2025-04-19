@@ -81,7 +81,7 @@ func NewSecShell(blacklistPath, whitelistPath string) *SecShell {
 		historyFile: filepath.Join(filepath.Dir(blacklistPath), ".history"),
 		history:     []string{},
 	}
-	core.EnsureFilesExist(blacklistPath, whitelistPath, shell.versionFile, shell.historyFile)
+	core.EnsureFilesExist(blacklistPath, whitelistPath, shell.versionFile, shell.historyFile, logging.LogFile)
 	core.LoadBlacklist(blacklistPath)
 	core.LoadWhitelist(whitelistPath)
 	core.LoadHistory(shell.historyFile)

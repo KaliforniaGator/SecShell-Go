@@ -3,7 +3,6 @@ package admin
 import (
 	"os"
 	"os/user"
-	"secshell/logging"
 	"strconv"
 )
 
@@ -14,7 +13,6 @@ var AdminGroups = []string{"sudo", "admin", "wheel", "root"}
 func IsAdmin() bool {
 	currentUser, err := user.Current()
 	if err != nil {
-		logging.LogError(err)
 		return false // Fail-safe: assume not an admin
 	}
 
@@ -26,7 +24,6 @@ func IsAdmin() bool {
 	// Get the user's group IDs
 	groups, err := currentUser.GroupIds()
 	if err != nil {
-		logging.LogError(err)
 		return false
 	}
 
@@ -34,7 +31,6 @@ func IsAdmin() bool {
 	for _, groupID := range groups {
 		group, err := user.LookupGroupId(groupID)
 		if err != nil {
-			logging.LogError(err)
 			continue
 		}
 		for _, adminGroup := range AdminGroups {

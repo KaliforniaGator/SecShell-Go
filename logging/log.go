@@ -18,7 +18,7 @@ type LogEntry struct {
 	ErrorDetail string
 }
 
-var logFile = filepath.Join(core.GetExecutablePath(), ".secshell.log")
+var LogFile = filepath.Join(core.GetExecutablePath(), ".secshell.log")
 
 // Log a command execution
 func LogCommand(command string, exitCode int) error {
@@ -65,7 +65,7 @@ func LogAlert(alert string) error {
 
 // Save log entry to file
 func saveLog(entry LogEntry) error {
-	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(LogFile, os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %v", err)
 	}
@@ -105,7 +105,7 @@ func GetLogEntries() ([]string, error) {
 	LogEntries := []string{}
 
 	// Open the log file for reading
-	f, err := os.Open(logFile)
+	f, err := os.Open(LogFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// If file doesn't exist, return empty slice with no error
@@ -154,7 +154,7 @@ func ClearLog(isAdmin bool) error {
 		return fmt.Errorf("insufficient permissions: admin privileges required to clear logs")
 	}
 
-	f, err := os.OpenFile(logFile, os.O_TRUNC|os.O_WRONLY, 0644)
+	f, err := os.OpenFile(LogFile, os.O_TRUNC|os.O_WRONLY, 0644)
 	if err != nil {
 		LogError(err)
 		return fmt.Errorf("failed to open log file for clearing: %v", err)

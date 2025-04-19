@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"secshell/admin"
 	"secshell/drawbox"
 	"secshell/update"
 	"strings"
@@ -29,90 +30,71 @@ func GetExecutablePath() string {
 	return filepath.Join(homeDir, ".secshell") // Use ~/.secshell for config files
 }
 
-// ensureFilesExist checks and creates blacklist and whitelist files if they don't exist
-func EnsureFilesExist(blacklist, whitelist, version, history string) {
-	// Ensure the config directory exists
-	configDir := filepath.Dir(blacklist)
+// createSecureFile creates a file with admin-only permissions and writes initial content if provided
+func createSecureFile(filepath string, initialContent []string) error {
+	file, err := os.Create(filepath)
+	if err != nil {
+		return fmt.Errorf("failed to create file: %s", err)
+	}
+	defer file.Close()
+
+	// Write initial content if provided
+	if len(initialContent) > 0 {
+		for _, line := range initialContent {
+			if _, err := file.WriteString(line + "\n"); err != nil {
+				return fmt.Errorf("failed to write to file: %s", err)
+			}
+		}
+	}
+
+	// Set proper permissions
+	if err := admin.SetFilePermissions(filepath); err != nil {
+		return fmt.Errorf("failed to set file permissions: %s", err)
+	}
+
+	return nil
+}
+
+// EnsureFilesExist checks and creates blacklist and whitelist files if they don't exist
+func EnsureFilesExist(blacklist, whitelist, version, history, logfile string) {
+	// Ensure the .secshell directory exists with proper permissions
+	configDir := GetExecutablePath()
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		drawbox.PrintError(fmt.Sprintf("Failed to create config directory: %s", err))
 		return
 	}
-
-	// Ensure directory exists
-	exePath := GetExecutablePath()
-	if err := os.MkdirAll(exePath, 0755); err != nil {
-		drawbox.PrintError(fmt.Sprintf("Failed to create directory for config files: %s", err))
+	if err := admin.SetFolderPermissions(configDir); err != nil {
+		drawbox.PrintError(fmt.Sprintf("Failed to set directory permissions: %s", err))
 		return
 	}
 
-	// Create blacklist if it doesn't exist
-	if _, err := os.Stat(blacklist); os.IsNotExist(err) {
-		file, err := os.Create(blacklist)
-		if err != nil {
-			drawbox.PrintError(fmt.Sprintf("Failed to create blacklist file: %s", err))
-		} else {
-			file.Close()
-			drawbox.PrintAlert(fmt.Sprintf("Created new blacklist file at %s", blacklist))
-		}
+	// Create files if they don't exist
+	files := map[string][]string{
+		blacklist: {},               // Empty blacklist
+		whitelist: DefaultWhitelist, // Default whitelist commands
+		version:   {},               // Empty version file
+		history:   {},               // Empty history file
+		logfile:   {},               // Empty log file
 	}
 
-	// Create/update whitelist if needed
-	if _, err := os.Stat(whitelist); os.IsNotExist(err) {
-		file, err := os.Create(whitelist)
-		if err != nil {
-			drawbox.PrintError(fmt.Sprintf("Failed to create whitelist file: %s", err))
-		} else {
-			for _, cmd := range DefaultWhitelist {
-				file.WriteString(cmd + "\n")
+	for filepath, content := range files {
+		if _, err := os.Stat(filepath); os.IsNotExist(err) {
+			if err := createSecureFile(filepath, content); err != nil {
+				drawbox.PrintError(fmt.Sprintf("Failed to create %s: %s", filepath, err))
+				continue
 			}
-			file.Close()
-			drawbox.PrintAlert(fmt.Sprintf("Created new whitelist file at %s with default commands", whitelist))
-		}
-	} else {
-		// Update existing whitelist with any missing default commands
-		existingCommands := make(map[string]bool)
-		file, err := os.OpenFile(whitelist, os.O_RDWR|os.O_APPEND, 0666)
-		if err != nil {
-			drawbox.PrintError(fmt.Sprintf("Failed to open whitelist file: %s", err))
-			return
-		}
-		defer file.Close()
+			drawbox.PrintAlert(fmt.Sprintf("Created new file at %s", filepath))
 
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			existingCommands[scanner.Text()] = true
-		}
-
-		for _, cmd := range DefaultWhitelist {
-			if !existingCommands[cmd] {
-				file.WriteString(cmd + "\n")
+			// Special handling for version file
+			if filepath == version {
+				update.UpdateVersionFile(update.GetLatestVersion(), version)
+				update.CheckForUpdates(version)
 			}
 		}
 	}
 
-	// Create version file if it doesn't exist
-	if _, err := os.Stat(version); os.IsNotExist(err) {
-		file, err := os.Create(version)
-		if err != nil {
-			drawbox.PrintError(fmt.Sprintf("Failed to create version file: %s", err))
-		} else {
-			file.Close()
-			update.UpdateVersionFile(update.DefaultVersion, version)
-			drawbox.PrintAlert(fmt.Sprintf("Created new version file at %s", version))
-		}
-	}
+	// Check for updates after ensuring version file exists
 	update.CheckForUpdates(version)
-
-	// Create History file if it doesn't exist
-	if _, err := os.Stat(history); os.IsNotExist(err) {
-		file, err := os.Create(history)
-		if err != nil {
-			drawbox.PrintError(fmt.Sprintf("Failed to create history file: %s", err))
-		} else {
-			file.Close()
-			drawbox.PrintAlert(fmt.Sprintf("Created new history file at %s", history))
-		}
-	}
 }
 
 // Load History loads command history from a file
