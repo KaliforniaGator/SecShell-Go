@@ -13,12 +13,14 @@ import (
 	"syscall"
 	"time"
 
+	"secshell/admin"
 	"secshell/colors"
 	"secshell/commands"
 	"secshell/core"
 	"secshell/download"
 	"secshell/drawbox"
 	"secshell/env"
+	"secshell/globals"
 	"secshell/help"
 	"secshell/jobs"
 	"secshell/logging"
@@ -58,39 +60,29 @@ type SecShell struct {
 	historyIndex        int
 }
 
-// Define a list of built-in commands
-var builtInCommands = []string{
-	"allowed", "help", "exit", "services", "jobs", "cd", "history", "export", "env", "unset",
-	"reload-blacklist", "blacklist", "edit-blacklist", "whitelist", "edit-whitelist",
-	"reload-whitelist", "download", "time", "date", "--version", "--update",
-	// Add pentesting commands
-	"portscan", "hostscan", "webscan", "payload", "session"}
-
-var trustedDirs = []string{"/usr/bin/", "/bin/", "/opt/", "/usr/local/bin/"}
-
 // NewSecShell initializes a new SecShell instance
 func NewSecShell(blacklistPath, whitelistPath string) *SecShell {
 	shell := &SecShell{
 		jobs:        make(map[int]*jobs.Job),
 		running:     true,
-		allowedDirs: trustedDirs,
-		blacklist:   blacklistPath,
-		whitelist:   whitelistPath,
-		versionFile: filepath.Join(filepath.Dir(blacklistPath), ".ver"),
-		historyFile: filepath.Join(filepath.Dir(blacklistPath), ".history"),
+		allowedDirs: globals.TrustedDirs,
+		blacklist:   globals.BlacklistPath,
+		whitelist:   globals.WhitelistPath,
+		versionFile: globals.VersionPath,
+		historyFile: globals.HistoryPath,
 		history:     []string{},
 	}
-	core.EnsureFilesExist(blacklistPath, whitelistPath, shell.versionFile, shell.historyFile)
-	core.LoadBlacklist(blacklistPath)
-	core.LoadWhitelist(whitelistPath)
-	core.LoadHistory(shell.historyFile)
+	core.EnsureFilesExist(globals.BlacklistPath, globals.WhitelistPath, globals.VersionPath, globals.HistoryPath, logging.LogFile)
+	core.LoadBlacklist(globals.BlacklistPath)
+	core.LoadWhitelist(globals.WhitelistPath)
+	core.LoadHistory(globals.HistoryPath)
 
 	shell.blacklistedCommands = core.BlacklistedCommands
 	shell.allowedCommands = core.AllowedCommands
 	shell.history = core.History
 	commands.AllowedCommands = core.AllowedCommands
-	commands.BuiltInCommands = builtInCommands
-	commands.AllowedDirs = trustedDirs
+	commands.BuiltInCommands = globals.BuiltInCommands
+	commands.AllowedDirs = globals.TrustedDirs
 	commands.Init()
 	return shell
 }
@@ -106,45 +98,6 @@ func (s *SecShell) getDate() {
 	now := time.Now()
 	drawbox.RunDrawbox(fmt.Sprintf("Current date: %s", now.Format("02-Jan-2006")), "bold_white")
 
-}
-
-// Check if the current user is in an admin group
-func isAdmin() bool {
-	currentUser, err := user.Current()
-	if err != nil {
-		logging.LogError(err)
-		return false // Fail-safe: assume not an admin
-	}
-
-	// Root (UID 0) is always an admin
-	if currentUser.Uid == "0" {
-		return true
-	}
-
-	// Get the user's group IDs
-	groups, err := currentUser.GroupIds()
-	if err != nil {
-		logging.LogError(err)
-		return false
-	}
-
-	// Define admin groups (adjust as needed)
-	adminGroups := []string{"sudo", "admin", "wheel", "root"}
-
-	// Check if the user belongs to an admin group
-	for _, groupID := range groups {
-		group, err := user.LookupGroupId(groupID)
-		if err == nil {
-			logging.LogError(err)
-			for _, adminGroup := range adminGroups {
-				if group.Name == adminGroup {
-					return true
-				}
-			}
-		}
-	}
-
-	return false
 }
 
 // Check if update is needed
@@ -606,6 +559,15 @@ func (s *SecShell) processCommand(input string) {
 			return
 		}
 
+		// Check if command requires admin privileges
+		if globals.RestrictedCommands[args[0]] {
+			if !admin.IsAdmin() {
+				logging.LogAlert(fmt.Sprintf("Permission denied: '%s' requires admin privileges", args[0]))
+				drawbox.PrintError(fmt.Sprintf("Permission denied: '%s' requires admin privileges", args[0]))
+				return
+			}
+		}
+
 		background := false
 		if args[len(args)-1] == "&" {
 			background = true
@@ -625,7 +587,7 @@ func (s *SecShell) processCommand(input string) {
 		case "--version":
 			update.DisplayVersion(s.versionFile)
 		case "--update":
-			update.UpdateSecShell(isAdmin(), s.versionFile)
+			update.UpdateSecShell(admin.IsAdmin(), s.versionFile)
 		case "services":
 			s.manageServices(args)
 		case "jobs":
@@ -706,7 +668,7 @@ func (s *SecShell) processCommand(input string) {
 						drawbox.PrintError("Failed to read log file")
 					}
 				case "clear":
-					err := logging.ClearLog(isAdmin())
+					err := logging.ClearLog(admin.IsAdmin())
 					if err != nil {
 						logging.LogError(err)
 						drawbox.PrintError("Failed to clear log file")
@@ -722,7 +684,7 @@ func (s *SecShell) processCommand(input string) {
 			core.ListWhitelistCommands()
 		case "edit-blacklist", "edit-whitelist", "reload-whitelist", "reload-blacklist", "exit":
 			// Require admin privileges for these commands
-			if !isAdmin() {
+			if !admin.IsAdmin() {
 				logging.LogAlert("Permission denied: Admin privileges required.")
 				drawbox.PrintError("Permission denied: Admin privileges required.")
 				return
@@ -746,14 +708,71 @@ func (s *SecShell) processCommand(input string) {
 			download.DownloadFiles(args)
 		case "portscan":
 			if len(args) < 2 {
-				drawbox.PrintError("Usage: portscan <target> [port-range]")
+				drawbox.PrintError("Usage: portscan [-p ports] [-udp] [-t timing] [-v] [-j|-html] [-o file] [-syn] [-os] [-e] <target>")
 				return
 			}
-			portRange := ""
-			if len(args) >= 3 {
-				portRange = args[2]
+
+			options := &pentest.ScanOptions{
+				Protocol:       "tcp",
+				Timing:         3,
+				ShowVersion:    false,
+				Format:         "text",
+				OutputFile:     "",
+				SynScan:        false,
+				DetectOS:       false,
+				EnhancedDetect: false,
 			}
-			pentest.RunPortScan(args[1], portRange)
+
+			target := ""
+			portRange := ""
+
+			// Parse arguments
+			for i := 1; i < len(args); i++ {
+				switch args[i] {
+				case "-p":
+					if i+1 < len(args) {
+						portRange = args[i+1]
+						i++
+					}
+				case "-udp":
+					options.Protocol = "udp"
+				case "-t":
+					if i+1 < len(args) {
+						if t, err := strconv.Atoi(args[i+1]); err == nil && t >= 1 && t <= 5 {
+							options.Timing = t
+							i++
+						}
+					}
+				case "-v":
+					options.ShowVersion = true
+				case "-j":
+					options.Format = "json"
+				case "-html":
+					options.Format = "html"
+				case "-syn":
+					options.SynScan = true
+				case "-os":
+					options.DetectOS = true
+				case "-e":
+					options.EnhancedDetect = true
+				case "-o":
+					if i+1 < len(args) {
+						options.OutputFile = args[i+1]
+						i++
+					}
+				default:
+					if !strings.HasPrefix(args[i], "-") {
+						target = args[i]
+					}
+				}
+			}
+
+			if target == "" {
+				drawbox.PrintError("No target specified")
+				return
+			}
+
+			pentest.RunPortScan(target, portRange, options)
 
 		case "hostscan":
 			if len(args) < 2 {
@@ -764,10 +783,99 @@ func (s *SecShell) processCommand(input string) {
 
 		case "webscan":
 			if len(args) < 2 {
-				drawbox.PrintError("Usage: webscan <url>")
+				help.DisplayHelp("webscan")
 				return
 			}
-			pentest.WebScan(args[1])
+
+			options := &pentest.WebScanOptions{
+				Timeout:       10,
+				Threads:       10,
+				CustomHeaders: make(map[string]string),
+				SkipSSL:       false,
+				MaxDepth:      5,
+				TestMethods:   []string{"GET", "POST", "HEAD"},
+				SafetyChecks:  true,
+			}
+
+			target := ""
+			for i := 1; i < len(args); i++ {
+				switch args[i] {
+				case "-t", "--timeout":
+					if i+1 < len(args) {
+						if t, err := strconv.Atoi(args[i+1]); err == nil {
+							options.Timeout = t
+						}
+						i++
+					}
+				case "-H", "--header":
+					if i+1 < len(args) {
+						parts := strings.SplitN(args[i+1], ":", 2)
+						if len(parts) == 2 {
+							options.CustomHeaders[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+						}
+						i++
+					}
+				case "-k", "--insecure":
+					options.SkipSSL = true
+				case "-A", "--user-agent":
+					if i+1 < len(args) {
+						options.UserAgent = args[i+1]
+						i++
+					}
+				case "--threads":
+					if i+1 < len(args) {
+						if t, err := strconv.Atoi(args[i+1]); err == nil {
+							options.Threads = t
+						}
+						i++
+					}
+				case "-w", "--wordlist":
+					if i+1 < len(args) {
+						options.WordlistPath = args[i+1]
+						i++
+					}
+				case "-m", "--methods":
+					if i+1 < len(args) {
+						options.TestMethods = strings.Split(args[i+1], ",")
+						i++
+					}
+				case "-v", "--verbose":
+					options.VerboseMode = true
+				case "--follow-redirects":
+					options.FollowRedirect = true
+				case "--cookie":
+					if i+1 < len(args) {
+						options.Cookies = args[i+1]
+						i++
+					}
+				case "--auth":
+					if i+1 < len(args) {
+						options.Authentication = args[i+1]
+						i++
+					}
+				case "-f", "--format":
+					if i+1 < len(args) {
+						options.OutputFormat = args[i+1]
+						i++
+					}
+				case "-o", "--output":
+					if i+1 < len(args) {
+						options.OutputFile = args[i+1]
+						i++
+					}
+				default:
+					if !strings.HasPrefix(args[i], "-") {
+						target = args[i]
+					}
+				}
+			}
+
+			if target == "" {
+				drawbox.PrintError("No target specified")
+				return
+			}
+
+			pentest.WebScan(target, options)
 
 		case "payload":
 			if len(args) < 3 {
@@ -978,7 +1086,7 @@ func isTerminalEditor(cmd string) bool {
 // Check if command needs terminal reset
 func needsTerminalReset(cmd string) bool {
 	// Commands that need direct terminal access
-	return cmd == "sudo" || isTerminalEditor(cmd)
+	return cmd == "sudo" || cmd == "su" || isTerminalEditor(cmd)
 }
 
 // executeSystemCommand executes a system command
@@ -1017,27 +1125,40 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 		// Reset terminal to normal mode for password input
 		term.Restore(int(os.Stdin.Fd()), oldState)
 
-		// For sudo commands, we need more careful terminal handling
-		if args[0] == "sudo" {
-			// Execute sudo in a way that properly handles the password prompt
+		// For sudo or su commands, we need more careful terminal handling
+		if args[0] == "sudo" || args[0] == "su" {
+			// Check if user is admin before allowing sudo/su
+			if !admin.IsAdmin() {
+				logging.LogAlert("Permission denied: Only admins can use sudo/su commands")
+				drawbox.PrintError("Permission denied: Only admins can use sudo/su commands")
+				return
+			}
+
+			// Execute sudo/su in a way that properly handles the password prompt
 			cmd := exec.Command(args[0], args[1:]...)
 			cmd.Stdin = os.Stdin
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 
-			// Simple process group setup without Setsid
-			cmd.SysProcAttr = &syscall.SysProcAttr{
-				Setpgid: false, // Don't create a new process group for sudo
+			// Different process group handling for su vs sudo
+			if args[0] == "su" {
+				// For su, we need to create a new session
+				cmd.SysProcAttr = &syscall.SysProcAttr{
+					Setsid:  true,  // Create new session
+					Setpgid: false, // Don't create process group
+				}
+			} else {
+				// For sudo, keep existing behavior
+				cmd.SysProcAttr = &syscall.SysProcAttr{
+					Setpgid: false,
+				}
 			}
 
-			// Run the command directly - this gives sudo full control of the terminal
+			// Run the command directly
 			err = cmd.Run()
 
 			// Get a new terminal state after command completes
 			_, _ = term.GetState(int(os.Stdin.Fd()))
-
-			// After sudo exits, clear screen
-			//fmt.Print("\033[H\033[2J")
 
 			if err != nil && !isSignalKilled(err) {
 				logging.LogError(err)
@@ -1197,7 +1318,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 // isCommandAllowed checks if a command is allowed
 func (s *SecShell) isCommandAllowed(cmd string) bool {
 	// Bypass security checks for built-in commands
-	if isAdmin() && !securityEnabled {
+	if admin.IsAdmin() && !securityEnabled {
 		return true // Admins bypass whitelist
 	}
 
@@ -1237,7 +1358,7 @@ func (s *SecShell) isCommandAllowed(cmd string) bool {
 // isCommandBlacklisted checks if a command is blacklisted
 func (s *SecShell) isCommandBlacklisted(cmd string) bool {
 	// Bypass security checks for built-in commands
-	if isAdmin() && !securityEnabled {
+	if admin.IsAdmin() && !securityEnabled {
 		return false // Admins bypass blacklist
 	}
 
@@ -1253,7 +1374,7 @@ var securityEnabled = true
 
 // toggleSecurity prompts for a password before allowing admins to toggle security.
 func (s *SecShell) toggleSecurity() {
-	if !isAdmin() {
+	if !admin.IsAdmin() {
 		logging.LogAlert("Permission denied: Only admins can toggle security settings.")
 		drawbox.PrintError("Permission denied: Only admins can toggle security settings.")
 		return
@@ -1373,35 +1494,24 @@ func isSignalKilled(err error) bool {
 func main() {
 	// Check for version flags
 	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
-		configDir := core.GetExecutablePath()
-		shell := NewSecShell(
-			filepath.Join(configDir, ".blacklist"),
-			filepath.Join(configDir, ".whitelist"),
-		)
+		shell := NewSecShell(globals.BlacklistPath, globals.WhitelistPath)
 		update.DisplayVersion(shell.versionFile)
 		return
 	}
 	// Check for update flag
 	if len(os.Args) > 1 && os.Args[1] == "--update" {
-		configDir := core.GetExecutablePath()
-		shell := NewSecShell(
-			filepath.Join(configDir, ".blacklist"),
-			filepath.Join(configDir, ".whitelist"),
-		)
-		update.UpdateSecShell(isAdmin(), shell.versionFile)
+		shell := NewSecShell(globals.BlacklistPath, globals.WhitelistPath)
+		update.UpdateSecShell(admin.IsAdmin(), shell.versionFile)
 		return
 	}
 
 	// Create config directory if it doesn't exist
-	configDir := core.GetExecutablePath()
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(globals.ConfigDir, 0755); err != nil {
 		logging.LogError(err)
 		fmt.Printf("Failed to create config directory: %s\n", err)
 		return
 	}
 
-	blacklistPath := filepath.Join(configDir, ".blacklist")
-	whitelistPath := filepath.Join(configDir, ".whitelist")
-	shell := NewSecShell(blacklistPath, whitelistPath)
+	shell := NewSecShell(globals.BlacklistPath, globals.WhitelistPath)
 	shell.run()
 }
