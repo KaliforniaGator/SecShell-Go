@@ -3,8 +3,10 @@ package help
 import (
 	"fmt"
 	"os"
+	"secshell/admin"
 	"secshell/colors"
 	"secshell/drawbox"
+	"secshell/globals"
 	"strings"
 )
 
@@ -40,6 +42,7 @@ var HelpCommands = []string{
 	"--version",
 	"--update",
 	"logs",
+	"toggle-security",
 	"portscan",
 	"hostscan",
 	"webscan",
@@ -302,7 +305,10 @@ func DisplayHelp(args ...string) {
 
 	// Add all commands to their respective categories
 	for cmd, topic := range HelpTopics {
-		commandsByCategory[topic.Category] = append(commandsByCategory[topic.Category], cmd)
+		// Only add commands that the user has permission to see
+		if admin.IsAdmin() || globals.IsCommandAllowed(cmd) {
+			commandsByCategory[topic.Category] = append(commandsByCategory[topic.Category], cmd)
+		}
 	}
 
 	// Print commands by category
@@ -330,7 +336,7 @@ func DisplayHelp(args ...string) {
 	}
 
 	fmt.Printf("\n%sAllowed System Commands:%s\n", colors.Cyan, colors.Reset)
-	fmt.Println("  ls, ps, netstat, tcpdump, cd, clear, ifconfig")
+	fmt.Println("  ls, ps, netstat, tcpdump, clear, ifconfig")
 
 	fmt.Printf("\n%sSecurity Features:%s\n", colors.Cyan, colors.Reset)
 	fmt.Println("  - Command whitelisting")
@@ -353,6 +359,12 @@ func displayCommandHelp(command string) {
 
 	if !exists {
 		fmt.Fprintf(os.Stdout, "No help available for command: %s\n", command)
+		return
+	}
+
+	// Check if user has permission to view this command's help
+	if !admin.IsAdmin() && !globals.IsCommandAllowed(command) {
+		fmt.Fprintf(os.Stdout, "Access denied: This command requires admin privileges\n")
 		return
 	}
 

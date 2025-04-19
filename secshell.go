@@ -20,6 +20,7 @@ import (
 	"secshell/download"
 	"secshell/drawbox"
 	"secshell/env"
+	"secshell/globals"
 	"secshell/help"
 	"secshell/jobs"
 	"secshell/logging"
@@ -59,39 +60,29 @@ type SecShell struct {
 	historyIndex        int
 }
 
-// Define a list of built-in commands
-var builtInCommands = []string{
-	"allowed", "help", "exit", "services", "jobs", "cd", "history", "export", "env", "unset",
-	"reload-blacklist", "blacklist", "edit-blacklist", "whitelist", "edit-whitelist",
-	"reload-whitelist", "download", "time", "date", "--version", "--update",
-	// Add pentesting commands
-	"portscan", "hostscan", "webscan", "payload", "session"}
-
-var trustedDirs = []string{"/usr/bin/", "/bin/", "/opt/", "/usr/local/bin/"}
-
 // NewSecShell initializes a new SecShell instance
 func NewSecShell(blacklistPath, whitelistPath string) *SecShell {
 	shell := &SecShell{
 		jobs:        make(map[int]*jobs.Job),
 		running:     true,
-		allowedDirs: trustedDirs,
-		blacklist:   blacklistPath,
-		whitelist:   whitelistPath,
-		versionFile: filepath.Join(filepath.Dir(blacklistPath), ".ver"),
-		historyFile: filepath.Join(filepath.Dir(blacklistPath), ".history"),
+		allowedDirs: globals.TrustedDirs,
+		blacklist:   globals.BlacklistPath,
+		whitelist:   globals.WhitelistPath,
+		versionFile: globals.VersionPath,
+		historyFile: globals.HistoryPath,
 		history:     []string{},
 	}
-	core.EnsureFilesExist(blacklistPath, whitelistPath, shell.versionFile, shell.historyFile, logging.LogFile)
-	core.LoadBlacklist(blacklistPath)
-	core.LoadWhitelist(whitelistPath)
-	core.LoadHistory(shell.historyFile)
+	core.EnsureFilesExist(globals.BlacklistPath, globals.WhitelistPath, globals.VersionPath, globals.HistoryPath, logging.LogFile)
+	core.LoadBlacklist(globals.BlacklistPath)
+	core.LoadWhitelist(globals.WhitelistPath)
+	core.LoadHistory(globals.HistoryPath)
 
 	shell.blacklistedCommands = core.BlacklistedCommands
 	shell.allowedCommands = core.AllowedCommands
 	shell.history = core.History
 	commands.AllowedCommands = core.AllowedCommands
-	commands.BuiltInCommands = builtInCommands
-	commands.AllowedDirs = trustedDirs
+	commands.BuiltInCommands = globals.BuiltInCommands
+	commands.AllowedDirs = globals.TrustedDirs
 	commands.Init()
 	return shell
 }
@@ -532,19 +523,6 @@ func (s *SecShell) processCommand(input string) {
 		return
 	}
 
-	// Restricted commands that require admin privileges
-	restrictedCommands := map[string]bool{
-		"logs":            true,
-		"export":          true,
-		"unset":           true,
-		"toggle-security": true,
-		"portscan":        true,
-		"hostscan":        true,
-		"webscan":         true,
-		"payload":         true,
-		"session":         true,
-	}
-
 	// Handle history execution with ! prefix
 	if strings.HasPrefix(input, "!") {
 		if input == "!!" {
@@ -582,7 +560,7 @@ func (s *SecShell) processCommand(input string) {
 		}
 
 		// Check if command requires admin privileges
-		if restrictedCommands[args[0]] {
+		if globals.RestrictedCommands[args[0]] {
 			if !admin.IsAdmin() {
 				logging.LogAlert(fmt.Sprintf("Permission denied: '%s' requires admin privileges", args[0]))
 				drawbox.PrintError(fmt.Sprintf("Permission denied: '%s' requires admin privileges", args[0]))
@@ -1516,35 +1494,24 @@ func isSignalKilled(err error) bool {
 func main() {
 	// Check for version flags
 	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
-		configDir := core.GetExecutablePath()
-		shell := NewSecShell(
-			filepath.Join(configDir, ".blacklist"),
-			filepath.Join(configDir, ".whitelist"),
-		)
+		shell := NewSecShell(globals.BlacklistPath, globals.WhitelistPath)
 		update.DisplayVersion(shell.versionFile)
 		return
 	}
 	// Check for update flag
 	if len(os.Args) > 1 && os.Args[1] == "--update" {
-		configDir := core.GetExecutablePath()
-		shell := NewSecShell(
-			filepath.Join(configDir, ".blacklist"),
-			filepath.Join(configDir, ".whitelist"),
-		)
+		shell := NewSecShell(globals.BlacklistPath, globals.WhitelistPath)
 		update.UpdateSecShell(admin.IsAdmin(), shell.versionFile)
 		return
 	}
 
 	// Create config directory if it doesn't exist
-	configDir := core.GetExecutablePath()
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(globals.ConfigDir, 0755); err != nil {
 		logging.LogError(err)
 		fmt.Printf("Failed to create config directory: %s\n", err)
 		return
 	}
 
-	blacklistPath := filepath.Join(configDir, ".blacklist")
-	whitelistPath := filepath.Join(configDir, ".whitelist")
-	shell := NewSecShell(blacklistPath, whitelistPath)
+	shell := NewSecShell(globals.BlacklistPath, globals.WhitelistPath)
 	shell.run()
 }

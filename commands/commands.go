@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"secshell/admin"
 	"secshell/core"
+	"secshell/globals"
 	"secshell/help"
 	"secshell/sanitize"
 	"secshell/ui"
@@ -165,12 +167,20 @@ func getCommandMatches(prefix string) []string {
 
 // Print Program Commands
 func PrintProgramCommands() {
+	if !admin.IsAdmin() {
+		fmt.Println("Access denied: Admin privileges required to view all program commands")
+		return
+	}
 	fmt.Println("Program Commands:")
 	core.More(ProgramCommands)
 }
 
 // Print Allowed Directories
 func PrintAllowedDirs() {
+	if !admin.IsAdmin() {
+		fmt.Println("Access denied: Admin privileges required to view allowed directories")
+		return
+	}
 	fmt.Println("Allowed Directories:")
 	for _, dir := range AllowedDirs {
 		fmt.Println(" - " + dir)
@@ -181,7 +191,9 @@ func PrintAllowedDirs() {
 func PrintAllowedCommands() {
 	fmt.Println("Allowed Commands:")
 	for _, cmd := range AllowedCommands {
-		fmt.Println(" - " + cmd)
+		if admin.IsAdmin() || globals.IsCommandAllowed(cmd) {
+			fmt.Println(" - " + cmd)
+		}
 	}
 }
 
@@ -189,25 +201,33 @@ func PrintAllowedCommands() {
 func PrintBuiltInCommands() {
 	fmt.Println("Built-in Commands:")
 	for _, cmd := range BuiltInCommands {
-		fmt.Println(" - " + cmd)
+		if admin.IsAdmin() || globals.IsCommandAllowed(cmd) {
+			fmt.Println(" - " + cmd)
+		}
 	}
 }
 
 // Print All Commands
 func PrintAllCommands() {
-	fmt.Println(("Allowed Directories:"))
-	ui.NewLine()
-	for _, cmd := range AllowedDirs {
-		fmt.Println(" - " + cmd)
+	if admin.IsAdmin() {
+		fmt.Println("Allowed Directories:")
+		ui.NewLine()
+		for _, dir := range AllowedDirs {
+			fmt.Println(" - " + dir)
+		}
 	}
-	fmt.Println("All Commands:")
+	fmt.Println("Available Commands:")
 	ui.NewLine()
 	for _, cmd := range AllowedCommands {
-		fmt.Println(" - " + cmd)
+		if admin.IsAdmin() || globals.IsCommandAllowed(cmd) {
+			fmt.Println(" - " + cmd)
+		}
 	}
 	fmt.Println("Built-In Commands:")
 	ui.NewLine()
 	for _, cmd := range BuiltInCommands {
-		fmt.Println(" - " + cmd)
+		if admin.IsAdmin() || globals.IsCommandAllowed(cmd) {
+			fmt.Println(" - " + cmd)
+		}
 	}
 }
