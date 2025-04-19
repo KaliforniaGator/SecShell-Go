@@ -570,6 +570,19 @@ func (s *SecShell) processCommand(input string) {
 		return
 	}
 
+	// Restricted commands that require admin privileges
+	restrictedCommands := map[string]bool{
+		"logs":            true,
+		"export":          true,
+		"unset":           true,
+		"toggle-security": true,
+		"portscan":        true,
+		"hostscan":        true,
+		"webscan":         true,
+		"payload":         true,
+		"session":         true,
+	}
+
 	// Handle history execution with ! prefix
 	if strings.HasPrefix(input, "!") {
 		if input == "!!" {
@@ -604,6 +617,15 @@ func (s *SecShell) processCommand(input string) {
 		args := strings.Fields(splitCommands[0])
 		if len(args) == 0 {
 			return
+		}
+
+		// Check if command requires admin privileges
+		if restrictedCommands[args[0]] {
+			if !isAdmin() {
+				logging.LogAlert(fmt.Sprintf("Permission denied: '%s' requires admin privileges", args[0]))
+				drawbox.PrintError(fmt.Sprintf("Permission denied: '%s' requires admin privileges", args[0]))
+				return
+			}
 		}
 
 		background := false
@@ -1124,7 +1146,7 @@ func isTerminalEditor(cmd string) bool {
 // Check if command needs terminal reset
 func needsTerminalReset(cmd string) bool {
 	// Commands that need direct terminal access
-	return cmd == "sudo" || isTerminalEditor(cmd)
+	return cmd == "sudo" || cmd == "su" || isTerminalEditor(cmd)
 }
 
 // executeSystemCommand executes a system command
@@ -1163,27 +1185,40 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 		// Reset terminal to normal mode for password input
 		term.Restore(int(os.Stdin.Fd()), oldState)
 
-		// For sudo commands, we need more careful terminal handling
-		if args[0] == "sudo" {
-			// Execute sudo in a way that properly handles the password prompt
+		// For sudo or su commands, we need more careful terminal handling
+		if args[0] == "sudo" || args[0] == "su" {
+			// Check if user is admin before allowing sudo/su
+			if !isAdmin() {
+				logging.LogAlert("Permission denied: Only admins can use sudo/su commands")
+				drawbox.PrintError("Permission denied: Only admins can use sudo/su commands")
+				return
+			}
+
+			// Execute sudo/su in a way that properly handles the password prompt
 			cmd := exec.Command(args[0], args[1:]...)
 			cmd.Stdin = os.Stdin
 			cmd.Stdout = os.Stdout
 			cmd.Stderr = os.Stderr
 
-			// Simple process group setup without Setsid
-			cmd.SysProcAttr = &syscall.SysProcAttr{
-				Setpgid: false, // Don't create a new process group for sudo
+			// Different process group handling for su vs sudo
+			if args[0] == "su" {
+				// For su, we need to create a new session
+				cmd.SysProcAttr = &syscall.SysProcAttr{
+					Setsid:  true,  // Create new session
+					Setpgid: false, // Don't create process group
+				}
+			} else {
+				// For sudo, keep existing behavior
+				cmd.SysProcAttr = &syscall.SysProcAttr{
+					Setpgid: false,
+				}
 			}
 
-			// Run the command directly - this gives sudo full control of the terminal
+			// Run the command directly
 			err = cmd.Run()
 
 			// Get a new terminal state after command completes
 			_, _ = term.GetState(int(os.Stdin.Fd()))
-
-			// After sudo exits, clear screen
-			//fmt.Print("\033[H\033[2J")
 
 			if err != nil && !isSignalKilled(err) {
 				logging.LogError(err)
