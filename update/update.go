@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	DefaultVersion = "1.0.0" // Default version if not specified
+	DefaultVersion = "1.2.2" // Default version if not specified
 	// Update script URL
 	UpdateScript = "https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/refs/heads/main/update.sh"
 	// Version URL
