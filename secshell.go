@@ -1126,7 +1126,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 		term.Restore(int(os.Stdin.Fd()), oldState)
 
 		// For sudo or su commands, we need more careful terminal handling
-		if args[0] == "sudo" || args[0] == "su" {
+		if args[0] == "sudo" || args[0] == "su" || isTerminalEditor(args[0]) {
 			// Check if user is admin before allowing sudo/su
 			if !admin.IsAdmin() {
 				logging.LogAlert("Permission denied: Only admins can use sudo/su commands")
@@ -1163,6 +1163,11 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 			if err != nil && !isSignalKilled(err) {
 				logging.LogError(err)
 				drawbox.PrintError(fmt.Sprintf("Command execution failed: %s", err))
+			}
+
+			if isTerminalEditor(args[0]) {
+				// If the command is an editor, we need to restore the terminal state
+				term.Restore(int(os.Stdin.Fd()), oldState)
 			}
 		} else {
 			// Handle other terminal-dependent commands normally
