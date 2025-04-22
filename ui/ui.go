@@ -7,7 +7,6 @@ import (
 	"secshell/drawbox"
 )
 
-// Add this after the printError method and before main:
 func DisplayWelcomeScreen(version string, needsUpdate bool) {
 	// Check for Update
 	versionIcon := ""
@@ -53,7 +52,6 @@ func DisplayWelcomeScreen(version string, needsUpdate bool) {
 	fmt.Printf("\n%sType 'help' for available commands%s\n\n", colors.BoldCyan, colors.Reset)
 }
 
-// Change the displayPrompt function:
 func DisplayPrompt() {
 	user := os.Getenv("USER")
 	if user == "" {
@@ -84,14 +82,12 @@ func DisplayPrompt() {
 	fmt.Printf("%s╰─%s$ %s", frameColor, colors.BoldWhite, textReset)
 }
 
-// Print only top:
 func ClearLine() {
 	// Clear the entire current line and return carriage
 	fmt.Print("\033[2K\r")
 
 }
 
-// Add this new method:
 func ClearLineAndPrintBottom() {
 	// Clear the entire current line and return carriage
 	fmt.Print("\033[2K\r")
