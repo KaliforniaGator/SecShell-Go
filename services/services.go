@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"secshell/drawbox"
 	"secshell/logging"
+	"secshell/ui/gui"
 	"strconv"
 	"strings"
 )
@@ -16,10 +16,10 @@ func runCommand(command string) {
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		logging.LogError(err)
-		drawbox.PrintError("Failed to execute service command: " + err.Error())
+		gui.ErrorBox("Failed to execute service command: " + err.Error())
 	} else {
 		logging.LogAlert("Service command executed successfully.")
-		drawbox.PrintAlert("Service command executed successfully.")
+		gui.AlertBox("Service command executed successfully.")
 	}
 }
 
@@ -31,21 +31,21 @@ func RunServicesCommand(action string, serviceName string) {
 	case "list":
 		GetServices()
 	case "status":
-		drawbox.RunDrawbox("Service Status", "bold_white")
+		gui.TitleBox("Service Status")
 		command = "systemctl status " + serviceName
 	case "start":
-		drawbox.RunDrawbox("Starting Service", "bold_white")
+		gui.TitleBox("Starting Service")
 		command = "sudo systemctl start " + serviceName
 	case "stop":
-		drawbox.RunDrawbox("Stopping Service", "bold_white")
+		gui.TitleBox("Stopping Service")
 		command = "sudo systemctl stop " + serviceName
 	case "restart":
-		drawbox.RunDrawbox("Restarting Service", "bold_white")
+		gui.TitleBox("Restarting Service")
 		command = "sudo systemctl restart " + serviceName
 	case "--help", "-h", "help":
 		ShowHelp()
 	default:
-		drawbox.PrintError("Invalid action: " + action + " Use status, start, stop, restart, list, or help.")
+		gui.ErrorBox("Invalid action: " + action + " Use status, start, stop, restart, list, or help.")
 	}
 
 	logging.LogCommand(command, 0)
@@ -56,7 +56,7 @@ func RunServicesCommand(action string, serviceName string) {
 // GetServices retrieves and displays system services
 func GetServices() {
 	// Execute the drawbox command for the header
-	drawbox.RunDrawbox("Services", "bold_white")
+	gui.TitleBox("Services")
 
 	// Get all services
 	cmd := exec.Command("systemctl", "list-units", "--type=service", "--all", "--no-pager", "--no-legend")
@@ -149,7 +149,7 @@ func GetServices() {
 }
 
 func ShowHelp() {
-	drawbox.RunDrawbox("Services Help", "bold_white")
+	gui.TitleBox("Services Help")
 	fmt.Println("Usage: services [command] [service_name]")
 	fmt.Println("Actions:")
 	fmt.Println("  status [service_name]   Show the status of a service")

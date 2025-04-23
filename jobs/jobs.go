@@ -6,8 +6,8 @@ import (
 	"os/exec"
 	"runtime"
 	"secshell/colors"
-	"secshell/drawbox"
 	"secshell/logging"
+	"secshell/ui/gui"
 	"strconv"
 	"strings"
 	"sync"
@@ -97,21 +97,21 @@ func AddJob(jobs map[int]*Job, pid int, command string, process *os.Process) {
 	}
 	jobs[pid] = job
 	logging.LogAlert(fmt.Sprintf("Job [%d] added: %s", pid, command))
-	drawbox.PrintAlert(fmt.Sprintf("[%d] %s running in background", pid, command))
+	gui.AlertBox(fmt.Sprintf("[%d] %s running in background", pid, command))
 }
 
 // RemoveJob removes a job from the jobs map
 func RemoveJob(jobs map[int]*Job, pid int) {
 	delete(jobs, pid)
 	logging.LogAlert(fmt.Sprintf("Job [%d] removed", pid))
-	drawbox.PrintAlert(fmt.Sprintf("Job [%d] removed", pid))
+	gui.AlertBox(fmt.Sprintf("Job [%d] removed", pid))
 }
 
 func StopJob(jobs map[int]*Job, pid int) {
 	job, ok := jobs[pid]
 	if !ok {
 		logging.LogAlert(fmt.Sprintf("No such job: %d", pid))
-		drawbox.PrintError(fmt.Sprintf("No such job: %d", pid))
+		gui.ErrorBox(fmt.Sprintf("No such job: %d", pid))
 		return
 	}
 
@@ -120,27 +120,27 @@ func StopJob(jobs map[int]*Job, pid int) {
 
 	if job.Status != "running" {
 		logging.LogAlert(fmt.Sprintf("Job [%d] is not running", pid))
-		drawbox.PrintAlert(fmt.Sprintf("Job [%d] is not running", pid))
+		gui.AlertBox(fmt.Sprintf("Job [%d] is not running", pid))
 		return
 	}
 
 	// Send interrupt signal to the process
 	if err := job.Process.Signal(os.Interrupt); err != nil {
 		logging.LogError(err)
-		drawbox.PrintError(fmt.Sprintf("Failed to stop job [%d]: %s", pid, err))
+		gui.ErrorBox(fmt.Sprintf("Failed to stop job [%d]: %s", pid, err))
 		return
 	}
 
 	job.Status = "stopped"
 	logging.LogAlert(fmt.Sprintf("Job [%d] stopped", pid))
-	drawbox.PrintAlert(fmt.Sprintf("Job [%d] stopped", pid))
+	gui.AlertBox(fmt.Sprintf("Job [%d] stopped", pid))
 }
 
 func GetJobStatus(jobs map[int]*Job, pid int) {
 	job, ok := jobs[pid]
 	if !ok {
 		logging.LogAlert(fmt.Sprintf("No such job: %d", pid))
-		drawbox.PrintError(fmt.Sprintf("No such job: %d", pid))
+		gui.ErrorBox(fmt.Sprintf("No such job: %d", pid))
 		return
 	}
 
@@ -161,7 +161,7 @@ func StartJob(jobs map[int]*Job, pid int) {
 	job, ok := jobs[pid]
 	if !ok {
 		logging.LogAlert(fmt.Sprintf("No such job: %d", pid))
-		drawbox.PrintError(fmt.Sprintf("No such job: %d", pid))
+		gui.ErrorBox(fmt.Sprintf("No such job: %d", pid))
 		return
 	}
 
@@ -170,7 +170,7 @@ func StartJob(jobs map[int]*Job, pid int) {
 
 	if job.Status == "running" {
 		logging.LogAlert(fmt.Sprintf("Job [%d] is already running", pid))
-		drawbox.PrintAlert(fmt.Sprintf("Job [%d] is already running", pid))
+		gui.AlertBox(fmt.Sprintf("Job [%d] is already running", pid))
 		return
 	}
 
@@ -178,17 +178,17 @@ func StartJob(jobs map[int]*Job, pid int) {
 	err := job.Process.Signal(syscall.SIGCONT)
 	if err != nil {
 		logging.LogError(err)
-		drawbox.PrintError(fmt.Sprintf("Failed to start job [%d]: %s", pid, err))
+		gui.ErrorBox(fmt.Sprintf("Failed to start job [%d]: %s", pid, err))
 		return
 	}
 
 	job.Status = "running"
 	logging.LogAlert(fmt.Sprintf("Job [%d] started", pid))
-	drawbox.PrintAlert(fmt.Sprintf("Job [%d] started", pid))
+	gui.AlertBox(fmt.Sprintf("Job [%d] started", pid))
 }
 
 func ClearFinishedJobs(jobs map[int]*Job) {
-	drawbox.RunDrawbox("Clear Finished Jobs", "bold_white")
+	gui.TitleBox("Clear Finished Jobs")
 
 	if len(jobs) == 0 {
 		fmt.Println("No jobs found.")
@@ -209,28 +209,28 @@ func RunJobsCommand(action string, pid int, jobs map[int]*Job) {
 
 	switch action {
 	case "stop":
-		drawbox.RunDrawbox("Stop Job", "bold_white")
+		gui.TitleBox("Stop Job")
 		StopJob(jobs, pid)
 	case "status":
-		drawbox.RunDrawbox("Job Status", "bold_white")
+		gui.TitleBox("Job Status")
 		GetJobStatus(jobs, pid)
 	case "start":
-		drawbox.RunDrawbox("Start Job", "bold_white")
+		gui.TitleBox("Start Job")
 		StartJob(jobs, pid)
 	case "list":
-		drawbox.RunDrawbox("List Jobs", "bold_white")
+		gui.TitleBox("List Jobs")
 		ListJobs(jobs)
 	case "clear-finished":
 		ClearFinishedJobs(jobs)
 	case "--help", "-h", "help":
 		ShowHelp()
 	default:
-		drawbox.PrintError("Invalid action. Use stop, status, start, list, or clear-finished.")
+		gui.ErrorBox("Invalid action. Use stop, status, start, list, or clear-finished.")
 	}
 }
 
 func ShowHelp() {
-	drawbox.RunDrawbox("Jobs Help", "bold_white")
+	gui.TitleBox("Jobs Help")
 	fmt.Println("Usage: jobs <action> [PID]")
 	fmt.Println("Actions:")
 	fmt.Println("  list           - Lists all jobs")

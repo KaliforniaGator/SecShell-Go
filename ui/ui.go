@@ -5,6 +5,7 @@ import (
 	"os"
 	"secshell/colors"
 	"secshell/drawbox"
+	"secshell/ui/gui"
 )
 
 func DisplayWelcomeScreen(version string, needsUpdate bool) {
@@ -30,7 +31,7 @@ func DisplayWelcomeScreen(version string, needsUpdate bool) {
 
 	fmt.Printf("%s%s%s\n", colors.BoldYellow, logo, colors.Reset)
 	// Display welcome message
-	drawbox.RunDrawbox("Welcome to SecShell - A Secure Command Shell", "bold_green")
+	gui.SuccessBox("Welcome to SecShell - A Secure Command Shell")
 	// Add version display
 	fmt.Printf("\n%sVersion: %s %s%s\n", colors.BoldWhite, version, versionIcon, colors.Reset)
 	fmt.Printf("\n%sFeatures:%s\n", colors.BoldWhite, colors.Reset)
@@ -60,7 +61,7 @@ func DisplayPrompt() {
 	host, _ := os.Hostname()
 	cwd, err := os.Getwd()
 	if err != nil {
-		drawbox.PrintError("Failed to get current working directory")
+		gui.ErrorBox("Failed to get current working directory")
 		return
 	}
 

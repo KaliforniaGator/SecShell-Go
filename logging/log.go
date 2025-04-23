@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"secshell/core"
-	"secshell/drawbox"
+	"secshell/ui/gui"
 	"time"
 )
 
@@ -134,13 +134,13 @@ func PrintLog() error {
 	entries, err := GetLogEntries()
 	if err != nil {
 		LogError(err)
-		drawbox.PrintError("Failed to read log file")
+		gui.ErrorBox("Failed to read log file")
 	}
 	if len(entries) == 0 {
-		drawbox.PrintAlert("No log entries found")
+		gui.AlertBox("No log entries found")
 		return nil
 	}
-	drawbox.RunDrawbox("Log Entries:", "bold_white")
+	gui.TitleBox("Log Entries:")
 	core.More(entries)
 	return nil
 }
@@ -150,7 +150,7 @@ func PrintLog() error {
 func ClearLog(isAdmin bool) error {
 	if !isAdmin {
 		LogAlert("Insufficient permissions to clear logs")
-		drawbox.PrintError("Insufficient permissions to clear logs")
+		gui.ErrorBox("Insufficient permissions to clear logs")
 		return fmt.Errorf("insufficient permissions: admin privileges required to clear logs")
 	}
 

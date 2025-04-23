@@ -2,12 +2,17 @@ package gui
 
 import (
 	"fmt"
+	"os"
 	"secshell/colors"
-	"secshell/ui"
+
 	"strconv"
 	"strings"
+	"unicode/utf8"
+
+	"golang.org/x/term"
 )
 
+// BoxType defines the structure for different box styles
 type BoxType struct {
 	TopLeft     string
 	TopRight    string
@@ -17,6 +22,7 @@ type BoxType struct {
 	Vertical    string
 }
 
+// TextAlignment defines the structure for text alignment
 type TextAlignment struct {
 	Horizontal string
 	Vertical   string
@@ -86,6 +92,154 @@ func PrintDebug(text string) {
 func PrintAlert(text string) {
 	// Print alert message
 	fmt.Printf("%s%s%s", colors.BoldWhite, text, colors.Reset)
+}
+
+func GetTerminalWidth() int {
+	// Get the terminal width
+	width, _, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil {
+		return 80 // Default width if unable to get terminal size
+	}
+	return width
+}
+
+func GetTerminalHeight() int {
+	// Get the terminal height
+	_, height, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil {
+		return 24 // Default height if unable to get terminal size
+	}
+	return height
+}
+
+// Estimate the width of a string based on average character width
+func EstimateStringWidth(s string) int {
+	// Assume an average width of 8 pixels per character
+	// You can adjust this value based on your needs
+	const averageCharWidth = 8
+
+	// Count the number of runes (characters) in the string
+	charCount := utf8.RuneCountInString(s)
+
+	// Calculate the estimated width
+	return charCount * averageCharWidth
+}
+
+func NormalizeWidth(text string) int {
+	maxWidth := GetTerminalWidth() / 2
+
+	width := EstimateStringWidth(text)
+	if width > maxWidth {
+		width = maxWidth - 4
+	}
+	return width
+}
+
+func TitleBox(text string) {
+	width := -1
+	height := -1
+	if width < 0 {
+		width = len(text) + 4
+	}
+	if height < 0 {
+		height = 3
+	}
+	PrintBanner(text, "double", colors.BoldWhite, "", colors.BoldWhite, width, height, TextAlignment{
+		Horizontal: "center",
+		Vertical:   "center",
+	})
+	fmt.Println()
+}
+
+func ErrorBox(text string) {
+	width := NormalizeWidth(text)
+	height := -1
+	if width < 0 {
+		width = len(text) + 4
+	}
+	if height < 0 {
+		height = 3
+	}
+	PrintBanner(text, "single", colors.BoldRed, "", colors.BoldRed, width, height, TextAlignment{
+		Horizontal: "center",
+		Vertical:   "center",
+	})
+	fmt.Println()
+}
+func SuccessBox(text string) {
+	width := NormalizeWidth(text)
+	height := -1
+	if width < 0 {
+		width = len(text) + 4
+	}
+	if height < 0 {
+		height = 3
+	}
+	PrintBanner(text, "single", colors.BoldGreen, "", colors.BoldGreen, width, height, TextAlignment{
+		Horizontal: "center",
+		Vertical:   "center",
+	})
+	fmt.Println()
+}
+func WarningBox(text string) {
+	width := NormalizeWidth(text)
+	height := -1
+	if width < 0 {
+		width = len(text) + 4
+	}
+	if height < 0 {
+		height = 3
+	}
+	PrintBanner(text, "single", colors.BoldYellow, "", colors.BoldYellow, width, height, TextAlignment{
+		Horizontal: "center",
+		Vertical:   "center",
+	})
+	fmt.Println()
+}
+func InfoBox(text string) {
+	width := NormalizeWidth(text)
+	height := -1
+	if width < 0 {
+		width = len(text) + 4
+	}
+	if height < 0 {
+		height = 3
+	}
+	PrintBanner(text, "single", colors.BoldCyan, "", colors.BoldCyan, width, height, TextAlignment{
+		Horizontal: "center",
+		Vertical:   "center",
+	})
+	fmt.Println()
+}
+func DebugBox(text string) {
+	width := NormalizeWidth(text)
+	height := -1
+	if width < 0 {
+		width = len(text) + 4
+	}
+	if height < 0 {
+		height = 3
+	}
+	PrintBanner(text, "single", colors.BoldGray, "", colors.BoldGray, width, height, TextAlignment{
+		Horizontal: "center",
+		Vertical:   "center",
+	})
+	fmt.Println()
+}
+func AlertBox(text string) {
+	width := NormalizeWidth(text)
+	height := -1
+	if width < 0 {
+		width = len(text) + 4
+	}
+	if height < 0 {
+		height = 3
+	}
+	PrintBanner(text, "single", colors.BoldYellow, "", colors.BoldYellow, width, height, TextAlignment{
+		Horizontal: "center",
+		Vertical:   "center",
+	})
+	fmt.Println()
 }
 
 func wrapText(text string, width int) []string {
@@ -370,7 +524,7 @@ func PrintWindow(icon string, title string, content string, bgColor string, bord
 		Horizontal: "left",
 		Vertical:   "top",
 	}
-	ui.NewLine()
+	fmt.Print("\n")
 	// Remove top border by using special handling in PrintBanner
 	PrintBanner(content, "single", contentColor, bgColor, borderColor, width, height, contentAlignment)
 }

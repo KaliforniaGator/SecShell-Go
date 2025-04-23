@@ -3,9 +3,9 @@ package env
 import (
 	"fmt"
 	"os"
-	"secshell/drawbox"
 	"secshell/logging"
 	"secshell/sanitize"
+	"secshell/ui/gui"
 	"strings"
 )
 
@@ -22,7 +22,7 @@ func sanitizeInput(input string, allowSpecialChars ...bool) string {
 func ExportVariable(args []string) {
 	if len(args) < 2 {
 		logging.LogAlert("Usage: export VAR=value")
-		drawbox.PrintError("Usage: export VAR=value")
+		gui.ErrorBox("Usage: export VAR=value")
 		return
 	}
 
@@ -30,7 +30,7 @@ func ExportVariable(args []string) {
 	equalsPos := strings.Index(varValue, "=")
 	if equalsPos == -1 {
 		logging.LogAlert("Invalid export syntax. Use VAR=value")
-		drawbox.PrintError("Invalid export syntax. Use VAR=value")
+		gui.ErrorBox("Invalid export syntax. Use VAR=value")
 		return
 	}
 
@@ -39,16 +39,16 @@ func ExportVariable(args []string) {
 
 	if err := os.Setenv(varName, value); err != nil {
 		logging.LogError(err)
-		drawbox.PrintError(fmt.Sprintf("Failed to set environment variable: %s", err))
+		gui.ErrorBox(fmt.Sprintf("Failed to set environment variable: %s", err))
 	} else {
 		logging.LogAlert(fmt.Sprintf("Successfully exported %s=%s", varName, value))
-		drawbox.PrintAlert(fmt.Sprintf("Successfully exported %s=%s", varName, value))
+		gui.AlertBox(fmt.Sprintf("Successfully exported %s=%s", varName, value))
 	}
 }
 
 // listEnvVariables lists all environment variables
 func ListEnvVariables() {
-	drawbox.RunDrawbox("Environment Variables", "bold_white")
+	gui.TitleBox("Environment Variables")
 	for _, env := range os.Environ() {
 		fmt.Println(env)
 	}
@@ -58,16 +58,16 @@ func ListEnvVariables() {
 func UnsetEnvVariable(args []string) {
 	if len(args) < 2 {
 		logging.LogAlert("Usage: unset VAR")
-		drawbox.PrintError("Usage: unset VAR")
+		gui.ErrorBox("Usage: unset VAR")
 		return
 	}
 
 	varName := sanitizeInput(args[1], false)
 	if err := os.Unsetenv(varName); err != nil {
 		logging.LogError(err)
-		drawbox.PrintError(fmt.Sprintf("Failed to unset environment variable: %s", err))
+		gui.ErrorBox(fmt.Sprintf("Failed to unset environment variable: %s", err))
 	} else {
 		logging.LogAlert(fmt.Sprintf("Successfully unset environment variable: %s", varName))
-		drawbox.PrintAlert(fmt.Sprintf("Successfully unset environment variable: %s", varName))
+		gui.AlertBox(fmt.Sprintf("Successfully unset environment variable: %s", varName))
 	}
 }
