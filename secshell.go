@@ -18,7 +18,6 @@ import (
 	"secshell/commands"
 	"secshell/core"
 	"secshell/download"
-	"secshell/drawbox"
 	"secshell/env"
 	"secshell/globals"
 	"secshell/help"
@@ -28,6 +27,7 @@ import (
 	"secshell/sanitize"
 	"secshell/services"
 	"secshell/ui"
+	"secshell/ui/gui"
 	"secshell/update"
 
 	"github.com/msteinert/pam"
@@ -90,13 +90,13 @@ func NewSecShell(blacklistPath, whitelistPath string) *SecShell {
 // Get current Time
 func (s *SecShell) getTime() {
 	now := time.Now()
-	drawbox.RunDrawbox(fmt.Sprintf("Current time: %s", now.Format("3:04 PM")), "bold_white")
+	gui.TitleBox(fmt.Sprintf("Current time: %s", now.Format("3:04 PM")))
 }
 
 // Get current Date
 func (s *SecShell) getDate() {
 	now := time.Now()
-	drawbox.RunDrawbox(fmt.Sprintf("Current date: %s", now.Format("02-Jan-2006")), "bold_white")
+	gui.TitleBox(fmt.Sprintf("Current date: %s", now.Format("02-Jan-2006")))
 
 }
 
@@ -175,7 +175,7 @@ func (s *SecShell) getInput() string {
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
 		logging.LogError(err)
-		drawbox.PrintError(fmt.Sprintf("Failed to set terminal to raw mode: %s", err))
+		gui.ErrorBox(fmt.Sprintf("Failed to set terminal to raw mode: %s", err))
 		return ""
 	}
 	defer term.Restore(int(os.Stdin.Fd()), oldState)
@@ -188,7 +188,7 @@ func (s *SecShell) getInput() string {
 		n, err := os.Stdin.Read(buf)
 		if err != nil {
 			logging.LogError(err)
-			drawbox.PrintError(fmt.Sprintf("Failed to read input: %s", err))
+			gui.ErrorBox(fmt.Sprintf("Failed to read input: %s", err))
 			return ""
 		}
 
@@ -294,14 +294,14 @@ func (s *SecShell) sanitizeInput(input string, allowSpecialChars ...bool) string
 
 // displayHistory shows the command history
 func (s *SecShell) displayHistory() {
-	drawbox.RunDrawbox("Command History", "bold_white")
+	gui.TitleBox("Command History")
 	for i, cmd := range s.history {
 		fmt.Printf("%d: %s\n", i+1, cmd)
 	}
 }
 
 func (s *SecShell) searchHistory(query string) {
-	drawbox.RunDrawbox("History Search: "+query, "bold_white")
+	gui.TitleBox("History Search: " + query)
 	found := false
 
 	for i, cmd := range s.history {
@@ -313,18 +313,18 @@ func (s *SecShell) searchHistory(query string) {
 	}
 
 	if !found {
-		drawbox.PrintAlert("No matching commands found.")
+		gui.AlertBox("No matching commands found.")
 	}
 }
 
 func (s *SecShell) runHistoryCommand(number int) bool {
 	if number <= 0 || number > len(s.history) {
-		drawbox.PrintError(fmt.Sprintf("Invalid history number: %d", number))
+		gui.ErrorBox(fmt.Sprintf("Invalid history number: %d", number))
 		return false
 	}
 
 	cmd := s.history[number-1]
-	drawbox.PrintAlert(fmt.Sprintf("Running: %s", cmd))
+	gui.AlertBox(fmt.Sprintf("Running: %s", cmd))
 	s.processCommand(cmd)
 	return true
 }
@@ -333,7 +333,7 @@ func (s *SecShell) interactiveHistorySearch() {
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
 		logging.LogError(err)
-		drawbox.PrintError(fmt.Sprintf("Failed to set terminal to raw mode: %s", err))
+		gui.ErrorBox(fmt.Sprintf("Failed to set terminal to raw mode: %s", err))
 		return
 	}
 	defer term.Restore(int(os.Stdin.Fd()), oldState)
@@ -395,7 +395,7 @@ func (s *SecShell) interactiveHistorySearch() {
 		n, err := os.Stdin.Read(buf)
 		if err != nil {
 			logging.LogError(err)
-			drawbox.PrintError(fmt.Sprintf("Failed to read input: %s", err))
+			gui.ErrorBox(fmt.Sprintf("Failed to read input: %s", err))
 			return
 		}
 
@@ -413,7 +413,7 @@ func (s *SecShell) interactiveHistorySearch() {
 					fmt.Print("\033[?25h") // Make sure cursor is visible
 					term.Restore(int(os.Stdin.Fd()), oldState)
 					fmt.Print("\033[H\033[2J\033[3J") // Clear screen and scrollback buffer
-					drawbox.PrintAlert("Running: " + selectedCmd)
+					gui.AlertBox("Running: " + selectedCmd)
 					s.processCommand(selectedCmd)
 					return
 				}
@@ -497,9 +497,9 @@ func (s *SecShell) reloadBlacklist() {
 	core.LoadBlacklist(s.blacklist)
 	s.blacklistedCommands = core.BlacklistedCommands
 	logging.LogAlert("Successfully reloaded blacklist commands")
-	drawbox.PrintAlert("Successfully reloaded blacklist commands")
+	gui.AlertBox("Successfully reloaded blacklist commands")
 	if len(s.blacklistedCommands) > 0 {
-		drawbox.PrintAlert(fmt.Sprintf("Loaded %d blacklisted commands", len(s.blacklistedCommands)))
+		gui.AlertBox(fmt.Sprintf("Loaded %d blacklisted commands", len(s.blacklistedCommands)))
 	}
 }
 
@@ -509,9 +509,9 @@ func (s *SecShell) reloadWhitelist() {
 	core.LoadWhitelist(s.whitelist)
 	s.allowedCommands = core.AllowedCommands
 	logging.LogAlert("Successfully reloaded whitelist commands")
-	drawbox.PrintAlert("Successfully reloaded whitelist commands")
+	gui.AlertBox("Successfully reloaded whitelist commands")
 	if len(s.allowedCommands) > 0 {
-		drawbox.PrintAlert(fmt.Sprintf("Loaded %d whitelisted commands", len(s.allowedCommands)))
+		gui.AlertBox(fmt.Sprintf("Loaded %d whitelisted commands", len(s.allowedCommands)))
 	}
 }
 
@@ -519,7 +519,7 @@ func (s *SecShell) reloadWhitelist() {
 func (s *SecShell) processCommand(input string) {
 	input = strings.TrimSpace(input)
 	if input == "" {
-		drawbox.PrintAlert("Please enter a valid command")
+		gui.AlertBox("Please enter a valid command")
 		return
 	}
 
@@ -530,14 +530,14 @@ func (s *SecShell) processCommand(input string) {
 				lastCommand := s.history[len(s.history)-2] // Get the second-to-last command
 				if lastCommand == "!!" {
 					logging.LogAlert("Cannot execute '!!' recursively.")
-					drawbox.PrintError("Cannot execute '!!' recursively")
+					gui.ErrorBox("Cannot execute '!!' recursively")
 					return
 				}
-				drawbox.PrintAlert(fmt.Sprintf("Running: %s", lastCommand))
+				gui.AlertBox(fmt.Sprintf("Running: %s", lastCommand))
 				s.processCommand(lastCommand) // Execute it safely
 			} else {
 				logging.LogAlert("No previous command to execute.")
-				drawbox.PrintError("No previous command to execute.")
+				gui.ErrorBox("No previous command to execute.")
 			}
 		} else if num, err := strconv.Atoi(input[1:]); err == nil {
 			logging.LogError(err)
@@ -563,7 +563,7 @@ func (s *SecShell) processCommand(input string) {
 		if globals.RestrictedCommands[args[0]] {
 			if !admin.IsAdmin() {
 				logging.LogAlert(fmt.Sprintf("Permission denied: '%s' requires admin privileges", args[0]))
-				drawbox.PrintError(fmt.Sprintf("Permission denied: '%s' requires admin privileges", args[0]))
+				gui.ErrorBox(fmt.Sprintf("Permission denied: '%s' requires admin privileges", args[0]))
 				return
 			}
 		}
@@ -576,7 +576,7 @@ func (s *SecShell) processCommand(input string) {
 
 		if s.isCommandBlacklisted(args[0]) {
 			logging.LogAlert(fmt.Sprintf("Blacklisted command: %s", args[0]))
-			drawbox.PrintError(fmt.Sprintf("Command is blacklisted: %s", args[0]))
+			gui.ErrorBox(fmt.Sprintf("Command is blacklisted: %s", args[0]))
 			return
 		}
 
@@ -608,24 +608,24 @@ func (s *SecShell) processCommand(input string) {
 			if len(args) > 1 {
 				switch args[1] {
 				case "dirs":
-					drawbox.RunDrawbox("Allowed Directories", "bold_white")
+					gui.TitleBox("Allowed Directories")
 					commands.PrintAllowedDirs()
 				case "commands":
-					drawbox.RunDrawbox("Allowed Commands", "bold_white")
+					gui.TitleBox("Allowed Commands")
 					commands.PrintAllowedCommands()
 				case "bins":
-					drawbox.RunDrawbox("Allowed Binaries", "bold_white")
+					gui.TitleBox("Allowed Binaries")
 					commands.PrintProgramCommands()
 				case "builtins":
-					drawbox.RunDrawbox("Built-in Commands", "bold_white")
+					gui.TitleBox("Built-in Commands")
 					commands.PrintBuiltInCommands()
 				case "all":
-					drawbox.RunDrawbox("All Allowed", "bold_white")
+					gui.TitleBox("All Allowed")
 					commands.PrintAllCommands()
 				}
 			} else {
 				logging.LogAlert("Usage: allowed <dirs|commands|bins|builtins|all>")
-				drawbox.PrintError("Usage: allowed <dirs|commands|bins|builtins|all>")
+				gui.ErrorBox("Usage: allowed <dirs|commands|bins|builtins|all>")
 			}
 		case "history":
 			if len(args) == 1 {
@@ -635,7 +635,7 @@ func (s *SecShell) processCommand(input string) {
 				case "-s":
 					if len(args) < 3 {
 						logging.LogAlert("Usage: history -s <query>")
-						drawbox.PrintError("Usage: history -s <query>")
+						gui.ErrorBox("Usage: history -s <query>")
 						return
 					}
 					s.searchHistory(strings.Join(args[2:], " ")) // Search history for the given query
@@ -645,7 +645,7 @@ func (s *SecShell) processCommand(input string) {
 					core.ClearHistory(s.historyFile)
 				default:
 					logging.LogAlert("Invalid history option. Use -s for search or -i for interactive mode.")
-					drawbox.PrintError("Invalid history option. Use -s for search or -i for interactive mode.")
+					gui.ErrorBox("Invalid history option. Use -s for search or -i for interactive mode.")
 				}
 			}
 		case "export":
@@ -657,7 +657,7 @@ func (s *SecShell) processCommand(input string) {
 		case "logs":
 			if len(args) < 2 {
 				logging.LogAlert("Usage: logs <list|clear>")
-				drawbox.PrintError("Usage: logs <list|clear>")
+				gui.ErrorBox("Usage: logs <list|clear>")
 				return
 			} else {
 				switch args[1] {
@@ -665,16 +665,16 @@ func (s *SecShell) processCommand(input string) {
 					err := logging.PrintLog()
 					if err != nil {
 						logging.LogError(err)
-						drawbox.PrintError("Failed to read log file")
+						gui.ErrorBox("Failed to read log file")
 					}
 				case "clear":
 					err := logging.ClearLog(admin.IsAdmin())
 					if err != nil {
 						logging.LogError(err)
-						drawbox.PrintError("Failed to clear log file")
+						gui.ErrorBox("Failed to clear log file")
 					} else {
 						logging.LogAlert("Log file cleared successfully")
-						drawbox.PrintAlert("Log file cleared successfully")
+						gui.AlertBox("Log file cleared successfully")
 					}
 				}
 			}
@@ -686,7 +686,7 @@ func (s *SecShell) processCommand(input string) {
 			// Require admin privileges for these commands
 			if !admin.IsAdmin() {
 				logging.LogAlert("Permission denied: Admin privileges required.")
-				drawbox.PrintError("Permission denied: Admin privileges required.")
+				gui.ErrorBox("Permission denied: Admin privileges required.")
 				return
 			}
 
@@ -706,9 +706,23 @@ func (s *SecShell) processCommand(input string) {
 			s.toggleSecurity()
 		case "download":
 			download.DownloadFiles(args)
+		case "banner":
+			if len(args) < 2 {
+				gui.ErrorBox("Usage: banner <text> -s,--style <style> -c,--color <color> -b,--background <bg> -w,--width <width> -h,--height <height> -a,--align <align>")
+				return
+			} else {
+				gui.ParseAndPrintBanner(args)
+			}
+		case "window":
+			if len(args) < 2 {
+				gui.ErrorBox("Usage: window <icon> <title> <content> -w,--width <width> -h,--height <height> -b,--background <color> -bc, --border-color <color> -tc, --title-color <color> -cc,content-color <color>")
+				return
+			} else {
+				gui.ParseAndPrintWindow(args)
+			}
 		case "portscan":
 			if len(args) < 2 {
-				drawbox.PrintError("Usage: portscan [-p ports] [-udp] [-t timing] [-v] [-j|-html] [-o file] [-syn] [-os] [-e] <target>")
+				gui.ErrorBox("Usage: portscan [-p ports] [-udp] [-t timing] [-v] [-j|-html] [-o file] [-syn] [-os] [-e] <target>")
 				return
 			}
 
@@ -768,7 +782,7 @@ func (s *SecShell) processCommand(input string) {
 			}
 
 			if target == "" {
-				drawbox.PrintError("No target specified")
+				gui.ErrorBox("No target specified")
 				return
 			}
 
@@ -776,7 +790,7 @@ func (s *SecShell) processCommand(input string) {
 
 		case "hostscan":
 			if len(args) < 2 {
-				drawbox.PrintError("Usage: hostscan <network-range>")
+				gui.ErrorBox("Usage: hostscan <network-range>")
 				return
 			}
 			pentest.RunHostDiscovery(args[1])
@@ -871,7 +885,7 @@ func (s *SecShell) processCommand(input string) {
 			}
 
 			if target == "" {
-				drawbox.PrintError("No target specified")
+				gui.ErrorBox("No target specified")
 				return
 			}
 
@@ -879,7 +893,7 @@ func (s *SecShell) processCommand(input string) {
 
 		case "payload":
 			if len(args) < 3 {
-				drawbox.PrintError("Usage: payload <ip-address> <port>")
+				gui.ErrorBox("Usage: payload <ip-address> <port>")
 				return
 			}
 			pentest.GenerateReverseShellPayload(args[1], args[2])
@@ -895,40 +909,40 @@ func (s *SecShell) processCommand(input string) {
 				pentest.ListSessions()
 			case "-i":
 				if len(args) < 3 {
-					drawbox.PrintError("Usage: session -i <id>")
+					gui.ErrorBox("Usage: session -i <id>")
 					return
 				}
 				id, err := strconv.Atoi(args[2])
 				if err != nil {
 					logging.LogError(err)
-					drawbox.PrintError("Invalid session ID")
+					gui.ErrorBox("Invalid session ID")
 					return
 				}
 				pentest.InteractWithSession(id)
 			case "-c":
 				if len(args) < 3 {
-					drawbox.PrintError("Usage: session -c <port>")
+					gui.ErrorBox("Usage: session -c <port>")
 					return
 				}
 				port := args[2]
 				id := pentest.ListenForConnections(port)
 				if id != -1 {
-					drawbox.PrintAlert(fmt.Sprintf("Created session %d", id))
+					gui.AlertBox(fmt.Sprintf("Created session %d", id))
 				}
 			case "-k":
 				if len(args) < 3 {
-					drawbox.PrintError("Usage: session -k <id>")
+					gui.ErrorBox("Usage: session -k <id>")
 					return
 				}
 				id, err := strconv.Atoi(args[2])
 				if err != nil {
 					logging.LogError(err)
-					drawbox.PrintError("Invalid session ID")
+					gui.ErrorBox("Invalid session ID")
 					return
 				}
 				pentest.CloseSession(id)
 			default:
-				drawbox.PrintError("Unknown session command. Use -l, -i, -c, or -k")
+				gui.ErrorBox("Unknown session command. Use -l, -i, -c, or -k")
 			}
 		default:
 			// Handle quoted arguments
@@ -1011,7 +1025,7 @@ func (s *SecShell) executePipedCommands(commands []string) {
 		stdout, err := cmds[i].StdoutPipe()
 		if err != nil {
 			logging.LogError(err)
-			drawbox.PrintError(fmt.Sprintf("Failed to set up pipeline: %s", err))
+			gui.ErrorBox(fmt.Sprintf("Failed to set up pipeline: %s", err))
 			return
 		}
 		cmds[i+1].Stdin = stdout
@@ -1036,7 +1050,7 @@ func (s *SecShell) executePipedCommands(commands []string) {
 	for _, cmd := range cmds {
 		if err := cmd.Start(); err != nil {
 			logging.LogError(err)
-			drawbox.PrintError(fmt.Sprintf("Failed to start command: %s", err))
+			gui.ErrorBox(fmt.Sprintf("Failed to start command: %s", err))
 			return
 		}
 	}
@@ -1058,7 +1072,7 @@ func (s *SecShell) executePipedCommands(commands []string) {
 		if err != nil && !isSignalKilled(err) {
 			if _, ok := err.(*exec.ExitError); !ok {
 				logging.LogError(err)
-				drawbox.PrintError(fmt.Sprintf("Command execution failed: %s", err))
+				gui.ErrorBox(fmt.Sprintf("Command execution failed: %s", err))
 			}
 		}
 	}
@@ -1108,7 +1122,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 
 	if !s.isCommandAllowed(args[0]) {
 		logging.LogAlert(fmt.Sprintf("Command not permitted: %s", args[0]))
-		drawbox.PrintError(fmt.Sprintf("Command not permitted: %s", args[0]))
+		gui.ErrorBox(fmt.Sprintf("Command not permitted: %s", args[0]))
 		return
 	}
 
@@ -1118,7 +1132,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 		oldState, err := term.GetState(int(os.Stdin.Fd()))
 		if err != nil {
 			logging.LogError(err)
-			drawbox.PrintError(fmt.Sprintf("Failed to get terminal state: %s", err))
+			gui.ErrorBox(fmt.Sprintf("Failed to get terminal state: %s", err))
 			return
 		}
 
@@ -1130,7 +1144,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 			// Check if user is admin before allowing sudo/su
 			if !admin.IsAdmin() {
 				logging.LogAlert("Permission denied: Only admins can use sudo/su commands")
-				drawbox.PrintError("Permission denied: Only admins can use sudo/su commands")
+				gui.ErrorBox("Permission denied: Only admins can use sudo/su commands")
 				return
 			}
 
@@ -1162,7 +1176,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 
 			if err != nil && !isSignalKilled(err) {
 				logging.LogError(err)
-				drawbox.PrintError(fmt.Sprintf("Command execution failed: %s", err))
+				gui.ErrorBox(fmt.Sprintf("Command execution failed: %s", err))
 			}
 
 			if isTerminalEditor(args[0]) {
@@ -1184,7 +1198,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 
 		if err != nil && !isSignalKilled(err) {
 			logging.LogError(err)
-			drawbox.PrintError(fmt.Sprintf("Command execution failed: %s", err))
+			gui.ErrorBox(fmt.Sprintf("Command execution failed: %s", err))
 		}
 		return
 	}
@@ -1217,7 +1231,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 				file, err := os.Create(args[i+1])
 				if err != nil {
 					logging.LogError(err)
-					drawbox.PrintError(fmt.Sprintf("Failed to create file: %s", err))
+					gui.ErrorBox(fmt.Sprintf("Failed to create file: %s", err))
 					return
 				}
 				defer file.Close()
@@ -1229,7 +1243,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 				file, err := os.Open(args[i+1])
 				if err != nil {
 					logging.LogError(err)
-					drawbox.PrintError(fmt.Sprintf("Failed to open file: %s", err))
+					gui.ErrorBox(fmt.Sprintf("Failed to open file: %s", err))
 					return
 				}
 				defer file.Close()
@@ -1261,7 +1275,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 		// Handle background jobs (unchanged)
 		if err := cmd.Start(); err != nil {
 			logging.LogError(err)
-			drawbox.PrintError(fmt.Sprintf("Failed to start background job: %s", err))
+			gui.ErrorBox(fmt.Sprintf("Failed to start background job: %s", err))
 			return
 		}
 		jobs.AddJob(s.jobs, cmd.Process.Pid, args[0], cmd.Process)
@@ -1275,7 +1289,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 				if exitError, ok := err.(*exec.ExitError); ok {
 					exitCode = exitError.ExitCode()
 				}
-				drawbox.PrintError(fmt.Sprintf("Command execution failed: %s", err))
+				gui.ErrorBox(fmt.Sprintf("Command execution failed: %s", err))
 			}
 
 			// Update job status
@@ -1301,7 +1315,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 
 		if err := cmd.Start(); err != nil {
 			logging.LogError(err)
-			drawbox.PrintError(fmt.Sprintf("Command execution failed: %s", err))
+			gui.ErrorBox(fmt.Sprintf("Command execution failed: %s", err))
 			return
 		}
 
@@ -1315,7 +1329,7 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 		err := cmd.Wait()
 		if err != nil && !isSignalKilled(err) {
 			logging.LogError(err)
-			drawbox.PrintError(fmt.Sprintf("Command execution failed: %s", err))
+			gui.ErrorBox(fmt.Sprintf("Command execution failed: %s", err))
 		}
 	}
 }
@@ -1336,7 +1350,7 @@ func (s *SecShell) isCommandAllowed(cmd string) bool {
 	for _, netCmd := range networkCommands {
 		if cmd == netCmd {
 			logging.LogAlert("Network access restricted for non-admin users.")
-			drawbox.PrintError("Network access restricted for non-admin users.")
+			gui.ErrorBox("Network access restricted for non-admin users.")
 			return false
 		}
 	}
@@ -1381,7 +1395,7 @@ var securityEnabled = true
 func (s *SecShell) toggleSecurity() {
 	if !admin.IsAdmin() {
 		logging.LogAlert("Permission denied: Only admins can toggle security settings.")
-		drawbox.PrintError("Permission denied: Only admins can toggle security settings.")
+		gui.ErrorBox("Permission denied: Only admins can toggle security settings.")
 		return
 	}
 
@@ -1391,7 +1405,7 @@ func (s *SecShell) toggleSecurity() {
 	fmt.Println() // Move to the next line after password input
 	if err != nil {
 		logging.LogError(err)
-		drawbox.PrintError("Failed to read password.")
+		gui.ErrorBox("Failed to read password.")
 		return
 	}
 
@@ -1400,7 +1414,7 @@ func (s *SecShell) toggleSecurity() {
 	// Authenticate the user
 	if !authenticateUser(password) {
 		logging.LogAlert("Authentication failed. Incorrect password.")
-		drawbox.PrintError("Authentication failed. Incorrect password.")
+		gui.ErrorBox("Authentication failed. Incorrect password.")
 		return
 	}
 
@@ -1408,10 +1422,10 @@ func (s *SecShell) toggleSecurity() {
 	securityEnabled = !securityEnabled
 	if securityEnabled {
 		logging.LogAlert("Security enforcement ENABLED.")
-		drawbox.PrintAlert("Security enforcement ENABLED.")
+		gui.AlertBox("Security enforcement ENABLED.")
 	} else {
 		logging.LogAlert("Security enforcement DISABLED. All commands are now allowed.")
-		drawbox.PrintAlert("Security enforcement DISABLED. All commands are now allowed.")
+		gui.AlertBox("Security enforcement DISABLED. All commands are now allowed.")
 	}
 }
 
@@ -1476,7 +1490,7 @@ func (s *SecShell) manageJobs(args []string) {
 			pid, err = strconv.Atoi(pidStr)
 			if err != nil {
 				logging.LogError(err)
-				drawbox.PrintError("Invalid PID. Please enter a valid integer.")
+				gui.ErrorBox("Invalid PID. Please enter a valid integer.")
 				return
 			}
 		}

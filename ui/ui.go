@@ -5,9 +5,9 @@ import (
 	"os"
 	"secshell/colors"
 	"secshell/drawbox"
+	"secshell/ui/gui"
 )
 
-// Add this after the printError method and before main:
 func DisplayWelcomeScreen(version string, needsUpdate bool) {
 	// Check for Update
 	versionIcon := ""
@@ -31,7 +31,7 @@ func DisplayWelcomeScreen(version string, needsUpdate bool) {
 
 	fmt.Printf("%s%s%s\n", colors.BoldYellow, logo, colors.Reset)
 	// Display welcome message
-	drawbox.RunDrawbox("Welcome to SecShell - A Secure Command Shell", "bold_green")
+	gui.SuccessBox("Welcome to SecShell - A Secure Command Shell")
 	// Add version display
 	fmt.Printf("\n%sVersion: %s %s%s\n", colors.BoldWhite, version, versionIcon, colors.Reset)
 	fmt.Printf("\n%sFeatures:%s\n", colors.BoldWhite, colors.Reset)
@@ -53,7 +53,6 @@ func DisplayWelcomeScreen(version string, needsUpdate bool) {
 	fmt.Printf("\n%sType 'help' for available commands%s\n\n", colors.BoldCyan, colors.Reset)
 }
 
-// Change the displayPrompt function:
 func DisplayPrompt() {
 	user := os.Getenv("USER")
 	if user == "" {
@@ -62,7 +61,7 @@ func DisplayPrompt() {
 	host, _ := os.Hostname()
 	cwd, err := os.Getwd()
 	if err != nil {
-		drawbox.PrintError("Failed to get current working directory")
+		gui.ErrorBox("Failed to get current working directory")
 		return
 	}
 
@@ -84,14 +83,12 @@ func DisplayPrompt() {
 	fmt.Printf("%s╰─%s$ %s", frameColor, colors.BoldWhite, textReset)
 }
 
-// Print only top:
 func ClearLine() {
 	// Clear the entire current line and return carriage
 	fmt.Print("\033[2K\r")
 
 }
 
-// Add this new method:
 func ClearLineAndPrintBottom() {
 	// Clear the entire current line and return carriage
 	fmt.Print("\033[2K\r")

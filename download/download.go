@@ -7,10 +7,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"secshell/drawbox"
 	"secshell/logging"
 	"secshell/sanitize"
 	"secshell/ui"
+	"secshell/ui/gui"
 	"strings"
 	"sync"
 	"time"
@@ -83,7 +83,7 @@ func DownloadFile(url, fileName string, linePos int) error {
 
 func DownloadFiles(args []string) {
 	if len(args) < 2 {
-		drawbox.PrintError("Usage: download [-o output1,output2,...] <url [url2 ...]>")
+		gui.ErrorBox("Usage: download [-o output1,output2,...] <url [url2 ...]>")
 		return
 	}
 
@@ -104,12 +104,12 @@ func DownloadFiles(args []string) {
 	}
 
 	if len(urls) == 0 {
-		drawbox.PrintError("No URLs provided")
+		gui.ErrorBox("No URLs provided")
 		return
 	}
 
 	if len(outputFiles) > 0 && len(outputFiles) != len(urls) {
-		drawbox.PrintError("Number of output files must match number of URLs")
+		gui.ErrorBox("Number of output files must match number of URLs")
 		return
 	}
 
@@ -164,7 +164,7 @@ func DownloadFiles(args []string) {
 	wg.Wait()
 	fmt.Print("\x1b[?25h") // Show cursor
 	fmt.Println()          // Add newline before alert
-	drawbox.PrintAlert("All downloads completed")
+	gui.AlertBox("All downloads completed")
 }
 
 type WriteCounter struct {

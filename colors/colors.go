@@ -78,6 +78,56 @@ var (
 
 	// Reset Background Color
 	BgReset = "\033[49m"
+
+	// ColorMap provides a mapping between color names and their ANSI codes
+	ColorMap = map[string]string{
+		// Regular colors
+		"red":    Red,
+		"green":  Green,
+		"yellow": Yellow,
+		"blue":   Blue,
+		"purple": Purple,
+		"cyan":   Cyan,
+		"gray":   Gray,
+		"white":  White,
+		"black":  Black,
+
+		// Bold colors
+		"bold_red":    BoldRed,
+		"bold_green":  BoldGreen,
+		"bold_yellow": BoldYellow,
+		"bold_blue":   BoldBlue,
+		"bold_purple": BoldPurple,
+		"bold_cyan":   BoldCyan,
+		"bold_gray":   BoldGray,
+		"bold_white":  BoldWhite,
+		"bold_black":  BoldBlack,
+
+		// Background colors
+		"bg_red":    BgRed,
+		"bg_green":  BgGreen,
+		"bg_yellow": BgYellow,
+		"bg_blue":   BgBlue,
+		"bg_purple": BgPurple,
+		"bg_cyan":   BgCyan,
+		"bg_gray":   BgGray,
+		"bg_white":  BgWhite,
+		"bg_black":  BgBlack,
+
+		// Gray variants
+		"gray1": Gray1,
+		"gray2": Gray2,
+		"gray3": Gray3,
+		"gray4": Gray4,
+		"gray5": Gray5,
+
+		// Background gray variants
+		"bg_gray1": BgGray1,
+		"bg_gray2": BgGray2,
+		"bg_gray3": BgGray3,
+		"bg_gray4": BgGray4,
+		"bg_gray5": BgGray5,
+	}
 )
 
 // Disable colors on Windows if necessary

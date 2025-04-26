@@ -5,8 +5,8 @@ import (
 	"os"
 	"secshell/admin"
 	"secshell/colors"
-	"secshell/drawbox"
 	"secshell/globals"
+	"secshell/ui/gui"
 	"strings"
 )
 
@@ -298,7 +298,7 @@ func DisplayHelp(args ...string) {
 		return
 	}
 
-	drawbox.RunDrawbox("SecShell Help", "bold_white")
+	gui.TitleBox("SecShell Help")
 
 	// Group commands by category
 	commandsByCategory := make(map[string][]string)
@@ -368,7 +368,7 @@ func displayCommandHelp(command string) {
 		return
 	}
 
-	drawbox.RunDrawbox(fmt.Sprintf("Help: %s", command), "bold_white")
+	gui.TitleBox(fmt.Sprintf("Help: %s", command))
 
 	fmt.Printf("\n%sDescription:%s %s\n\n", colors.BoldWhite, colors.Reset, topic.Description)
 	fmt.Printf("%sUsage:%s %s\n\n", colors.BoldWhite, colors.Reset, topic.Usage)

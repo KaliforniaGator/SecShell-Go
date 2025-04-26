@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"secshell/admin"
-	"secshell/drawbox"
+	"secshell/ui/gui"
 	"secshell/update"
 	"strings"
 )
@@ -60,11 +60,11 @@ func EnsureFilesExist(blacklist, whitelist, version, history, logfile string) {
 	// Ensure the .secshell directory exists with proper permissions
 	configDir := GetExecutablePath()
 	if err := os.MkdirAll(configDir, 0755); err != nil {
-		drawbox.PrintError(fmt.Sprintf("Failed to create config directory: %s", err))
+		gui.ErrorBox(fmt.Sprintf("Failed to create config directory: %s", err))
 		return
 	}
 	if err := admin.SetFolderPermissions(configDir); err != nil {
-		drawbox.PrintError(fmt.Sprintf("Failed to set directory permissions: %s", err))
+		gui.ErrorBox(fmt.Sprintf("Failed to set directory permissions: %s", err))
 		return
 	}
 
@@ -80,10 +80,10 @@ func EnsureFilesExist(blacklist, whitelist, version, history, logfile string) {
 	for filepath, content := range files {
 		if _, err := os.Stat(filepath); os.IsNotExist(err) {
 			if err := createSecureFile(filepath, content); err != nil {
-				drawbox.PrintError(fmt.Sprintf("Failed to create %s: %s", filepath, err))
+				gui.ErrorBox(fmt.Sprintf("Failed to create %s: %s", filepath, err))
 				continue
 			}
-			drawbox.PrintAlert(fmt.Sprintf("Created new file at %s", filepath))
+			gui.AlertBox(fmt.Sprintf("Created new file at %s", filepath))
 
 			// Special handling for version file
 			if filepath == version {
@@ -101,7 +101,7 @@ func EnsureFilesExist(blacklist, whitelist, version, history, logfile string) {
 func LoadHistory(filename string) {
 	file, err := os.Open(filename)
 	if err != nil {
-		drawbox.PrintError(fmt.Sprintf("Failed to open history file: %s", filename))
+		gui.ErrorBox(fmt.Sprintf("Failed to open history file: %s", filename))
 		return
 	}
 	defer file.Close()
@@ -114,7 +114,7 @@ func LoadHistory(filename string) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		drawbox.PrintError(fmt.Sprintf("Error reading history file: %s", err))
+		gui.ErrorBox(fmt.Sprintf("Error reading history file: %s", err))
 	}
 }
 
@@ -126,13 +126,13 @@ func SaveHistory(filename string, command string) {
 	// Append to history file
 	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0644)
 	if err != nil {
-		drawbox.PrintError(fmt.Sprintf("Failed to open history file for writing: %s", filename))
+		gui.ErrorBox(fmt.Sprintf("Failed to open history file for writing: %s", filename))
 		return
 	}
 	defer file.Close()
 
 	if _, err := file.WriteString(command + "\n"); err != nil {
-		drawbox.PrintError(fmt.Sprintf("Failed to write to history file: %s", err))
+		gui.ErrorBox(fmt.Sprintf("Failed to write to history file: %s", err))
 		return
 	}
 }
@@ -144,18 +144,18 @@ func ClearHistory(filename string) {
 	// Truncate the history file
 	file, err := os.OpenFile(filename, os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
-		drawbox.PrintError(fmt.Sprintf("Failed to clear history file: %s", err))
+		gui.ErrorBox(fmt.Sprintf("Failed to clear history file: %s", err))
 		return
 	}
 	defer file.Close()
-	drawbox.PrintAlert("History cleared.")
+	gui.AlertBox("History cleared.")
 }
 
 // loadBlacklist loads blacklisted commands from a file
 func LoadBlacklist(filename string) {
 	file, err := os.Open(filename)
 	if err != nil {
-		drawbox.PrintError(fmt.Sprintf("Failed to open blacklist file: %s", filename))
+		gui.ErrorBox(fmt.Sprintf("Failed to open blacklist file: %s", filename))
 		return
 	}
 	defer file.Close()
@@ -168,7 +168,7 @@ func LoadBlacklist(filename string) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		drawbox.PrintError(fmt.Sprintf("Error reading blacklist file: %s", err))
+		gui.ErrorBox(fmt.Sprintf("Error reading blacklist file: %s", err))
 	}
 }
 
@@ -183,10 +183,10 @@ func EditBlacklist(filename string) {
 
 // listBlacklistCommands lists all blacklisted commands
 func ListBlacklistCommands(filename string) {
-	drawbox.RunDrawbox("Blacklisted Commands", "bold_white")
+	gui.TitleBox("Blacklisted Commands")
 	file, err := os.Open(filename)
 	if err != nil {
-		drawbox.PrintError(fmt.Sprintf("Error: Could not open file '%s'.", filename))
+		gui.ErrorBox(fmt.Sprintf("Error: Could not open file '%s'.", filename))
 		return
 	}
 	defer file.Close()
@@ -198,7 +198,7 @@ func ListBlacklistCommands(filename string) {
 		fmt.Printf(" %d. %s\n", lineNumber, scanner.Text())
 	}
 	if err := scanner.Err(); err != nil {
-		drawbox.PrintError(fmt.Sprintf("Error reading file: %s", err))
+		gui.ErrorBox(fmt.Sprintf("Error reading file: %s", err))
 	}
 }
 
@@ -206,7 +206,7 @@ func ListBlacklistCommands(filename string) {
 func LoadWhitelist(filename string) {
 	file, err := os.Open(filename)
 	if err != nil {
-		drawbox.PrintAlert(fmt.Sprintf("Notice: No whitelist file found at %s. Using default allowed commands.", filename))
+		gui.AlertBox(fmt.Sprintf("Notice: No whitelist file found at %s. Using default allowed commands.", filename))
 		return
 	}
 	defer file.Close()
@@ -220,12 +220,12 @@ func LoadWhitelist(filename string) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		drawbox.PrintError(fmt.Sprintf("Error reading whitelist file: %s", err))
+		gui.ErrorBox(fmt.Sprintf("Error reading whitelist file: %s", err))
 		return
 	}
 
 	if len(AllowedCommands) == 0 {
-		drawbox.PrintAlert("Warning: Whitelist file is empty. Allowing hard-coded commands and any command within allowed directories.")
+		gui.AlertBox("Warning: Whitelist file is empty. Allowing hard-coded commands and any command within allowed directories.")
 		AllowedCommands = DefaultWhitelist
 	}
 }
@@ -241,11 +241,11 @@ func EditWhitelist(filename string) {
 
 // listWhitelistCommands lists all whitelisted commands
 func ListWhitelistCommands() {
-	drawbox.RunDrawbox("Whitelisted Commands", "bold_white")
+	gui.TitleBox("Whitelisted Commands")
 	for i, cmd := range AllowedCommands {
 		fmt.Printf(" %d. %s\n", i+1, cmd)
 	}
 	if len(AllowedCommands) == 0 {
-		drawbox.PrintAlert("No commands are whitelisted.")
+		gui.AlertBox("No commands are whitelisted.")
 	}
 }
