@@ -83,23 +83,23 @@ func NewEditor() *Editor {
 	}
 }
 
-// enableRawMode puts the terminal into raw mode
+// enableRawMode puts the terminal into raw mode and enters the alternate screen buffer
 func (e *Editor) enableRawMode() error {
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
 		return err
 	}
 	e.originalTerm = oldState
+	// Enter alternate screen buffer
+	fmt.Print("\x1b[?1049h")
 	return nil
 }
 
-// disableRawMode restores the terminal to its original state
+// disableRawMode exits the alternate screen buffer and restores the terminal to its original state
 func (e *Editor) disableRawMode() {
 	if e.originalTerm != nil {
-		// Clear the screen and move cursor to top-left before restoring
-		// Use ClearScreenAndBuffer to clear scrollback as well on exit
-		fmt.Print(gui.ClearScreenAndBuffer())
-		fmt.Print(gui.MoveCursorCmd(0, 0))
+		// Exit alternate screen buffer (restores previous screen and scrollback)
+		fmt.Print("\x1b[?1049l")
 		term.Restore(int(os.Stdin.Fd()), e.originalTerm)
 	}
 }
@@ -109,7 +109,6 @@ func (e *Editor) Run() error {
 	if err := e.enableRawMode(); err != nil {
 		return fmt.Errorf("failed to enable raw mode: %w", err)
 	}
-	// disableRawMode now handles screen clearing and buffer clearing
 	defer e.disableRawMode()
 
 	reader := bufio.NewReader(os.Stdin)
@@ -247,7 +246,7 @@ func (e *Editor) refreshScreen() {
 	gui.HideCursor()
 	// Use a buffer to minimize flicker (optional but good practice)
 	var sb strings.Builder
-	sb.WriteString(gui.ClearScreen())       // \x1b[2J
+	// No need for ClearScreen() when using alternate buffer
 	sb.WriteString(gui.MoveCursorCmd(0, 0)) // \x1b[H
 
 	e.drawRows(&sb)
@@ -891,4 +890,10 @@ func LaunchEditor(args []string) {
 		fmt.Fprintf(os.Stderr, "Editor error: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// EditCommand handles the 'edit' command, launching the text editor.
+func EditCommand(args []string) {
+	// Call the entry point for the new editor
+	LaunchEditor(args)
 }

@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"secshell/ui"
 	"strconv"
 	"strings"
 
@@ -24,7 +23,13 @@ func More(items []string) error {
 	if err != nil {
 		return err
 	}
-	defer term.Restore(int(os.Stdin.Fd()), oldState)
+	// Enter alternate screen buffer
+	fmt.Print("\x1b[?1049h")
+	// Ensure terminal state and alternate buffer are restored on exit
+	defer func() {
+		fmt.Print("\x1b[?1049l") // Exit alternate screen buffer
+		term.Restore(int(os.Stdin.Fd()), oldState)
+	}()
 
 	// Get terminal size
 	cmd := exec.Command("stty", "size")
@@ -50,9 +55,9 @@ func More(items []string) error {
 
 	// Function to render current page
 	renderPage := func() {
-		// Clear screen and move cursor to top
-		ui.ClearScreenAndBuffer()
-		fmt.Print("\033[H\033[2J")
+		// Clear screen is handled by alternate buffer entry/exit
+		fmt.Print("\033[H")  // Move cursor to home position
+		fmt.Print("\033[2J") // Clear the entire screen
 
 		// Print current page
 		start := currentPage * pageSize
@@ -145,7 +150,7 @@ func More(items []string) error {
 		// Read a single byte
 		char, err := reader.ReadByte()
 		if err != nil {
-			return err
+			return err // Defer will handle cleanup
 		}
 
 		if searchMode {
@@ -178,7 +183,7 @@ func More(items []string) error {
 		// Not in search mode, handle navigation commands
 		switch char {
 		case 'q', 'Q':
-			fmt.Print("\033[H\033[2J") // Clear screen before exiting
+			// Cleanup is handled by defer
 			return nil
 
 		case '/':

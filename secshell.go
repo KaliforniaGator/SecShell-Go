@@ -341,19 +341,66 @@ func (s *SecShell) interactiveHistorySearch() {
 		gui.ErrorBox(fmt.Sprintf("Failed to set terminal to raw mode: %s", err))
 		return
 	}
-	defer term.Restore(int(os.Stdin.Fd()), oldState)
+	// Enter alternate screen buffer
+	fmt.Print("\x1b[?1049h")
+	// Ensure terminal state and alternate buffer are restored on exit
+	defer func() {
+		fmt.Print("\x1b[?1049l") // Exit alternate screen buffer
+		term.Restore(int(os.Stdin.Fd()), oldState)
+		fmt.Print("\033[?25h") // Ensure cursor is shown
+	}()
 
 	query := ""
-	selectedIndex := 0
+	selectedIndex := 0 // Index within the filteredHistory
 	filteredHistory := []string{}
+	currentPage := 0
+	pageSize := 10 // Default, will be updated
 
 	// Hide cursor while navigating
 	fmt.Print("\033[?25l")
-	defer fmt.Print("\033[?25h") // Ensure cursor is shown when function exits
+	// Defer for showing cursor is handled above
 
 	// Helper function to refresh display
 	refreshDisplay := func() {
-		fmt.Print("\033[H\033[2J\033[3J") // Clear screen and scrollback buffer
+		// Get terminal height
+		_, termHeight, err := term.GetSize(int(os.Stdout.Fd()))
+		if err != nil {
+			termHeight = 24 // Default height if error
+		}
+		headerLines := 4 // Header, prompt, blank line, instructions
+		statusLine := 1
+		pageSize = termHeight - headerLines - statusLine
+		if pageSize < 1 {
+			pageSize = 1 // Ensure at least one item can be shown
+		}
+
+		// Filter history based on query
+		filteredHistory = []string{}
+		for _, cmd := range s.history {
+			if query == "" || strings.Contains(strings.ToLower(cmd), strings.ToLower(query)) {
+				filteredHistory = append(filteredHistory, cmd)
+			}
+		}
+
+		// Calculate total pages
+		totalPages := 1
+		if len(filteredHistory) > 0 {
+			totalPages = (len(filteredHistory) + pageSize - 1) / pageSize
+		}
+		if currentPage >= totalPages {
+			currentPage = max(0, totalPages-1) // Adjust if current page becomes invalid
+		}
+
+		// Ensure selectedIndex is valid
+		if selectedIndex < 0 {
+			selectedIndex = 0
+		}
+		if selectedIndex >= len(filteredHistory) && len(filteredHistory) > 0 {
+			selectedIndex = len(filteredHistory) - 1
+		}
+
+		// Clear screen and move cursor to home position
+		fmt.Print("\033[H\033[2J") // Move cursor home and clear screen
 		// Display header with drawbox
 		fmt.Print("\n")
 		ui.ClearLine()
@@ -366,28 +413,33 @@ func (s *SecShell) interactiveHistorySearch() {
 		ui.ClearLine()
 		fmt.Println("Type to search, Up/Down arrows to navigate, Enter to select, Esc to cancel")
 
-		// Filter history based on query
-		filteredHistory = []string{}
-		for _, cmd := range s.history {
-			if query == "" || strings.Contains(strings.ToLower(cmd), strings.ToLower(query)) {
-				filteredHistory = append(filteredHistory, cmd)
-			}
-		}
+		// Calculate display range for current page
+		start := currentPage * pageSize
+		end := min(start+pageSize, len(filteredHistory))
 
 		// Display results with selection highlight
-		for i, cmd := range filteredHistory {
+		for i := start; i < end; i++ {
+			cmd := filteredHistory[i]
+			ui.ClearLine() // Clear previous line content
 			if i == selectedIndex {
-				ui.ClearLine()
-				fmt.Printf("%s→ %d: %s%s\n", colors.BoldGreen, i+1, cmd, colors.Reset)
+				fmt.Printf("%s→ %d: %s%s\r\n", colors.BoldGreen, i+1, cmd, colors.Reset)
 			} else {
-				ui.ClearLine()
-				fmt.Printf("  %d: %s\n", i+1, cmd)
+				fmt.Printf("  %d: %s\r\n", i+1, cmd)
 			}
 		}
 
-		if len(filteredHistory) == 0 {
+		// Fill remaining lines on the page if necessary
+		for i := end - start; i < pageSize; i++ {
 			ui.ClearLine()
-			fmt.Println("  No matching commands found.")
+			fmt.Print("\r\n")
+		}
+
+		// Print status line
+		ui.ClearLine()
+		if len(filteredHistory) == 0 {
+			fmt.Print("  No matching commands found.")
+		} else {
+			fmt.Printf("-- Page %d/%d (%d results) --", currentPage+1, totalPages, len(filteredHistory))
 		}
 	}
 
@@ -401,32 +453,33 @@ func (s *SecShell) interactiveHistorySearch() {
 		if err != nil {
 			logging.LogError(err)
 			gui.ErrorBox(fmt.Sprintf("Failed to read input: %s", err))
-			return
+			return // Defer will handle cleanup
 		}
 
 		if n == 1 {
 			switch buf[0] {
 			case 27: // ESC
-				// Clear screen before returning to normal mode
-				fmt.Print("\033[H\033[2J\033[3J") // Clear screen and scrollback buffer
+				// Cleanup is handled by defer
 				return
 
 			case 13: // Enter
 				if len(filteredHistory) > 0 && selectedIndex >= 0 && selectedIndex < len(filteredHistory) {
 					selectedCmd := filteredHistory[selectedIndex]
-					// Restore terminal and run command
-					fmt.Print("\033[?25h") // Make sure cursor is visible
+					// Exit alternate buffer and restore terminal state via defer
+					// Need to print the alert *after* restoring
+					fmt.Print("\x1b[?1049l") // Exit alternate screen buffer manually here
 					term.Restore(int(os.Stdin.Fd()), oldState)
-					fmt.Print("\033[H\033[2J\033[3J") // Clear screen and scrollback buffer
+					fmt.Print("\033[?25h") // Show cursor manually here
 					gui.AlertBox("Running: " + selectedCmd)
 					s.processCommand(selectedCmd)
-					return
+					return // Exit function
 				}
 
 			case 127, 8: // Backspace/Delete
 				if len(query) > 0 {
 					query = query[:len(query)-1]
-					selectedIndex = 0
+					selectedIndex = 0 // Reset selection
+					currentPage = 0   // Reset page
 					refreshDisplay()
 				}
 
@@ -434,23 +487,44 @@ func (s *SecShell) interactiveHistorySearch() {
 				// Add printable characters to query
 				if buf[0] >= 32 && buf[0] <= 126 {
 					query += string(buf[0])
-					selectedIndex = 0
+					selectedIndex = 0 // Reset selection
+					currentPage = 0   // Reset page
 					refreshDisplay()
 				}
 			}
 		} else if n == 3 && buf[0] == 27 && buf[1] == 91 {
 			// Handle arrow keys
-			switch buf[2] {
-			case 65: // Up arrow
-				if selectedIndex > 0 {
-					selectedIndex--
-					refreshDisplay()
-				}
+			if len(filteredHistory) > 0 { // Only navigate if there are results
+				switch buf[2] {
+				case 65: // Up arrow
+					if selectedIndex > 0 {
+						selectedIndex--
+						// Check if we need to change page
+						if selectedIndex < currentPage*pageSize {
+							currentPage--
+						}
+						refreshDisplay()
+					} else {
+						// Wrap around to the end
+						selectedIndex = len(filteredHistory) - 1
+						currentPage = (len(filteredHistory) - 1) / pageSize
+						refreshDisplay()
+					}
 
-			case 66: // Down arrow
-				if len(filteredHistory) > 0 && selectedIndex < len(filteredHistory)-1 {
-					selectedIndex++
-					refreshDisplay()
+				case 66: // Down arrow
+					if selectedIndex < len(filteredHistory)-1 {
+						selectedIndex++
+						// Check if we need to change page
+						if selectedIndex >= (currentPage+1)*pageSize {
+							currentPage++
+						}
+						refreshDisplay()
+					} else {
+						// Wrap around to the beginning
+						selectedIndex = 0
+						currentPage = 0
+						refreshDisplay()
+					}
 				}
 			}
 		}
@@ -1640,6 +1714,22 @@ func isSignalKilled(err error) bool {
 		}
 	}
 	return false
+}
+
+// Helper min function
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// Helper max function
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // main function to start the shell
