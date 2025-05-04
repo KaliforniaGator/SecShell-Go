@@ -56,6 +56,7 @@ var HelpCommands = []string{
 	"./",
 	"hash",
 	"extract-strings",
+	"more",
 }
 
 // HelpTopics contains detailed help information for each command
@@ -395,6 +396,18 @@ Options:
 			"extract-strings malware.bin > output.json",
 		},
 		Category: "Analysis",
+	},
+	"more": {
+		Command:     "more",
+		Description: "Display text files or command output with interactive paging and search",
+		Usage:       "more <file> or command | more or more < input_file",
+		Examples: []string{
+			"more /etc/passwd",
+			"cat /var/log/syslog | more",
+			"ls -la /usr | more",
+			"more < document.txt",
+		},
+		Category: "FileSystem",
 	},
 }
 

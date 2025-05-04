@@ -1068,6 +1068,15 @@ func (s *SecShell) processCommand(input string) {
 			}
 			return
 
+		case "edit":
+			if len(args) < 2 {
+				gui.ErrorBox("Usage: edit <file>")
+				return
+			}
+			// Open the file in the default editor
+			tools.EditCommand(args[1:])
+			return
+
 		default:
 			// Handle quoted arguments
 			args = s.parseQuotedArgs(args)

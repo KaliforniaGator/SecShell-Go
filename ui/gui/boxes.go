@@ -12,6 +12,67 @@ import (
 	"golang.org/x/term"
 )
 
+// ANSI Escape Codes
+const (
+	clearScreen          = "\x1b[2J"
+	clearScreenAndBuffer = "\033[H\033[2J\033[3J"
+	moveCursorFormat     = "\x1b[%d;%dH" // row, col (1-based) - Renamed format string
+	hideCursor           = "\x1b[?25l"
+	showCursor           = "\x1b[?25h"
+)
+
+// ClearScreen clears the entire terminal screen.
+func ClearScreen() string { // Return string instead of printing directly
+	return clearScreen
+}
+
+// ClearScreenAndBuffer clears the terminal screen and scrollback buffer.
+func ClearScreenAndBuffer() string { // Return string instead of printing directly
+	return clearScreenAndBuffer
+}
+
+// MoveCursor positions the cursor at the specified row and column.
+// Note: row and col are 0-based for convenience, but converted to 1-based for ANSI.
+func MoveCursor(row, col int) { // Keep this for direct printing if needed elsewhere
+	fmt.Printf(moveCursorFormat, row+1, col+1)
+}
+
+// MoveCursorCmd returns the ANSI escape code string to move the cursor.
+// Note: row and col are 0-based for convenience.
+func MoveCursorCmd(row, col int) string {
+	return fmt.Sprintf(moveCursorFormat, row+1, col+1)
+}
+
+// HideCursor makes the terminal cursor invisible.
+func HideCursor() string { // Return string
+	return hideCursor
+}
+
+// ShowCursor makes the terminal cursor visible.
+func ShowCursor() string { // Return string
+	return showCursor
+}
+
+// ClearLineSuffix returns ANSI sequence to clear from cursor to end of line
+func ClearLineSuffix() string {
+	return "\x1b[K"
+}
+
+// ResetStyle returns ANSI escape sequence to reset text formatting
+func ResetStyle() string {
+	return "\x1b[0m"
+}
+
+// ReverseVideo returns ANSI escape sequence for reverse video (inverted colors)
+func ReverseVideo() string {
+	return "\x1b[7m"
+}
+
+// ResetVideo returns ANSI escape sequence to reset text formatting
+func ResetVideo() string {
+	return "\x1b[27m"
+}
+
 // BoxType defines the structure for different box styles
 type BoxType struct {
 	TopLeft     string

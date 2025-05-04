@@ -15,7 +15,7 @@ var LogFilePath = filepath.Join(ConfigDir, ".secshell_audit.log")
 // Define a list of built-in commands
 var BuiltInCommands = []string{
 	//Regular commands
-	"allowed", "help", "exit", "logs", "services", "jobs", "cd", "history", "export", "env", "unset",
+	"allowed", "help", "exit", "logs", "more", "services", "jobs", "cd", "history", "export", "env", "unset",
 	"reload-blacklist", "blacklist", "edit-blacklist", "whitelist", "edit-whitelist",
 	"reload-whitelist", "download", "time", "date", "--version", "--update",
 	// Add pentesting commands
