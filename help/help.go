@@ -53,6 +53,7 @@ var HelpCommands = []string{
 	"urlencode",
 	"url",
 	"./",
+	"hash",
 }
 
 // HelpTopics contains detailed help information for each command
@@ -352,6 +353,19 @@ Options:
 			"./custom_script --verbose",
 		},
 		Category: "Scripting",
+	},
+	"hash": {
+		Command:     "hash",
+		Description: "Calculate cryptographic hashes for strings or files",
+		Usage:       "hash -s|-f <String|file> [algo]\n   -s: Hash a string\n   -f: Hash a file\n   [algo]: Optional hash algorithm (md5, sha1, sha256, sha512, all)",
+		Examples: []string{
+			"hash -s \"Hello, world!\"",
+			"hash -f /path/to/file.txt",
+			"hash -s \"test string\" md5",
+			"hash -f document.pdf sha256",
+			"hash -f image.jpg all",
+		},
+		Category: "Encoding",
 	},
 }
 
