@@ -48,6 +48,14 @@ var HelpCommands = []string{
 	"webscan",
 	"payload",
 	"session",
+	"base64",
+	"hex",
+	"urlencode",
+	"url",
+	"binary",
+	"./",
+	"hash",
+	"extract-strings",
 }
 
 // HelpTopics contains detailed help information for each command
@@ -288,6 +296,106 @@ Options:
 		Examples:    []string{"session -l", "session -i 1", "session -c 4444", "session -k 1"},
 		Category:    "Pentesting",
 	},
+	"base64": {
+		Command:     "base64",
+		Description: "Encode or decode data using Base64",
+		Usage:       "base64 [-e|-d] <string> OR base64 [-e|-d] -f <file> [> output_file]",
+		Examples: []string{
+			"base64 -e \"Hello, world!\"",
+			"base64 -e 'Hello, world!'",
+			"base64 -d \"SGVsbG8sIHdvcmxkIQ==\"",
+			"base64 -e -f input.txt > encoded.txt",
+			"base64 -d -f encoded.txt -o decoded.txt",
+		},
+		Category: "Encoding",
+	},
+	"binary": {
+		Command:     "binary",
+		Description: "Encode or decode data using binary (0s and 1s)",
+		Usage:       "binary [-e|-d] <string> OR binary [-e|-d] -f <file> [> output_file]",
+		Examples: []string{
+			"binary -e \"Hello\"",
+			"binary -e 'A'",
+			"binary -d \"01000001\"",
+			"binary -e -f input.txt > binary.txt",
+			"binary -d -f binary.txt -o decoded.txt",
+		},
+		Category: "Encoding",
+	},
+	"hex": {
+		Command:     "hex",
+		Description: "Encode or decode data using hexadecimal",
+		Usage:       "hex [-e|-d] <string> OR hex [-e|-d] -f <file> [> output_file]",
+		Examples: []string{
+			"hex -e \"Hello\"",
+			"hex -e 'Hello'",
+			"hex -d \"48656c6c6f\"",
+			"hex -e -f binary.dat > encoded.txt",
+			"hex -d -f encoded.txt -o original.dat",
+		},
+		Category: "Encoding",
+	},
+	"urlencode": {
+		Command:     "urlencode",
+		Description: "URL-encode or decode a string",
+		Usage:       "urlencode [-e|-d] <string> [> output_file]",
+		Examples: []string{
+			"urlencode -e \"Hello world!\"",
+			"urlencode -e 'Hello world!'",
+			"urlencode -d \"Hello%20world%21\"",
+			"urlencode -e \"user=test&pass=secret\" > encoded.txt",
+		},
+		Category: "Encoding",
+	},
+	"url": {
+		Command:     "url",
+		Description: "Alias for urlencode - URL-encode or decode a string",
+		Usage:       "url [-e|-d] <string> [> output_file]",
+		Examples: []string{
+			"url -e \"Hello world!\"",
+			"url -e 'Hello world!'",
+			"url -d \"Hello%20world%21\"",
+		},
+		Category: "Encoding",
+	},
+	"./": {
+		Command:     "./",
+		Description: "Execute a script file with automatic interpreter detection",
+		Usage:       "./<script_file> [arguments]",
+		Examples: []string{
+			"./script.sh",
+			"./script.py arg1 arg2",
+			"./custom_script --verbose",
+		},
+		Category: "Scripting",
+	},
+	"hash": {
+		Command:     "hash",
+		Description: "Calculate cryptographic hashes for strings or files and compare hash values",
+		Usage:       "hash -s|-f <String|file> [algo] [-c <hash-to-compare>]\n   -s: Hash a string\n   -f: Hash a file\n   [algo]: Optional hash algorithm (md5, sha1, sha256, sha512, all)\n   -c, --compare: Compare the calculated hash with the provided hash value",
+		Examples: []string{
+			"hash -s \"Hello, world!\"",
+			"hash -f /path/to/file.txt",
+			"hash -s \"test string\" md5",
+			"hash -f document.pdf sha256",
+			"hash -f image.jpg all",
+			"hash -s \"Hello, world!\" sha256 -c 315f5bdb76d078c43b8ac0064e4a0164612b1fce77c869345bfc94c75894edd3",
+			"hash -f /path/to/file.txt md5 -c d41d8cd98f00b204e9800998ecf8427e",
+		},
+		Category: "Encoding",
+	},
+	"extract-strings": {
+		Command:     "extract-strings",
+		Description: "Extract printable strings from binary files and output as a JSON array",
+		Usage:       "extract-strings <file> [-n min-len] [-o output.json]\n   You can also use '> output.json' for redirection",
+		Examples: []string{
+			"extract-strings binary_file",
+			"extract-strings executable -n 8",
+			"extract-strings firmware.bin -n 10 -o strings.json",
+			"extract-strings malware.bin > output.json",
+		},
+		Category: "Analysis",
+	},
 }
 
 // DisplayHelp shows the help message or specific command help
@@ -315,7 +423,7 @@ func DisplayHelp(args ...string) {
 	fmt.Println("\nAvailable Commands:")
 
 	// Order of categories to display
-	categories := []string{"System", "FileSystem", "Process", "Environment", "Security", "Network", "Pentesting"}
+	categories := []string{"System", "FileSystem", "Process", "Environment", "Security", "Network", "Pentesting", "Encoding", "Scripting", "Analysis"}
 
 	for _, category := range categories {
 		commands, exists := commandsByCategory[category]
@@ -347,6 +455,8 @@ func DisplayHelp(args ...string) {
 	fmt.Println("  - Background job execution")
 	fmt.Println("  - Piped command execution")
 	fmt.Println("  - Input/output redirection")
+	fmt.Println("  - Data encoding/decoding utilities")
+	fmt.Println("  - Script execution with interpreter detection")
 
 	fmt.Printf("\n%sUsage:%s Type '%shelp <command>%s' for more details on a specific command\n",
 		colors.Cyan, colors.Reset, colors.BoldWhite, colors.Reset)

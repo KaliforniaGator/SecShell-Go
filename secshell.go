@@ -26,6 +26,7 @@ import (
 	"secshell/pentest"
 	"secshell/sanitize"
 	"secshell/services"
+	"secshell/tools"
 	"secshell/ui"
 	"secshell/ui/gui"
 	"secshell/update"
@@ -295,8 +296,12 @@ func (s *SecShell) sanitizeInput(input string, allowSpecialChars ...bool) string
 // displayHistory shows the command history
 func (s *SecShell) displayHistory() {
 	gui.TitleBox("Command History")
-	for i, cmd := range s.history {
-		fmt.Printf("%d: %s\n", i+1, cmd)
+	if len(s.history) > gui.GetTerminalHeight() {
+		core.More(s.history)
+	} else {
+		for i, cmd := range s.history {
+			fmt.Printf("%d: %s\n", i+1, cmd)
+		}
 	}
 }
 
@@ -546,6 +551,19 @@ func (s *SecShell) processCommand(input string) {
 		return
 	}
 
+	// Check for script execution (files with ./ prefix)
+	if strings.HasPrefix(input, "./") {
+		output, err := tools.ExecuteScript(input)
+		if err != nil {
+			logging.LogError(err)
+			gui.ErrorBox(fmt.Sprintf("Script execution failed: %s", err))
+			return
+		}
+		// Script executed successfully
+		fmt.Print(output)
+		return
+	}
+
 	splitCommands := strings.Split(input, "|")
 	for i, command := range splitCommands {
 		splitCommands[i] = strings.TrimSpace(command)
@@ -557,6 +575,51 @@ func (s *SecShell) processCommand(input string) {
 		args := strings.Fields(splitCommands[0])
 		if len(args) == 0 {
 			return
+		}
+
+		// Prevent deletion of critical files and the config directory
+		if args[0] == "rm" {
+			// Get absolute paths of critical files/dirs for comparison
+			criticalPaths := make(map[string]string)
+			criticalItems := []string{
+				logging.LogFile,
+				globals.BlacklistPath,
+				globals.WhitelistPath,
+				globals.VersionPath,
+				globals.HistoryPath,
+				globals.ConfigDir,
+			}
+			for _, item := range criticalItems {
+				absPath, err := filepath.Abs(item)
+				if err == nil { // Only add if we can resolve the absolute path
+					criticalPaths[absPath] = item // Store original name for logging if needed
+				} else {
+					logging.LogError(fmt.Errorf("error resolving critical path %s: %w", item, err))
+				}
+			}
+
+			for _, arg := range args[1:] {
+				// Ignore flags like -r, -f, -rf etc.
+				if strings.HasPrefix(arg, "-") {
+					continue
+				}
+
+				// Resolve potential relative paths for the argument
+				absArg, err := filepath.Abs(arg)
+				if err != nil {
+					logging.LogError(fmt.Errorf("error resolving path %s: %w", arg, err))
+					continue // Skip if path resolution fails for the argument
+				}
+
+				// Check if the argument matches any critical path
+				if _, isCritical := criticalPaths[absArg]; isCritical {
+					alertMsg := fmt.Sprintf("Attempt to delete the critical file/directory '%s' is forbidden.", arg)
+					logging.LogAlert(alertMsg)
+					ui.NewLine() // Ensure error box appears on a new line
+					gui.ErrorBox(alertMsg)
+					return // Prevent execution
+				}
+			}
 		}
 
 		// Check if command requires admin privileges
@@ -656,8 +719,8 @@ func (s *SecShell) processCommand(input string) {
 			env.UnsetEnvVariable(args)
 		case "logs":
 			if len(args) < 2 {
-				logging.LogAlert("Usage: logs <list|clear>")
-				gui.ErrorBox("Usage: logs <list|clear>")
+				logging.LogAlert("Usage: logs list") // Updated usage message
+				gui.ErrorBox("Usage: logs list")     // Updated usage message
 				return
 			} else {
 				switch args[1] {
@@ -667,15 +730,9 @@ func (s *SecShell) processCommand(input string) {
 						logging.LogError(err)
 						gui.ErrorBox("Failed to read log file")
 					}
-				case "clear":
-					err := logging.ClearLog(admin.IsAdmin())
-					if err != nil {
-						logging.LogError(err)
-						gui.ErrorBox("Failed to clear log file")
-					} else {
-						logging.LogAlert("Log file cleared successfully")
-						gui.AlertBox("Log file cleared successfully")
-					}
+				default: // Added default case for invalid options
+					logging.LogAlert("Invalid logs option. Use 'list'.")
+					gui.ErrorBox("Invalid logs option. Use 'list'.")
 				}
 			}
 		case "blacklist":
@@ -944,6 +1001,57 @@ func (s *SecShell) processCommand(input string) {
 			default:
 				gui.ErrorBox("Unknown session command. Use -l, -i, -c, or -k")
 			}
+
+		case "base64":
+			err := tools.ExecuteEncodingCommand(args, tools.Base64Encoding)
+			if err != nil {
+				gui.ErrorBox(fmt.Sprintf("Base64 operation failed: %v", err))
+			}
+			return
+
+		case "hex":
+			err := tools.ExecuteEncodingCommand(args, tools.HexEncoding)
+			if err != nil {
+				gui.ErrorBox(fmt.Sprintf("Hex operation failed: %v", err))
+			}
+			return
+
+		case "urlencode", "url":
+			err := tools.ExecuteEncodingCommand(args, tools.URLEncoding)
+			if err != nil {
+				gui.ErrorBox(fmt.Sprintf("URL encoding operation failed: %v", err))
+			}
+			return
+
+		case "binary":
+			err := tools.ExecuteEncodingCommand(args, tools.BinaryEncoding)
+			if err != nil {
+				gui.ErrorBox(fmt.Sprintf("Binary operation failed: %v", err))
+			}
+			return
+
+		case "hash":
+			result, err := tools.HashCommand(args[1:])
+			if err != nil {
+				gui.ErrorBox(fmt.Sprintf("Hash operation failed: %v", err))
+				return
+			}
+			fmt.Println(result)
+			return
+
+		case "extract-strings":
+			// Extract strings from binary files
+			if len(args) < 2 {
+				gui.ErrorBox("Usage: extract-strings <file> [-n min-len]")
+				return
+			}
+			// Remove "extract-strings" from the arguments and pass the rest to StringExtractCmd
+			err := tools.RunStringExtract(args[1:])
+			if err != nil {
+				gui.ErrorBox(fmt.Sprintf("String extraction failed: %v", err))
+			}
+			return
+
 		default:
 			// Handle quoted arguments
 			args = s.parseQuotedArgs(args)
