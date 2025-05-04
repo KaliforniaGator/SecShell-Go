@@ -9,6 +9,11 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"syscall"
+
+	"golang.org/x/term"
+
+	"secshell/core"
 )
 
 // StringExtractOptions defines configuration options for the string extraction
@@ -67,6 +72,16 @@ func ExtractStrings(reader io.Reader, options StringExtractOptions) ([]string, e
 	return results, nil
 }
 
+// getTerminalHeight returns the number of rows in the current terminal
+func getTerminalHeight() (int, error) {
+	fd := int(syscall.Stdout)
+	if !term.IsTerminal(fd) {
+		return 0, fmt.Errorf("not a terminal")
+	}
+	_, height, err := term.GetSize(fd)
+	return height, err
+}
+
 // RunStringExtract runs the string extraction command with the given arguments
 func RunStringExtract(args []string) error {
 	// Create a new FlagSet to parse command arguments
@@ -122,7 +137,15 @@ func RunStringExtract(args []string) error {
 			return fmt.Errorf("error writing to output file: %v", err)
 		}
 	} else {
-		fmt.Println(string(jsonData))
+		// Check if we need to use a pager based on terminal height
+		termHeight, termErr := getTerminalHeight()
+		if termErr == nil && len(stringsFound) > termHeight {
+			// Use the core.More function to display the output
+			return core.More(strings.Split(string(jsonData), "\n"))
+		} else {
+			// Print directly if the output fits or we couldn't determine terminal height
+			fmt.Println(string(jsonData))
+		}
 	}
 
 	return nil
