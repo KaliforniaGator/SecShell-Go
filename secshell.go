@@ -561,20 +561,6 @@ func (s *SecShell) processCommand(input string) {
 			s.toggleSecurity()
 		case "download":
 			download.DownloadFiles(args)
-		case "banner":
-			if len(args) < 2 {
-				gui.ErrorBox("Usage: banner <text> -s,--style <style> -c,--color <color> -b,--background <bg> -w,--width <width> -h,--height <height> -a,--align <align>")
-				return
-			} else {
-				gui.ParseAndPrintBanner(args)
-			}
-		case "window":
-			if len(args) < 2 {
-				gui.ErrorBox("Usage: window <icon> <title> <content> -w,--width <width> -h,--height <height> -b,--background <color> -bc, --border-color <color> -tc, --title-color <color> -cc,content-color <color>")
-				return
-			} else {
-				gui.ParseAndPrintWindow(args)
-			}
 		case "portscan":
 			if len(args) < 2 {
 				gui.ErrorBox("Usage: portscan [-p ports] [-udp] [-t timing] [-v] [-j|-html] [-o file] [-syn] [-os] [-e] <target>")
