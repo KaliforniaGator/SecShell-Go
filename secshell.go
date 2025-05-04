@@ -1010,7 +1010,7 @@ func (s *SecShell) processCommand(input string) {
 			var input string
 			var cmdArgs []string
 
-			// Parse arguments
+			// Parse arguments with quote handling
 			i := 1
 			for i < len(args) {
 				switch args[i] {
@@ -1030,9 +1030,34 @@ func (s *SecShell) processCommand(input string) {
 						return
 					}
 				default:
+					// Handle quoted input (both single and double quotes)
 					if input == "" {
-						input = args[i]
-						i++
+						arg := args[i]
+						// Check for quotes and strip them
+						if (strings.HasPrefix(arg, "'") && strings.HasSuffix(arg, "'")) ||
+							(strings.HasPrefix(arg, "\"") && strings.HasSuffix(arg, "\"")) {
+							input = arg[1 : len(arg)-1]
+						} else if strings.HasPrefix(arg, "'") || strings.HasPrefix(arg, "\"") {
+							// Start of a multi-part quoted string
+							quote := arg[0:1]
+							quotedParts := []string{arg[1:]}
+							i++
+							for i < len(args) {
+								if strings.HasSuffix(args[i], quote) {
+									// End of quote found
+									quotedParts = append(quotedParts, args[i][:len(args[i])-1])
+									break
+								} else {
+									quotedParts = append(quotedParts, args[i])
+								}
+								i++
+							}
+							input = strings.Join(quotedParts, " ")
+							i++
+						} else {
+							input = arg
+							i++
+						}
 					} else {
 						// Collect remaining args for output redirection
 						cmdArgs = append(cmdArgs, args[i])
@@ -1069,7 +1094,7 @@ func (s *SecShell) processCommand(input string) {
 			var input string
 			var cmdArgs []string
 
-			// Parse arguments
+			// Parse arguments with quote handling
 			i := 1
 			for i < len(args) {
 				switch args[i] {
@@ -1089,9 +1114,34 @@ func (s *SecShell) processCommand(input string) {
 						return
 					}
 				default:
+					// Handle quoted input (both single and double quotes)
 					if input == "" {
-						input = args[i]
-						i++
+						arg := args[i]
+						// Check for quotes and strip them
+						if (strings.HasPrefix(arg, "'") && strings.HasSuffix(arg, "'")) ||
+							(strings.HasPrefix(arg, "\"") && strings.HasSuffix(arg, "\"")) {
+							input = arg[1 : len(arg)-1]
+						} else if strings.HasPrefix(arg, "'") || strings.HasPrefix(arg, "\"") {
+							// Start of a multi-part quoted string
+							quote := arg[0:1]
+							quotedParts := []string{arg[1:]}
+							i++
+							for i < len(args) {
+								if strings.HasSuffix(args[i], quote) {
+									// End of quote found
+									quotedParts = append(quotedParts, args[i][:len(args[i])-1])
+									break
+								} else {
+									quotedParts = append(quotedParts, args[i])
+								}
+								i++
+							}
+							input = strings.Join(quotedParts, " ")
+							i++
+						} else {
+							input = arg
+							i++
+						}
 					} else {
 						// Collect remaining args for output redirection
 						cmdArgs = append(cmdArgs, args[i])
@@ -1127,7 +1177,7 @@ func (s *SecShell) processCommand(input string) {
 			var input string
 			var cmdArgs []string
 
-			// Parse arguments
+			// Parse arguments with quote handling
 			i := 1
 			for i < len(args) {
 				switch args[i] {
@@ -1138,9 +1188,34 @@ func (s *SecShell) processCommand(input string) {
 					isEncode = false
 					i++
 				default:
+					// Handle quoted input (both single and double quotes)
 					if input == "" {
-						input = args[i]
-						i++
+						arg := args[i]
+						// Check for quotes and strip them
+						if (strings.HasPrefix(arg, "'") && strings.HasSuffix(arg, "'")) ||
+							(strings.HasPrefix(arg, "\"") && strings.HasSuffix(arg, "\"")) {
+							input = arg[1 : len(arg)-1]
+						} else if strings.HasPrefix(arg, "'") || strings.HasPrefix(arg, "\"") {
+							// Start of a multi-part quoted string
+							quote := arg[0:1]
+							quotedParts := []string{arg[1:]}
+							i++
+							for i < len(args) {
+								if strings.HasSuffix(args[i], quote) {
+									// End of quote found
+									quotedParts = append(quotedParts, args[i][:len(args[i])-1])
+									break
+								} else {
+									quotedParts = append(quotedParts, args[i])
+								}
+								i++
+							}
+							input = strings.Join(quotedParts, " ")
+							i++
+						} else {
+							input = arg
+							i++
+						}
 					} else {
 						// Collect remaining args for output redirection
 						cmdArgs = append(cmdArgs, args[i])

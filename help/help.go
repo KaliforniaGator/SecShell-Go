@@ -299,6 +299,7 @@ Options:
 		Usage:       "base64 [-e|-d] <string> OR base64 [-e|-d] -f <file> [> output_file]",
 		Examples: []string{
 			"base64 -e \"Hello, world!\"",
+			"base64 -e 'Hello, world!'",
 			"base64 -d \"SGVsbG8sIHdvcmxkIQ==\"",
 			"base64 -e -f input.txt > encoded.txt",
 			"base64 -d -f encoded.txt -o decoded.txt",
@@ -311,6 +312,7 @@ Options:
 		Usage:       "hex [-e|-d] <string> OR hex [-e|-d] -f <file> [> output_file]",
 		Examples: []string{
 			"hex -e \"Hello\"",
+			"hex -e 'Hello'",
 			"hex -d \"48656c6c6f\"",
 			"hex -e -f binary.dat > encoded.txt",
 			"hex -d -f encoded.txt -o original.dat",
@@ -323,6 +325,7 @@ Options:
 		Usage:       "urlencode [-e|-d] <string> [> output_file]",
 		Examples: []string{
 			"urlencode -e \"Hello world!\"",
+			"urlencode -e 'Hello world!'",
 			"urlencode -d \"Hello%20world%21\"",
 			"urlencode -e \"user=test&pass=secret\" > encoded.txt",
 		},
@@ -334,6 +337,7 @@ Options:
 		Usage:       "url [-e|-d] <string> [> output_file]",
 		Examples: []string{
 			"url -e \"Hello world!\"",
+			"url -e 'Hello world!'",
 			"url -d \"Hello%20world%21\"",
 		},
 		Category: "Encoding",
