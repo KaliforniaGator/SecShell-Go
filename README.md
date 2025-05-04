@@ -17,18 +17,22 @@
 - **Command History & Search**: Persistent history with interactive and query-based search.
 - **Environment Variable Control**: Set, unset, and list environment variables.
 - **Security Toggle (Admin Only)**: Temporarily bypass security checks with authentication.
-- **Pentesting Utilities**: Built-in port, host, and web scanners, plus reverse shell payload generation and session management.
+- **Pentesting Utilities**: Built-in port, host, and web scanners, reverse shell payload generation, and session management.
+- **Encoding/Decoding Tools**: Base64, Hex, URL, Binary encode/decode, and file support.
+- **Hashing Utility**: Calculate and compare hashes (MD5, SHA1, SHA256, SHA512) for strings and files.
+- **String Extraction**: Extract printable strings from binaries.
+- **Script Execution**: Run scripts with automatic interpreter detection.
 - **Update & Version Control**: Self-update and version display commands.
 - **Comprehensive Logging**: All actions are logged for audit and review.
 
 ---
 
 ## 🛡️ Built-in Commands
+
 ________________________________________________________________________________________________________________________________
 | Command                | Description / Usage                                                                                 |
 |------------------------|-----------------------------------------------------------------------------------------------------|
-| `allowed`              | Show allowed directories, commands, built-ins, or binaries.<br>                                     |
-|                        | Usage: `allowed <dirs|commands|bins|builtins|all>`                                                  |
+| `allowed`              | Show allowed directories, commands, built-ins, or binaries.<br>Usage: `allowed <dirs|commands|bins|builtins|all>` |
 | `help`                 | Show help message or help for a specific command.<br>Usage: `help [command]`                        |
 | `exit`                 | Exit the shell (admin only).                                                                        |
 | `services`             | Manage system services.<br>Usage: `services <start,stop,restart,status,list> <service_name>`        |
@@ -86,7 +90,22 @@ ________________________________________________________________________________
 |                        | &nbsp;&nbsp;`session -i <id>` (interact with session)<br>                                           |
 |                        | &nbsp;&nbsp;`session -c <port>` (listen for new session)<br>                                        |
 |                        | &nbsp;&nbsp;`session -k <id>` (kill session)                                                        |
+| **Encoding/Decoding**  |                                                                                                     |
+| `base64`               | Encode/decode Base64.<br>Usage: `base64 [-e|-d] <string>` or `base64 [-e|-d] -f <file> [> output]`  |
+| `hex`                  | Encode/decode Hex.<br>Usage: `hex [-e|-d] <string>` or `hex [-e|-d] -f <file> [> output]`           |
+| `urlencode`, `url`     | Encode/decode URL.<br>Usage: `urlencode [-e|-d] <string> [> output]`                                |
+| `binary`               | Encode/decode binary.<br>Usage: `binary [-e|-d] <string>` or `binary [-e|-d] -f <file> [> output]`  |
+| **Hashing**            |                                                                                                     |
+| `hash`                 | Calculate or compare hashes.<br>Usage: `hash -s|-f <string|file> [md5|sha1|sha256|sha512|all] [-c <hash>] [-o <file>]` |
+| **Analysis**           |                                                                                                     |
+| `extract-strings`      | Extract printable strings from binaries.<br>Usage: `extract-strings <file> [-n min-len]`            |
+| **Scripting**          |                                                                                                     |
+| `./<script>`           | Execute scripts with automatic interpreter detection.                                               |
+| **UI/Display**         |                                                                                                     |
+| `banner`               | Print a styled banner.<br>Usage: `banner <text> [options]`                                          |
+| `window`               | Print a styled window.<br>Usage: `window <icon> <title> <content> [options]`                        |
 --------------------------------------------------------------------------------------------------------------------------------
+
 ---
 
 ## ⚡ Quick Start
@@ -129,6 +148,11 @@ secshell
 - Download a file: `download https://example.com/file.txt`
 - Scan ports: `portscan 192.168.1.1 1-1000`
 - Toggle security (admin): `toggle-security`
+- Encode a string in base64: `base64 -e "Hello"`
+- Decode a hex string: `hex -d "48656c6c6f"`
+- Calculate SHA256 hash: `hash -s "test" sha256`
+- Extract strings from a binary: `extract-strings firmware.bin -n 8`
+- Run a Python script: `./myscript.py arg1 arg2`
 
 ---
 

@@ -296,8 +296,12 @@ func (s *SecShell) sanitizeInput(input string, allowSpecialChars ...bool) string
 // displayHistory shows the command history
 func (s *SecShell) displayHistory() {
 	gui.TitleBox("Command History")
-	for i, cmd := range s.history {
-		fmt.Printf("%d: %s\n", i+1, cmd)
+	if len(s.history) > gui.GetTerminalHeight() {
+		core.More(s.history)
+	} else {
+		for i, cmd := range s.history {
+			fmt.Printf("%d: %s\n", i+1, cmd)
+		}
 	}
 }
 
@@ -544,6 +548,19 @@ func (s *SecShell) processCommand(input string) {
 			logging.LogError(err)
 			s.runHistoryCommand(num)
 		}
+		return
+	}
+
+	// Check for script execution (files with ./ prefix)
+	if strings.HasPrefix(input, "./") {
+		output, err := tools.ExecuteScript(input)
+		if err != nil {
+			logging.LogError(err)
+			gui.ErrorBox(fmt.Sprintf("Script execution failed: %s", err))
+			return
+		}
+		// Script executed successfully
+		fmt.Print(output)
 		return
 	}
 
@@ -1006,6 +1023,13 @@ func (s *SecShell) processCommand(input string) {
 			}
 			return
 
+		case "binary":
+			err := tools.ExecuteEncodingCommand(args, tools.BinaryEncoding)
+			if err != nil {
+				gui.ErrorBox(fmt.Sprintf("Binary operation failed: %v", err))
+			}
+			return
+
 		case "hash":
 			result, err := tools.HashCommand(args[1:])
 			if err != nil {
@@ -1013,6 +1037,19 @@ func (s *SecShell) processCommand(input string) {
 				return
 			}
 			fmt.Println(result)
+			return
+
+		case "extract-strings":
+			// Extract strings from binary files
+			if len(args) < 2 {
+				gui.ErrorBox("Usage: extract-strings <file> [-n min-len]")
+				return
+			}
+			// Remove "extract-strings" from the arguments and pass the rest to StringExtractCmd
+			err := tools.RunStringExtract(args[1:])
+			if err != nil {
+				gui.ErrorBox(fmt.Sprintf("String extraction failed: %v", err))
+			}
 			return
 
 		default:

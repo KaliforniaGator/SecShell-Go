@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"secshell/logging"
+	"strconv"
 	"strings"
 )
 
@@ -27,29 +28,76 @@ const (
 	Base64Encoding EncodingType = iota
 	HexEncoding
 	URLEncoding
+	BinaryEncoding // Added binary encoding type
 )
 
 // OutputHandler handles redirecting output to a file if specified
 func OutputHandler(output string, args []string) error {
-	// Check for redirection using > or -o flag
-	for i, arg := range args {
-		if arg == ">" && i+1 < len(args) {
+	// Handle redirection with quoted filenames
+	// First, rebuild args ensuring quoted segments are properly handled
+	processedArgs := make([]string, 0, len(args))
+	i := 0
+
+	for i < len(args) {
+		arg := args[i]
+
+		// Check if this argument starts with a quote but doesn't end with one
+		if (strings.HasPrefix(arg, "\"") && !strings.HasSuffix(arg, "\"")) ||
+			(strings.HasPrefix(arg, "'") && !strings.HasSuffix(arg, "'")) {
+			// Find the closing quote
+			startQuote := arg[0]
+			endQuoteIdx := i
+			quoted := []string{arg}
+
+			for j := i + 1; j < len(args); j++ {
+				quoted = append(quoted, args[j])
+				if strings.HasSuffix(args[j], string(startQuote)) {
+					endQuoteIdx = j
+					break
+				}
+			}
+
+			if endQuoteIdx > i {
+				// Join the quoted parts
+				joinedArg := strings.Join(quoted, " ")
+				// Remove surrounding quotes
+				if len(joinedArg) >= 2 {
+					joinedArg = joinedArg[1 : len(joinedArg)-1]
+				}
+				processedArgs = append(processedArgs, joinedArg)
+				i = endQuoteIdx + 1
+			} else {
+				// No matching end quote found, treat as regular arg
+				processedArgs = append(processedArgs, removeQuotes(arg))
+				i++
+			}
+		} else {
+			processedArgs = append(processedArgs, removeQuotes(arg))
+			i++
+		}
+	}
+
+	// Now check for redirection using processed arguments
+	for i, arg := range processedArgs {
+		if arg == ">" && i+1 < len(processedArgs) {
 			// Write to file specified after >
-			err := os.WriteFile(args[i+1], []byte(output), 0644)
+			outFile := processedArgs[i+1]
+			err := os.WriteFile(outFile, []byte(output), 0644)
 			if err != nil {
-				logging.LogError(fmt.Errorf("failed to write output to file %s: %v", args[i+1], err))
+				logging.LogError(fmt.Errorf("failed to write output to file %s: %v", outFile, err))
 				return err
 			}
-			logging.LogCommand(fmt.Sprintf("Wrote output to file: %s", args[i+1]), 0)
+			logging.LogCommand(fmt.Sprintf("Wrote output to file: %s", outFile), 0)
 			return nil
-		} else if arg == "-o" && i+1 < len(args) {
+		} else if arg == "-o" && i+1 < len(processedArgs) {
 			// Write to file specified after -o
-			err := os.WriteFile(args[i+1], []byte(output), 0644)
+			outFile := processedArgs[i+1]
+			err := os.WriteFile(outFile, []byte(output), 0644)
 			if err != nil {
-				logging.LogError(fmt.Errorf("failed to write output to file %s: %v", args[i+1], err))
+				logging.LogError(fmt.Errorf("failed to write output to file %s: %v", outFile, err))
 				return err
 			}
-			logging.LogCommand(fmt.Sprintf("Wrote output to file: %s", args[i+1]), 0)
+			logging.LogCommand(fmt.Sprintf("Wrote output to file: %s", outFile), 0)
 			return nil
 		}
 	}
@@ -72,25 +120,49 @@ func ParseEncoderArgs(args []string, encodingType EncodingType) (op EncodingOper
 		return op, input, isFile, remainingArgs, fmt.Errorf("missing arguments")
 	}
 
-	// Check if we have a single argument that looks like a joined string of flags and content
-	// For example: url -e"Hello World" might come in as ["-e\"Hello", "World\""]
-	// In this case, rejoin the parts and process them accordingly
-	if len(cmdArgs) > 1 {
-		// Check for patterns like: -e"string with spaces"
-		for i := 0; i < len(cmdArgs)-1; i++ {
-			if (cmdArgs[i] == "-e" || cmdArgs[i] == "-d") && i+1 < len(cmdArgs) &&
-				((strings.HasPrefix(cmdArgs[i+1], "\"") && strings.HasSuffix(cmdArgs[len(cmdArgs)-1], "\"")) ||
-					(strings.HasPrefix(cmdArgs[i+1], "'") && strings.HasSuffix(cmdArgs[len(cmdArgs)-1], "'"))) {
-				// We have a quoted string split across multiple args
-				quoted := strings.Join(cmdArgs[i+1:], " ")
-				cmdArgs = append(cmdArgs[:i+1], quoted)
-				break
+	// Pre-process args to handle quoted strings
+	processedArgs := make([]string, 0, len(cmdArgs))
+	i := 0
+
+	for i < len(cmdArgs) {
+		arg := cmdArgs[i]
+
+		// Check if this argument starts with a quote but doesn't end with one
+		if (strings.HasPrefix(arg, "\"") && !strings.HasSuffix(arg, "\"")) ||
+			(strings.HasPrefix(arg, "'") && !strings.HasSuffix(arg, "'")) {
+			// Find the closing quote
+			startQuote := arg[0]
+			endQuoteIdx := i
+			quoted := []string{arg}
+
+			for j := i + 1; j < len(cmdArgs); j++ {
+				quoted = append(quoted, cmdArgs[j])
+				if strings.HasSuffix(cmdArgs[j], string(startQuote)) {
+					endQuoteIdx = j
+					break
+				}
 			}
+
+			if endQuoteIdx > i {
+				// Join the quoted parts
+				joinedArg := strings.Join(quoted, " ")
+				processedArgs = append(processedArgs, joinedArg)
+				i = endQuoteIdx + 1
+			} else {
+				// No matching end quote found, treat as regular arg
+				processedArgs = append(processedArgs, arg)
+				i++
+			}
+		} else {
+			processedArgs = append(processedArgs, arg)
+			i++
 		}
 	}
 
-	// Process flags
-	i := 0
+	// Process flags with the processed arguments
+	cmdArgs = processedArgs
+	i = 0
+
 	for i < len(cmdArgs) {
 		arg := cmdArgs[i]
 
@@ -117,9 +189,21 @@ func ParseEncoderArgs(args []string, encodingType EncodingType) (op EncodingOper
 		} else {
 			// If we've found a non-flag argument, it's our input (if we don't already have one from -f)
 			if !isFile && input == "" {
-				input = arg
-				// Extract content from quotes if present
-				input = removeQuotes(input)
+				// For binary decode, special handling for long binary strings
+				if op == DecodeOp && encodingType == BinaryEncoding {
+					// For binary decoding, treat input as a string by default
+					// Don't try to check if it's a file - this avoids the segfault
+					input = removeQuotes(arg)
+					isFile = false // explicitly mark as not a file
+				} else if op == DecodeOp && (
+				// Only for other encoding types: check if this might be a file path
+				filepath.Ext(removeQuotes(arg)) != "" &&
+					fileExists(removeQuotes(arg))) {
+					isFile = true
+					input = removeQuotes(arg)
+				} else {
+					input = removeQuotes(arg)
+				}
 				i++
 			} else {
 				// Any other arguments should be passed to the output handler
@@ -135,6 +219,19 @@ func ParseEncoderArgs(args []string, encodingType EncodingType) (op EncodingOper
 	}
 
 	return op, input, isFile, remainingArgs, nil
+}
+
+// fileExists checks if a file exists and is not a directory
+func fileExists(filename string) bool {
+	if filename == "" {
+		return false // Handle empty filenames
+	}
+
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return err == nil && !info.IsDir()
 }
 
 // removeQuotes removes surrounding single or double quotes from a string if present
@@ -183,6 +280,14 @@ func ExecuteEncodingCommand(args []string, encodingType EncodingType) error {
 			return url.URLEncode(input, remainingArgs)
 		} else {
 			return url.URLDecode(input, remainingArgs)
+		}
+
+	case BinaryEncoding:
+		bin := BinaryFunctions{}
+		if op == EncodeOp {
+			return bin.BinaryEncode(input, isFile, remainingArgs)
+		} else {
+			return bin.BinaryDecode(input, isFile, remainingArgs)
 		}
 
 	default:
@@ -394,6 +499,153 @@ func (u URLFunctions) URLDecode(input string, args []string) error {
 	logMsg := fmt.Sprintf("URL decoded string: %s", displayInput)
 
 	outputErr := OutputHandler(decoded, args)
+	if outputErr != nil {
+		logging.LogError(outputErr)
+		return outputErr
+	}
+
+	logging.LogCommand(logMsg, 0)
+	return nil
+}
+
+// BinaryFunctions contains methods for binary encoding and decoding
+type BinaryFunctions struct{}
+
+// BinaryEncode encodes a string or file content to binary
+func (b BinaryFunctions) BinaryEncode(input string, isFile bool, args []string) error {
+	var encodedStr string
+	var logMsg string
+
+	if isFile {
+		// Read from file
+		data, err := os.ReadFile(input)
+		if err != nil {
+			logErr := fmt.Errorf("binary encode: error reading file %s: %v", input, err)
+			logging.LogError(logErr)
+			return fmt.Errorf("error reading file: %v", err)
+		}
+		var binary strings.Builder
+		for _, b := range data {
+			binary.WriteString(fmt.Sprintf("%08b", b))
+		}
+		encodedStr = binary.String()
+		logMsg = fmt.Sprintf("Binary encoded file: %s (size: %d bytes)", input, len(data))
+	} else {
+		// Encode the input string
+		var binary strings.Builder
+		for _, c := range input {
+			binary.WriteString(fmt.Sprintf("%08b", c))
+		}
+		encodedStr = binary.String()
+		// Truncate input string in log if too long
+		displayInput := input
+		if len(input) > 50 {
+			displayInput = input[:47] + "..."
+		}
+		logMsg = fmt.Sprintf("Binary encoded string: %s", displayInput)
+	}
+
+	outputErr := OutputHandler(encodedStr, args)
+	if outputErr != nil {
+		logging.LogError(outputErr)
+		return outputErr
+	}
+
+	logging.LogCommand(logMsg, 0)
+	return nil
+}
+
+// BinaryDecode decodes a binary string or file content
+func (b BinaryFunctions) BinaryDecode(input string, isFile bool, args []string) error {
+	var binaryInput string
+	var logMsg string
+
+	if isFile {
+		// Read from file
+		data, err := os.ReadFile(input)
+		if err != nil {
+			logErr := fmt.Errorf("binary decode: error reading file %s: %v", input, err)
+			logging.LogError(logErr)
+			return fmt.Errorf("error reading file: %v", err)
+		}
+		binaryInput = strings.TrimSpace(string(data))
+		logMsg = fmt.Sprintf("Binary decoded file: %s", input)
+	} else {
+		// Input is treated as a direct binary string
+		binaryInput = input
+
+		// Truncate input string in log if too long
+		displayInput := input
+		if len(input) > 50 {
+			displayInput = input[:47] + "..."
+		}
+		logMsg = fmt.Sprintf("Binary decoded string: %s", displayInput)
+	}
+
+	// Clean the binary input by removing all whitespace characters
+	binaryInput = strings.ReplaceAll(binaryInput, " ", "")
+	binaryInput = strings.ReplaceAll(binaryInput, "\n", "")
+	binaryInput = strings.ReplaceAll(binaryInput, "\r", "")
+	binaryInput = strings.ReplaceAll(binaryInput, "\t", "")
+
+	// Special handling for very long binary input - process in chunks
+	if len(binaryInput) > 1_000_000 { // 1 million characters threshold
+		logging.LogCommand("Binary input extremely large, processing in chunks", 1)
+	}
+
+	// Verify we have content to decode
+	if len(binaryInput) == 0 {
+		logErr := fmt.Errorf("binary decode: empty input after cleaning whitespace")
+		logging.LogError(logErr)
+		return logErr
+	}
+
+	// Additional validation for binary data
+	for _, c := range binaryInput {
+		if c != '0' && c != '1' {
+			logErr := fmt.Errorf("binary decode: invalid character in binary input: '%c', only 0 and 1 are allowed", c)
+			logging.LogError(logErr)
+			return logErr
+		}
+	}
+
+	// Check if input length is a multiple of 8 (each byte is 8 bits)
+	if len(binaryInput)%8 != 0 {
+		// Try to pad with zeros if we're close to a multiple of 8
+		remainder := len(binaryInput) % 8
+		if remainder > 0 {
+			padding := strings.Repeat("0", 8-remainder)
+			logging.LogCommand(fmt.Sprintf("Binary input length (%d) not a multiple of 8, padding with %d zeros", len(binaryInput), 8-remainder), 1)
+			binaryInput = padding + binaryInput
+		} else {
+			logErr := fmt.Errorf("binary decode: invalid input length, must be multiple of 8 bits")
+			logging.LogError(logErr)
+			return logErr
+		}
+	}
+
+	var result strings.Builder
+	// Reserve capacity for the result string (capacity = binaryInput length / 8)
+	result.Grow(len(binaryInput) / 8)
+
+	// Convert each 8 bits to a byte
+	for i := 0; i < len(binaryInput); i += 8 {
+		if i+8 > len(binaryInput) {
+			break
+		}
+
+		byteStr := binaryInput[i : i+8]
+		val, err := strconv.ParseUint(byteStr, 2, 8)
+		if err != nil {
+			logErr := fmt.Errorf("binary decode: invalid binary sequence '%s': %v", byteStr, err)
+			logging.LogError(logErr)
+			return logErr
+		}
+
+		result.WriteByte(byte(val))
+	}
+
+	outputErr := OutputHandler(result.String(), args)
 	if outputErr != nil {
 		logging.LogError(outputErr)
 		return outputErr
