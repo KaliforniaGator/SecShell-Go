@@ -441,20 +441,46 @@ func PrintBannerColors() {
 func PrintWindow(icon string, title string, content string, bgColor string, borderColor string,
 	titleColor string, contentColor string, width int, height int) {
 
-	// Print title bar
-	titleText := icon + " " + title
-	titleAlignment := TextAlignment{
-		Horizontal: "left",
-		Vertical:   "center",
+	// Determine position (e.g., centered)
+	termWidth := GetTerminalWidth()
+	termHeight := GetTerminalHeight()
+	winX := (termWidth - width) / 2
+	winY := (termHeight - height) / 2
+	if winX < 0 {
+		winX = 0
 	}
-	PrintBanner(titleText, "single", titleColor, bgColor, borderColor, width, 3, titleAlignment)
+	if winY < 0 {
+		winY = 0
+	}
 
-	// Print content area
-	contentAlignment := TextAlignment{
-		Horizontal: "left",
-		Vertical:   "top",
+	// Create a new Window instance
+	// Using "single" style as the original PrintWindow implicitly did.
+	// Content color is set as the default for the window.
+	win := NewWindow(icon, title, winX, winY, width, height, "single", titleColor, borderColor, bgColor, contentColor)
+
+	// Add the main content as a Label element spanning the width
+	// Wrap the text first to fit the content area width
+	contentWidth := width - 2 // Account for borders
+	wrappedContent := wrapText(content, contentWidth)
+
+	// Add each line of wrapped text as a separate Label
+	for i, line := range wrappedContent {
+		// Position labels starting from top-left (0,0) relative to content area
+		// Ensure we don't exceed the window's content height
+		if i < height-2 { // Account for top/bottom borders
+			label := NewLabel(line, 0, i, contentColor) // Use provided contentColor
+			win.AddElement(label)
+		} else {
+			break // Stop adding lines if window height is exceeded
+		}
 	}
-	fmt.Print("\n")
-	// Remove top border by using special handling in PrintBanner
-	PrintBanner(content, "single", contentColor, bgColor, borderColor, width, height, contentAlignment)
+
+	// Render the window
+	win.Render()
+
+	// Note: The original PrintWindow printed a newline after the content banner.
+	// The new Render method places the window absolutely, so a newline might not be needed
+	// or desired depending on how it's used in the application flow.
+	// If a newline is needed to move the cursor below the window, add:
+	// fmt.Print(MoveCursorCmd(winY+height, 0)) // Move cursor below the window
 }

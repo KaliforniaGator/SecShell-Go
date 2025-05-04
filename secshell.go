@@ -861,6 +861,9 @@ func (s *SecShell) processCommand(input string) {
 			tools.EditCommand(args[1:])
 			return
 
+		case "testwindow": // Add this case
+			gui.TestWindowApp() // Call the test function from the gui package
+
 		default:
 			// Handle quoted arguments
 			args = s.parseQuotedArgs(args)
