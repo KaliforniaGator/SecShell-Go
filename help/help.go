@@ -48,6 +48,11 @@ var HelpCommands = []string{
 	"webscan",
 	"payload",
 	"session",
+	"base64",
+	"hex",
+	"urlencode",
+	"url",
+	"./",
 }
 
 // HelpTopics contains detailed help information for each command
@@ -288,6 +293,62 @@ Options:
 		Examples:    []string{"session -l", "session -i 1", "session -c 4444", "session -k 1"},
 		Category:    "Pentesting",
 	},
+	"base64": {
+		Command:     "base64",
+		Description: "Encode or decode data using Base64",
+		Usage:       "base64 [-e|-d] <string> OR base64 [-e|-d] -f <file> [> output_file]",
+		Examples: []string{
+			"base64 -e \"Hello, world!\"",
+			"base64 -d \"SGVsbG8sIHdvcmxkIQ==\"",
+			"base64 -e -f input.txt > encoded.txt",
+			"base64 -d -f encoded.txt -o decoded.txt",
+		},
+		Category: "Encoding",
+	},
+	"hex": {
+		Command:     "hex",
+		Description: "Encode or decode data using hexadecimal",
+		Usage:       "hex [-e|-d] <string> OR hex [-e|-d] -f <file> [> output_file]",
+		Examples: []string{
+			"hex -e \"Hello\"",
+			"hex -d \"48656c6c6f\"",
+			"hex -e -f binary.dat > encoded.txt",
+			"hex -d -f encoded.txt -o original.dat",
+		},
+		Category: "Encoding",
+	},
+	"urlencode": {
+		Command:     "urlencode",
+		Description: "URL-encode or decode a string",
+		Usage:       "urlencode [-e|-d] <string> [> output_file]",
+		Examples: []string{
+			"urlencode -e \"Hello world!\"",
+			"urlencode -d \"Hello%20world%21\"",
+			"urlencode -e \"user=test&pass=secret\" > encoded.txt",
+		},
+		Category: "Encoding",
+	},
+	"url": {
+		Command:     "url",
+		Description: "Alias for urlencode - URL-encode or decode a string",
+		Usage:       "url [-e|-d] <string> [> output_file]",
+		Examples: []string{
+			"url -e \"Hello world!\"",
+			"url -d \"Hello%20world%21\"",
+		},
+		Category: "Encoding",
+	},
+	"./": {
+		Command:     "./",
+		Description: "Execute a script file with automatic interpreter detection",
+		Usage:       "./<script_file> [arguments]",
+		Examples: []string{
+			"./script.sh",
+			"./script.py arg1 arg2",
+			"./custom_script --verbose",
+		},
+		Category: "Scripting",
+	},
 }
 
 // DisplayHelp shows the help message or specific command help
@@ -315,7 +376,7 @@ func DisplayHelp(args ...string) {
 	fmt.Println("\nAvailable Commands:")
 
 	// Order of categories to display
-	categories := []string{"System", "FileSystem", "Process", "Environment", "Security", "Network", "Pentesting"}
+	categories := []string{"System", "FileSystem", "Process", "Environment", "Security", "Network", "Pentesting", "Encoding", "Scripting"}
 
 	for _, category := range categories {
 		commands, exists := commandsByCategory[category]
@@ -347,6 +408,8 @@ func DisplayHelp(args ...string) {
 	fmt.Println("  - Background job execution")
 	fmt.Println("  - Piped command execution")
 	fmt.Println("  - Input/output redirection")
+	fmt.Println("  - Data encoding/decoding utilities")
+	fmt.Println("  - Script execution with interpreter detection")
 
 	fmt.Printf("\n%sUsage:%s Type '%shelp <command>%s' for more details on a specific command\n",
 		colors.Cyan, colors.Reset, colors.BoldWhite, colors.Reset)

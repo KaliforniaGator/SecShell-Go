@@ -19,7 +19,9 @@ var BuiltInCommands = []string{
 	"reload-blacklist", "blacklist", "edit-blacklist", "whitelist", "edit-whitelist",
 	"reload-whitelist", "download", "time", "date", "--version", "--update",
 	// Add pentesting commands
-	"portscan", "hostscan", "webscan", "payload", "session"}
+	"portscan", "hostscan", "webscan", "payload", "session",
+	// Tools
+	"./", "base64", "hex", "urlencode"}
 
 var TrustedDirs = []string{"/usr/bin/", "/bin/", "/opt/", "/usr/local/bin/"}
 

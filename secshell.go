@@ -26,6 +26,7 @@ import (
 	"secshell/pentest"
 	"secshell/sanitize"
 	"secshell/services"
+	"secshell/tools"
 	"secshell/ui"
 	"secshell/ui/gui"
 	"secshell/update"
@@ -546,6 +547,19 @@ func (s *SecShell) processCommand(input string) {
 		return
 	}
 
+	// Check for script execution (files with ./ prefix)
+	if strings.HasPrefix(input, "./") {
+		output, err := tools.ExecuteScript(input)
+		if err != nil {
+			logging.LogError(err)
+			gui.ErrorBox(fmt.Sprintf("Script execution failed: %s", err))
+			return
+		}
+		// Script executed successfully
+		fmt.Print(output)
+		return
+	}
+
 	splitCommands := strings.Split(input, "|")
 	for i, command := range splitCommands {
 		splitCommands[i] = strings.TrimSpace(command)
@@ -983,6 +997,174 @@ func (s *SecShell) processCommand(input string) {
 			default:
 				gui.ErrorBox("Unknown session command. Use -l, -i, -c, or -k")
 			}
+
+		case "base64":
+			if len(args) < 2 {
+				gui.ErrorBox("Usage: base64 [-e|-d] <string> OR base64 [-e|-d] -f <file> [> output_file]")
+				return
+			}
+
+			b64Tools := tools.Base64Functions{}
+			isEncode := true
+			isFile := false
+			var input string
+			var cmdArgs []string
+
+			// Parse arguments
+			i := 1
+			for i < len(args) {
+				switch args[i] {
+				case "-e":
+					isEncode = true
+					i++
+				case "-d":
+					isEncode = false
+					i++
+				case "-f":
+					isFile = true
+					if i+1 < len(args) {
+						input = args[i+1]
+						i += 2
+					} else {
+						gui.ErrorBox("Missing file path after -f")
+						return
+					}
+				default:
+					if input == "" {
+						input = args[i]
+						i++
+					} else {
+						// Collect remaining args for output redirection
+						cmdArgs = append(cmdArgs, args[i])
+						i++
+					}
+				}
+			}
+
+			if input == "" {
+				gui.ErrorBox("No input provided")
+				return
+			}
+
+			var err error
+			if isEncode {
+				err = b64Tools.Base64Encode(input, isFile, cmdArgs)
+			} else {
+				err = b64Tools.Base64Decode(input, isFile, cmdArgs)
+			}
+
+			if err != nil {
+				gui.ErrorBox(fmt.Sprintf("Base64 operation failed: %v", err))
+			}
+
+		case "hex":
+			if len(args) < 2 {
+				gui.ErrorBox("Usage: hex [-e|-d] <string> OR hex [-e|-d] -f <file> [> output_file]")
+				return
+			}
+
+			hexTools := tools.HexFunctions{}
+			isEncode := true
+			isFile := false
+			var input string
+			var cmdArgs []string
+
+			// Parse arguments
+			i := 1
+			for i < len(args) {
+				switch args[i] {
+				case "-e":
+					isEncode = true
+					i++
+				case "-d":
+					isEncode = false
+					i++
+				case "-f":
+					isFile = true
+					if i+1 < len(args) {
+						input = args[i+1]
+						i += 2
+					} else {
+						gui.ErrorBox("Missing file path after -f")
+						return
+					}
+				default:
+					if input == "" {
+						input = args[i]
+						i++
+					} else {
+						// Collect remaining args for output redirection
+						cmdArgs = append(cmdArgs, args[i])
+						i++
+					}
+				}
+			}
+
+			if input == "" {
+				gui.ErrorBox("No input provided")
+				return
+			}
+
+			var err error
+			if isEncode {
+				err = hexTools.HexEncode(input, isFile, cmdArgs)
+			} else {
+				err = hexTools.HexDecode(input, isFile, cmdArgs)
+			}
+
+			if err != nil {
+				gui.ErrorBox(fmt.Sprintf("Hex operation failed: %v", err))
+			}
+
+		case "urlencode", "url":
+			if len(args) < 2 {
+				gui.ErrorBox("Usage: urlencode [-e|-d] <string> [> output_file]")
+				return
+			}
+
+			urlTools := tools.URLFunctions{}
+			isEncode := true
+			var input string
+			var cmdArgs []string
+
+			// Parse arguments
+			i := 1
+			for i < len(args) {
+				switch args[i] {
+				case "-e":
+					isEncode = true
+					i++
+				case "-d":
+					isEncode = false
+					i++
+				default:
+					if input == "" {
+						input = args[i]
+						i++
+					} else {
+						// Collect remaining args for output redirection
+						cmdArgs = append(cmdArgs, args[i])
+						i++
+					}
+				}
+			}
+
+			if input == "" {
+				gui.ErrorBox("No input provided")
+				return
+			}
+
+			var err error
+			if isEncode {
+				err = urlTools.URLEncode(input, cmdArgs)
+			} else {
+				err = urlTools.URLDecode(input, cmdArgs)
+			}
+
+			if err != nil {
+				gui.ErrorBox(fmt.Sprintf("URL encoding operation failed: %v", err))
+			}
+
 		default:
 			// Handle quoted arguments
 			args = s.parseQuotedArgs(args)
