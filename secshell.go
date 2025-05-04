@@ -1052,6 +1052,22 @@ func (s *SecShell) processCommand(input string) {
 			}
 			return
 
+		case "more":
+			// Handle the more command
+			if len(args) < 2 {
+				// If no argument is provided, show usage
+				gui.ErrorBox("Usage: more <file> or command | more")
+				return
+			}
+
+			// Remove "more" from the args and pass the rest to RunMore
+			err := core.RunMore(args[1:])
+			if err != nil {
+				logging.LogError(err)
+				gui.ErrorBox(fmt.Sprintf("Error: %v", err))
+			}
+			return
+
 		default:
 			// Handle quoted arguments
 			args = s.parseQuotedArgs(args)
