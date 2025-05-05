@@ -17,169 +17,6 @@ type UIElement interface {
 	// Add methods for interaction later if needed (e.g., HandleInput)
 }
 
-// --- Basic UI Elements ---
-
-// Label represents a simple text element.
-type Label struct {
-	Text  string
-	Color string
-	X, Y  int // Position relative to window content area
-}
-
-func NewLabel(text string, x, y int, color string) *Label {
-	return &Label{Text: text, X: x, Y: y, Color: color}
-}
-
-func (l *Label) Render(buffer *strings.Builder, winX, winY int, _ int) {
-	// Calculate absolute position
-	absX := winX + l.X
-	absY := winY + l.Y
-	buffer.WriteString(MoveCursorCmd(absY, absX))
-	buffer.WriteString(l.Color)
-	buffer.WriteString(l.Text)
-	buffer.WriteString(colors.Reset) // Reset color after element
-}
-
-// Button represents a clickable button element.
-type Button struct {
-	Text        string
-	Color       string
-	ActiveColor string // Color when selected/active
-	X, Y        int    // Position relative to window content area
-	Width       int
-	Action      func() bool // Function to call when activated. Returns true to stop interaction loop.
-	IsActive    bool        // State for rendering
-}
-
-func NewButton(text string, x, y, width int, color, activeColor string, action func() bool) *Button {
-	return &Button{
-		Text:        text,
-		X:           x,
-		Y:           y,
-		Width:       width,
-		Color:       color,
-		ActiveColor: activeColor,
-		Action:      action,
-		IsActive:    false,
-	}
-}
-
-func (b *Button) Render(buffer *strings.Builder, winX, winY int, _ int) {
-	absX := winX + b.X
-	absY := winY + b.Y
-	buffer.WriteString(MoveCursorCmd(absY, absX))
-
-	renderColor := b.Color
-	if b.IsActive {
-		renderColor = b.ActiveColor
-		buffer.WriteString(ReverseVideo()) // Indicate active state
-	}
-	buffer.WriteString(renderColor)
-
-	// Basic button rendering (text centered within width)
-	padding := (b.Width - len(b.Text)) / 2
-	leftPad := strings.Repeat(" ", padding)
-	rightPad := strings.Repeat(" ", b.Width-len(b.Text)-padding)
-	buffer.WriteString(fmt.Sprintf("[%s%s%s]", leftPad, b.Text, rightPad))
-
-	buffer.WriteString(colors.Reset) // Reset color and video attributes
-}
-
-// TextBox represents an editable text input field.
-type TextBox struct {
-	Text        string
-	Color       string
-	ActiveColor string // Color when selected/active
-	X, Y        int    // Position relative to window content area
-	Width       int
-	IsActive    bool // State for rendering/input handling
-	cursorPos   int  // Position of the cursor within the text
-	isPristine  bool // Flag to track if default text is present and untouched
-}
-
-// NewTextBox creates a new TextBox instance.
-func NewTextBox(initialText string, x, y, width int, color, activeColor string) *TextBox {
-	tb := &TextBox{
-		Text:        initialText,
-		X:           x,
-		Y:           y,
-		Width:       width,
-		Color:       color,
-		ActiveColor: activeColor,
-		IsActive:    false,
-		cursorPos:   len(initialText), // Cursor at the end initially
-		isPristine:  true,             // Initially contains default text
-	}
-	// Clamp initial cursor position
-	if tb.cursorPos > len(tb.Text) {
-		tb.cursorPos = len(tb.Text)
-	}
-	return tb
-}
-
-// Render draws the textbox element.
-func (tb *TextBox) Render(buffer *strings.Builder, winX, winY int, _ int) {
-	absX := winX + tb.X
-	absY := winY + tb.Y
-	buffer.WriteString(MoveCursorCmd(absY, absX))
-
-	renderColor := tb.Color
-	if tb.IsActive {
-		renderColor = tb.ActiveColor
-	}
-	buffer.WriteString(renderColor)
-
-	// --- Text Rendering with Scrolling ---
-	textLen := len(tb.Text)
-	viewStart := 0 // Index in tb.Text that corresponds to the start of the visible area
-
-	// Adjust viewStart based on cursor position to keep cursor visible
-	if tb.cursorPos >= tb.Width {
-		viewStart = tb.cursorPos - tb.Width + 1
-	}
-	if viewStart < 0 { // Should not happen with above logic, but safety check
-		viewStart = 0
-	}
-	// Ensure viewStart doesn't go beyond possible text start
-	if viewStart > textLen {
-		viewStart = textLen
-	}
-
-	viewEnd := viewStart + tb.Width
-	if viewEnd > textLen {
-		viewEnd = textLen
-	}
-
-	// Get the visible portion of the text
-	visibleText := ""
-	if viewStart < textLen {
-		visibleText = tb.Text[viewStart:viewEnd]
-	}
-
-	// Render the visible text and padding
-	buffer.WriteString(visibleText)
-	buffer.WriteString(strings.Repeat(" ", tb.Width-len(visibleText)))
-	// --- End Text Rendering ---
-
-	// --- Cursor Rendering ---
-	if tb.IsActive {
-		// Calculate cursor position relative to the *visible* text area
-		cursorRenderPos := tb.cursorPos - viewStart
-		if cursorRenderPos >= 0 && cursorRenderPos < tb.Width {
-			buffer.WriteString(MoveCursorCmd(absY, absX+cursorRenderPos))
-			buffer.WriteString(ShowCursor()) // Make cursor visible at the calculated position
-		} else {
-			// If cursor is somehow outside visible area (e.g., exactly at tb.Width),
-			// place it at the end of the visible area.
-			buffer.WriteString(MoveCursorCmd(absY, absX+tb.Width-1))
-			buffer.WriteString(ShowCursor())
-		}
-	}
-	// --- End Cursor Rendering ---
-
-	buffer.WriteString(colors.Reset) // Reset color
-}
-
 // --- Window Structure ---
 
 // Window represents a bordered area on the screen containing UI elements.
@@ -226,7 +63,7 @@ func NewWindow(icon, title string, x, y, width, height int, boxStyle, titleColor
 func (w *Window) AddElement(element UIElement) {
 	w.Elements = append(w.Elements, element)
 
-	// Check if the element is focusable (Buttons, TextBoxes)
+	// Check if the element is focusable (Buttons, TextBoxes, CheckBoxes, RadioButtons)
 	isFocusable := false
 	switch v := element.(type) {
 	case *Button:
@@ -234,6 +71,12 @@ func (w *Window) AddElement(element UIElement) {
 	case *TextBox:
 		isFocusable = true
 		// Ensure cursor is initially hidden for inactive textboxes
+		v.IsActive = false // Explicitly set inactive
+	case *CheckBox: // Add CheckBox case
+		isFocusable = true
+		v.IsActive = false // Explicitly set inactive
+	case *RadioButton: // Add RadioButton case
+		isFocusable = true
 		v.IsActive = false // Explicitly set inactive
 	}
 
@@ -248,6 +91,10 @@ func (w *Window) AddElement(element UIElement) {
 				el.IsActive = true
 			case *TextBox:
 				el.IsActive = true // Activate and make cursor potentially visible on first render
+			case *CheckBox: // Add CheckBox case
+				el.IsActive = true
+			case *RadioButton: // Add RadioButton case
+				el.IsActive = true
 			}
 		}
 	}
@@ -346,6 +193,10 @@ func (w *Window) setFocus(newIndex int) {
 			el.IsActive = false
 		case *TextBox:
 			el.IsActive = false
+		case *CheckBox: // Add CheckBox case
+			el.IsActive = false
+		case *RadioButton: // Add RadioButton case
+			el.IsActive = false
 		}
 	}
 
@@ -364,6 +215,10 @@ func (w *Window) setFocus(newIndex int) {
 		case *Button:
 			el.IsActive = true
 		case *TextBox:
+			el.IsActive = true
+		case *CheckBox: // Add CheckBox case
+			el.IsActive = true
+		case *RadioButton: // Add RadioButton case
 			el.IsActive = true
 		}
 	}
@@ -441,11 +296,21 @@ func (w *Window) WindowActions() {
 		// Get the currently focused element, if any
 		var focusedElement UIElement
 		var focusedTextBox *TextBox
+		var focusedCheckBox *CheckBox       // Add variable for focused CheckBox
+		var focusedRadioButton *RadioButton // Add variable for focused RadioButton
 		if w.focusedIndex >= 0 && w.focusedIndex < len(w.focusableElements) {
 			focusedElement = w.focusableElements[w.focusedIndex]
 			// Check if the focused element is a TextBox and cast it
 			if tb, ok := focusedElement.(*TextBox); ok {
 				focusedTextBox = tb
+			}
+			// Check if the focused element is a CheckBox and cast it
+			if cb, ok := focusedElement.(*CheckBox); ok {
+				focusedCheckBox = cb
+			}
+			// Check if the focused element is a RadioButton and cast it
+			if rb, ok := focusedElement.(*RadioButton); ok {
+				focusedRadioButton = rb
 			}
 		}
 
@@ -531,8 +396,27 @@ func (w *Window) WindowActions() {
 								needsRender = true
 							}
 						}
+					} else if focusedCheckBox != nil && focusedCheckBox.IsActive { // Check if it's an active CheckBox
+						focusedCheckBox.Checked = !focusedCheckBox.Checked // Toggle state
+						needsRender = true
+					} else if focusedRadioButton != nil && focusedRadioButton.IsActive { // Check if it's an active RadioButton
+						// Find the index of the focused radio button within its group
+						targetIndex := -1
+						for i, rb := range focusedRadioButton.Group.Buttons {
+							if rb == focusedRadioButton {
+								targetIndex = i
+								break
+							}
+						}
+						if targetIndex != -1 {
+							focusedRadioButton.Group.Select(targetIndex) // Select this button in its group
+							needsRender = true
+						}
+						// Optionally move focus to the next element after selection
+						// w.setFocus(w.focusedIndex + 1)
+						// needsRender = true
 					} else {
-						// If Enter is pressed and not on an active button,
+						// If Enter is pressed and not on an active button, checkbox, or radio button,
 						// move focus like Tab.
 						w.setFocus(w.focusedIndex + 1)
 						needsRender = true
@@ -579,12 +463,12 @@ func TestWindowApp() {
 
 	// Define window dimensions and position (centered)
 	winWidth := termWidth / 2
-	if winWidth < 50 { // Ensure enough width for label + textbox
-		winWidth = 50
+	if winWidth < 60 { // Increased min width for more elements
+		winWidth = 60
 	}
 	winHeight := termHeight / 2
-	if winHeight < 17 { // Increased min height again
-		winHeight = 17
+	if winHeight < 21 { // Increased min height slightly for spacer
+		winHeight = 21
 	}
 	winX := (termWidth - winWidth) / 2
 	winY := (termHeight - winHeight) / 2
@@ -594,22 +478,33 @@ func TestWindowApp() {
 		"double", colors.BoldCyan, colors.BoldYellow, colors.BgBlack, colors.White)
 
 	// --- Add Elements ---
-	infoLabel := NewLabel("Tab/S-Tab: Cycle | Enter: Next/Activate | Arrows: Move Cursor | q/Ctrl+C: Quit", 1, 1, colors.Green)
+	currentY := 1 // Start Y position for elements
+	infoLabel := NewLabel("Tab/S-Tab: Cycle | Enter: Next/Activate/Toggle/Select | Arrows: Move Cursor | q/Ctrl+C: Quit", 1, currentY, colors.Green)
 	testWin.AddElement(infoLabel)
+	// Assuming infoLabel might wrap and take 2 lines based on the new Render logic
+	currentY += 2 // Move down past the potential wrapped label lines
+
+	// --- Add Spacer ---
+	spacerHeight := 1
+	spacer := NewSpacer(1, currentY, spacerHeight) // Spacer starts at currentY
+	testWin.AddElement(spacer)
+	currentY += spacerHeight // Add spacer height to current Y
 
 	// --- First TextBox ---
-	nameLabel := NewLabel("Enter Name:", 1, 3, colors.White)
+	nameLabelY := currentY
+	nameLabel := NewLabel("Enter Name:", 1, nameLabelY, colors.White)
 	testWin.AddElement(nameLabel)
 	textBoxX := len(nameLabel.Text) + 2
 	textBoxWidth := winWidth - 2 - textBoxX - 1
 	if textBoxWidth < 10 {
 		textBoxWidth = 10
 	}
-	nameTextBox := NewTextBox("<Type name here>", textBoxX, 3, textBoxWidth, colors.BgWhite+colors.Black, colors.BgCyan+colors.BoldBlack)
+	nameTextBox := NewTextBox("<Type name here>", textBoxX, nameLabelY, textBoxWidth, colors.BgWhite+colors.Black, colors.BgCyan+colors.BoldBlack)
 	testWin.AddElement(nameTextBox)
+	currentY += 2 // Move down past the label and textbox row
 
 	// --- Second TextBox ---
-	emailLabelY := 5 // Position below the first textbox
+	emailLabelY := currentY // Position below the first textbox area
 	emailLabel := NewLabel("Enter Email:", 1, emailLabelY, colors.White)
 	testWin.AddElement(emailLabel)
 	// Use same X and Width calculation, adjust Y
@@ -620,21 +515,49 @@ func TestWindowApp() {
 	}
 	emailTextBox := NewTextBox("<Type email here>", emailTextBoxX, emailLabelY, emailTextBoxWidth, colors.BgWhite+colors.Black, colors.BgCyan+colors.BoldBlack)
 	testWin.AddElement(emailTextBox) // Add second textbox
+	currentY += 2                    // Move down past the label and textbox row
+
+	// --- Add a CheckBox ---
+	agreeLabelY := currentY // Position below the email textbox area
+	agreeCheckBox := NewCheckBox("Agree to Terms?", 1, agreeLabelY, false, colors.White, colors.BgPurple+colors.BoldWhite)
+	testWin.AddElement(agreeCheckBox)
+	currentY += 2 // Move down past the checkbox row
+
+	// --- Add Radio Buttons ---
+	radioGroupY := currentY
+	radioLabel := NewLabel("Select Option:", 1, radioGroupY, colors.White)
+	testWin.AddElement(radioLabel)
+	currentY += 1 // Move down past the radio label
+
+	optionGroup := NewRadioGroup()
+	// Add radio buttons to the window AND associate them with the group
+	option1 := NewRadioButton("Option A", "A", 1, currentY, colors.White, colors.BgBlue+colors.BoldWhite, optionGroup)
+	testWin.AddElement(option1)
+	currentY += 1
+	option2 := NewRadioButton("Option B", "B", 1, currentY, colors.White, colors.BgBlue+colors.BoldWhite, optionGroup)
+	testWin.AddElement(option2)
+	currentY += 1
+	option3 := NewRadioButton("Option C (Default)", "C", 1, currentY, colors.White, colors.BgBlue+colors.BoldWhite, optionGroup)
+	testWin.AddElement(option3)
+	currentY += 1
+
+	// Set a default selection for the radio group
+	optionGroup.Select(2) // Select "Option C" by default
 
 	// --- Buttons ---
 	buttonWidth := 12
 
 	contentWidth := winWidth - 2
-	// Center buttons horizontally below the textbox area
+	// Center buttons horizontally below the elements
 	totalButtonWidth := buttonWidth*2 + 2 // Width of two buttons + space between
 	buttonStartX := (contentWidth - totalButtonWidth) / 2
 	submitButtonX := buttonStartX
 	quitButtonX := buttonStartX + buttonWidth + 2
 
-	// Adjust button Y position further down
-	actionButtonY := winHeight - 6 // Position near bottom
+	// Adjust button Y position further down (use fixed position from bottom for robustness)
+	actionButtonY := winHeight - 4 // Place buttons near the bottom border
 	submitButton := NewButton("Submit", submitButtonX, actionButtonY, buttonWidth, colors.BoldGreen, colors.BgGreen+colors.BoldWhite, func() bool {
-		// Access the values from both textboxes
+		// Access the values from textboxes, checkbox, and radio group
 		submittedName := nameTextBox.Text
 		if nameTextBox.isPristine {
 			submittedName = "" // Treat pristine as empty
@@ -643,8 +566,11 @@ func TestWindowApp() {
 		if emailTextBox.isPristine {
 			submittedEmail = "" // Treat pristine as empty
 		}
+		agreed := agreeCheckBox.Checked             // Get checkbox state
+		selectedOption := optionGroup.SelectedValue // Get selected radio value
 
-		infoLabel.Text = fmt.Sprintf("Name: '%s', Email: '%s' | Tab/S-Tab, Enter, q/Ctrl+C", submittedName, submittedEmail)
+		// Update infoLabel text (it will re-render and potentially wrap)
+		infoLabel.Text = fmt.Sprintf("N: '%s', E: '%s', Agr: %t, Opt: %s | Tab/S-Tab, Enter, q/Ctrl+C", submittedName, submittedEmail, agreed, selectedOption)
 		infoLabel.Color = colors.BoldGreen
 		return false // Don't quit
 	})
@@ -653,7 +579,7 @@ func TestWindowApp() {
 	// Button 2: Quit Button
 	quitButtonY := actionButtonY
 	quitButton := NewButton("Quit App", quitButtonX, quitButtonY, buttonWidth, colors.BoldRed, colors.BgRed+colors.BoldWhite, func() bool {
-		infoLabel.Text = "Quitting..."
+		infoLabel.Text = "Quitting..." // Update info label text
 		infoLabel.Color = colors.BoldRed
 		testWin.Render() // Render the "Quitting..." message
 		time.Sleep(300 * time.Millisecond)
@@ -667,7 +593,7 @@ func TestWindowApp() {
 
 	// Code here runs after WindowActions loop finishes
 	fmt.Println("Application finished.")
-	// Access the final state of both textboxes
+	// Access the final state of textboxes, checkbox, and radio group
 	finalName := nameTextBox.Text
 	if nameTextBox.isPristine {
 		finalName = "" // Treat pristine state as empty submission
@@ -676,6 +602,10 @@ func TestWindowApp() {
 	if emailTextBox.isPristine {
 		finalEmail = "" // Treat pristine state as empty submission
 	}
+	finalAgreed := agreeCheckBox.Checked
+	finalOption := optionGroup.SelectedValue
 	fmt.Printf("Final Name content: '%s'\n", finalName)
 	fmt.Printf("Final Email content: '%s'\n", finalEmail)
+	fmt.Printf("Final Agreed state: %t\n", finalAgreed)
+	fmt.Printf("Final Option selected: %s\n", finalOption)
 }
