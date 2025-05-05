@@ -28,6 +28,7 @@ import (
 	"secshell/sanitize"
 	"secshell/services"
 	"secshell/tools"
+	"secshell/tools/editor"
 	"secshell/ui"
 	"secshell/ui/gui"
 	"secshell/update"
@@ -854,7 +855,7 @@ func (s *SecShell) processCommand(input string) {
 
 		case "edit":
 			// Open the file in the default editor
-			tools.EditCommand(args[1:])
+			editor.EditCommand(args[1:])
 			return
 
 		case "testwindow": // Add this case

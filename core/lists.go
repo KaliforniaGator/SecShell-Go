@@ -4,9 +4,9 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"secshell/admin"
+	"secshell/tools/editor"
 	"secshell/ui/gui"
 	"secshell/update"
 	"strings"
@@ -174,11 +174,8 @@ func LoadBlacklist(filename string) {
 
 // editBlacklist opens the blacklist file in an editor
 func EditBlacklist(filename string) {
-	cmd := exec.Command("nano", filename)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Run()
+	filenames := []string{filename}
+	editor.EditCommand(filenames)
 }
 
 // listBlacklistCommands lists all blacklisted commands
@@ -232,11 +229,8 @@ func LoadWhitelist(filename string) {
 
 // editWhitelist opens the whitelist file in an editor
 func EditWhitelist(filename string) {
-	cmd := exec.Command("nano", filename)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Run()
+	filenames := []string{filename}
+	editor.EditCommand(filenames)
 }
 
 // listWhitelistCommands lists all whitelisted commands
