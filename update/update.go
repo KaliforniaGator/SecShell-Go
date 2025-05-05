@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"secshell/ui"
 	"secshell/ui/gui"
 	"strings"
 )
@@ -134,6 +135,7 @@ func UpdateSecShell(isAdmin bool, versionFile string) {
 
 	// Download the update script with progress
 	gui.AlertBox("Downloading update script...")
+	ui.NewLine()
 
 	// Initialize HTTP client and request
 	client := &http.Client{}
@@ -189,6 +191,7 @@ func UpdateSecShell(isAdmin bool, versionFile string) {
 		return
 	}
 
+	ui.NewLine()
 	// Run the update script
 	gui.AlertBox("Running update script...")
 	cmd := exec.Command(tmpFile.Name())
