@@ -56,6 +56,8 @@ var HelpCommands = []string{
 	"./",
 	"hash",
 	"extract-strings",
+	"more",
+	"edit", // Added edit command
 }
 
 // HelpTopics contains detailed help information for each command
@@ -395,6 +397,29 @@ Options:
 			"extract-strings malware.bin > output.json",
 		},
 		Category: "Analysis",
+	},
+	"more": {
+		Command:     "more",
+		Description: "Display text files or command output with interactive paging and search",
+		Usage:       "more <file> or command | more or more < input_file",
+		Examples: []string{
+			"more /etc/passwd",
+			"cat /var/log/syslog | more",
+			"ls -la /usr | more",
+			"more < document.txt",
+		},
+		Category: "FileSystem",
+	},
+	"edit": { // Added help topic for edit
+		Command:     "edit",
+		Description: "Open a file in the built-in text editor",
+		Usage:       "edit <filename>",
+		Examples: []string{
+			"edit my_document.txt",
+			"edit /etc/hosts",
+			"edit new_script.sh",
+		},
+		Category: "FileSystem",
 	},
 }
 

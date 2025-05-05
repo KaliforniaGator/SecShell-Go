@@ -4,13 +4,72 @@ import (
 	"fmt"
 	"os"
 	"secshell/colors"
-
-	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"golang.org/x/term"
 )
+
+// ANSI Escape Codes
+const (
+	clearScreen          = "\x1b[2J"
+	clearScreenAndBuffer = "\033[H\033[2J\033[3J"
+	moveCursorFormat     = "\x1b[%d;%dH" // row, col (1-based) - Renamed format string
+	hideCursor           = "\x1b[?25l"
+	showCursor           = "\x1b[?25h"
+)
+
+// ClearScreen clears the entire terminal screen.
+func ClearScreen() string { // Return string instead of printing directly
+	return clearScreen
+}
+
+// ClearScreenAndBuffer clears the terminal screen and scrollback buffer.
+func ClearScreenAndBuffer() string { // Return string instead of printing directly
+	return clearScreenAndBuffer
+}
+
+// MoveCursor positions the cursor at the specified row and column.
+// Note: row and col are 0-based for convenience, but converted to 1-based for ANSI.
+func MoveCursor(row, col int) { // Keep this for direct printing if needed elsewhere
+	fmt.Printf(moveCursorFormat, row+1, col+1)
+}
+
+// MoveCursorCmd returns the ANSI escape code string to move the cursor.
+// Note: row and col are 0-based for convenience.
+func MoveCursorCmd(row, col int) string {
+	return fmt.Sprintf(moveCursorFormat, row+1, col+1)
+}
+
+// HideCursor makes the terminal cursor invisible.
+func HideCursor() string { // Return string
+	return hideCursor
+}
+
+// ShowCursor makes the terminal cursor visible.
+func ShowCursor() string { // Return string
+	return showCursor
+}
+
+// ClearLineSuffix returns ANSI sequence to clear from cursor to end of line
+func ClearLineSuffix() string {
+	return "\x1b[K"
+}
+
+// ResetStyle returns ANSI escape sequence to reset text formatting
+func ResetStyle() string {
+	return "\x1b[0m"
+}
+
+// ReverseVideo returns ANSI escape sequence for reverse video (inverted colors)
+func ReverseVideo() string {
+	return "\x1b[7m"
+}
+
+// ResetVideo returns ANSI escape sequence to reset text formatting
+func ResetVideo() string {
+	return "\x1b[27m"
+}
 
 // BoxType defines the structure for different box styles
 type BoxType struct {
@@ -379,258 +438,49 @@ func PrintBannerColors() {
 	fmt.Println()
 }
 
-func ParseAndPrintBanner(args []string) {
-	// Show color list if --colors flag is present
-	for _, arg := range args {
-		if arg == "--colors" {
-			PrintBannerColors()
-			return
-		}
-	}
-
-	if len(args) < 2 {
-		PrintError("Error: Text is required for banner\n")
-		return
-	}
-
-	// Join all args and find quoted text
-	fullCmd := strings.Join(args[1:], " ")
-	var text string
-
-	// Find text between quotes
-	if strings.Count(fullCmd, "\"") >= 2 {
-		// Extract text between first set of quotes
-		start := strings.Index(fullCmd, "\"")
-		end := strings.Index(fullCmd[start+1:], "\"") + start + 1
-		if start != -1 && end != -1 {
-			text = fullCmd[start+1 : end]
-			// Remove the quoted text from fullCmd for flag processing
-			fullCmd = fullCmd[:start] + fullCmd[end+1:]
-		}
-	}
-
-	// If no quoted text found, use first non-flag argument
-	if text == "" {
-		for _, arg := range args[1:] {
-			if !strings.HasPrefix(arg, "-") {
-				text = arg
-				break
-			}
-		}
-	}
-
-	boxStyle := "single"
-	textColor := colors.BoldWhite
-	bgColor := colors.Reset
-	borderColor := colors.Reset
-	width := -1
-	height := -1
-	alignment := TextAlignment{
-		Horizontal: "center",
-		Vertical:   "center",
-	}
-
-	// Split remaining command for flag processing
-	flagArgs := strings.Fields(fullCmd)
-	for i := 0; i < len(flagArgs); i++ {
-		switch flagArgs[i] {
-		case "-s", "--style":
-			if i+1 < len(flagArgs) {
-				if _, exists := BoxTypes[flagArgs[i+1]]; exists {
-					boxStyle = flagArgs[i+1]
-				} else {
-					PrintWarning("Invalid box style, using default\n")
-				}
-				i++
-			}
-		case "-c", "--color":
-			if i+1 < len(flagArgs) {
-				if color, exists := colors.ColorMap["bold_"+flagArgs[i+1]]; exists {
-					textColor = color
-				} else {
-					PrintWarning("Invalid text color, using default\n")
-				}
-				i++
-			}
-		case "-b", "--background":
-			if i+1 < len(flagArgs) {
-				if color, exists := colors.ColorMap["bg_"+flagArgs[i+1]]; exists {
-					bgColor = color
-				} else {
-					PrintWarning("Invalid background color, using default\n")
-				}
-				i++
-			}
-		case "-w", "--width":
-			if i+1 < len(flagArgs) {
-				if w, err := strconv.Atoi(flagArgs[i+1]); err == nil && w > 0 {
-					width = w
-				}
-				i++
-			}
-		case "-h", "--height":
-			if i+1 < len(flagArgs) {
-				if h, err := strconv.Atoi(flagArgs[i+1]); err == nil && h > 0 {
-					height = h
-				}
-				i++
-			}
-		case "-a", "--align":
-			if i+1 < len(flagArgs) {
-				switch flagArgs[i+1] {
-				case "left", "right", "center":
-					alignment.Horizontal = flagArgs[i+1]
-				case "top", "bottom":
-					alignment.Vertical = flagArgs[i+1]
-				}
-				i++
-			}
-		case "-bc", "--border-color":
-			if i+1 < len(flagArgs) {
-				if color, exists := colors.ColorMap["bold_"+flagArgs[i+1]]; exists {
-					borderColor = color
-				} else {
-					PrintWarning("Invalid border color, using default\n")
-				}
-				i++
-			}
-		}
-	}
-
-	text = strings.TrimSpace(text)
-	if width < 0 {
-		width = len(text) + 4
-	}
-	if height < 0 {
-		height = 3
-	}
-
-	PrintBanner(text, boxStyle, textColor, bgColor, borderColor, width, height, alignment)
-}
-
 func PrintWindow(icon string, title string, content string, bgColor string, borderColor string,
 	titleColor string, contentColor string, width int, height int) {
 
-	// Print title bar
-	titleText := icon + " " + title
-	titleAlignment := TextAlignment{
-		Horizontal: "left",
-		Vertical:   "center",
+	// Determine position (e.g., centered)
+	termWidth := GetTerminalWidth()
+	termHeight := GetTerminalHeight()
+	winX := (termWidth - width) / 2
+	winY := (termHeight - height) / 2
+	if winX < 0 {
+		winX = 0
 	}
-	PrintBanner(titleText, "single", titleColor, bgColor, borderColor, width, 3, titleAlignment)
-
-	// Print content area
-	contentAlignment := TextAlignment{
-		Horizontal: "left",
-		Vertical:   "top",
-	}
-	fmt.Print("\n")
-	// Remove top border by using special handling in PrintBanner
-	PrintBanner(content, "single", contentColor, bgColor, borderColor, width, height, contentAlignment)
-}
-
-func ParseAndPrintWindow(args []string) {
-	if len(args) < 3 {
-		PrintError("Error: Icon and title are required for window\n")
-		return
+	if winY < 0 {
+		winY = 0
 	}
 
-	// Parse icon and title first
-	icon := args[1]
+	// Create a new Window instance
+	// Using "single" style as the original PrintWindow implicitly did.
+	// Content color is set as the default for the window.
+	win := NewWindow(icon, title, winX, winY, width, height, "single", titleColor, borderColor, bgColor, contentColor)
 
-	// Join remaining args and find quoted title
-	fullCmd := strings.Join(args[2:], " ")
-	var title, content string
+	// Add the main content as a Label element spanning the width
+	// Wrap the text first to fit the content area width
+	contentWidth := width - 2 // Account for borders
+	wrappedContent := wrapText(content, contentWidth)
 
-	// Find title between first set of quotes
-	if strings.Count(fullCmd, "\"") >= 2 { // Changed from 4 to 2 since we only need title quotes
-		// Extract title
-		start := strings.Index(fullCmd, "\"")
-		end := strings.Index(fullCmd[start+1:], "\"") + start + 1
-		if start != -1 && end != -1 {
-			title = fullCmd[start+1 : end]
-			// Remove the title from fullCmd
-			fullCmd = fullCmd[:start] + fullCmd[end+1:]
-
-			// Try to extract content if it exists
-			if strings.Count(fullCmd, "\"") >= 2 {
-				start = strings.Index(fullCmd, "\"")
-				end = strings.Index(fullCmd[start+1:], "\"") + start + 1
-				if start != -1 && end != -1 {
-					content = fullCmd[start+1 : end]
-					fullCmd = fullCmd[:start] + fullCmd[end+1:]
-				}
-			}
+	// Add each line of wrapped text as a separate Label
+	for i, line := range wrappedContent {
+		// Position labels starting from top-left (0,0) relative to content area
+		// Ensure we don't exceed the window's content height
+		if i < height-2 { // Account for top/bottom borders
+			label := NewLabel(line, 0, i, contentColor) // Use provided contentColor
+			win.AddElement(label)
+		} else {
+			break // Stop adding lines if window height is exceeded
 		}
 	}
 
-	// If no title was found in quotes, use first non-flag argument
-	if title == "" {
-		for _, arg := range args[2:] {
-			if !strings.HasPrefix(arg, "-") {
-				title = arg
-				break
-			}
-		}
-	}
+	// Render the window
+	win.Render()
 
-	// Default values
-	bgColor := colors.Reset
-	borderColor := colors.BoldWhite
-	titleColor := colors.BoldWhite
-	contentColor := colors.BoldWhite
-	width := 50
-	height := 10
-
-	// Parse flags
-	flagArgs := strings.Fields(fullCmd)
-	for i := 0; i < len(flagArgs); i++ {
-		switch flagArgs[i] {
-		case "-w", "--width":
-			if i+1 < len(flagArgs) {
-				if w, err := strconv.Atoi(flagArgs[i+1]); err == nil && w > 0 {
-					width = w
-				}
-				i++
-			}
-		case "-h", "--height":
-			if i+1 < len(flagArgs) {
-				if h, err := strconv.Atoi(flagArgs[i+1]); err == nil && h > 0 {
-					height = h
-				}
-				i++
-			}
-		case "-b", "--background":
-			if i+1 < len(flagArgs) {
-				if color, exists := colors.ColorMap["bg_"+flagArgs[i+1]]; exists {
-					bgColor = color
-				}
-				i++
-			}
-		case "-bc", "--border-color":
-			if i+1 < len(flagArgs) {
-				if color, exists := colors.ColorMap["bold_"+flagArgs[i+1]]; exists {
-					borderColor = color
-				}
-				i++
-			}
-		case "-tc", "--title-color":
-			if i+1 < len(flagArgs) {
-				if color, exists := colors.ColorMap["bold_"+flagArgs[i+1]]; exists {
-					titleColor = color
-				}
-				i++
-			}
-		case "-cc", "--content-color":
-			if i+1 < len(flagArgs) {
-				if color, exists := colors.ColorMap["bold_"+flagArgs[i+1]]; exists {
-					contentColor = color
-				}
-				i++
-			}
-		}
-	}
-
-	// Print the window
-	PrintWindow(icon, title, content, bgColor, borderColor, titleColor, contentColor, width, height)
+	// Note: The original PrintWindow printed a newline after the content banner.
+	// The new Render method places the window absolutely, so a newline might not be needed
+	// or desired depending on how it's used in the application flow.
+	// If a newline is needed to move the cursor below the window, add:
+	// fmt.Print(MoveCursorCmd(winY+height, 0)) // Move cursor below the window
 }

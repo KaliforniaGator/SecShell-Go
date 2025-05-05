@@ -21,6 +21,7 @@ import (
 	"secshell/env"
 	"secshell/globals"
 	"secshell/help"
+	"secshell/history"
 	"secshell/jobs"
 	"secshell/logging"
 	"secshell/pentest"
@@ -293,209 +294,6 @@ func (s *SecShell) sanitizeInput(input string, allowSpecialChars ...bool) string
 	return sanitize.Input(input, allow)
 }
 
-// displayHistory shows the command history
-func (s *SecShell) displayHistory() {
-	gui.TitleBox("Command History")
-	if len(s.history) > gui.GetTerminalHeight() {
-		core.More(s.history)
-	} else {
-		for i, cmd := range s.history {
-			fmt.Printf("%d: %s\n", i+1, cmd)
-		}
-	}
-}
-
-func (s *SecShell) searchHistory(query string) {
-	gui.TitleBox("History Search: " + query)
-	found := false
-
-	for i, cmd := range s.history {
-		if strings.Contains(strings.ToLower(cmd), strings.ToLower(query)) {
-			highlightedCmd := highlightText(cmd, query)
-			fmt.Printf("%d: %s\n", i+1, highlightedCmd)
-			found = true
-		}
-	}
-
-	if !found {
-		gui.AlertBox("No matching commands found.")
-	}
-}
-
-func (s *SecShell) runHistoryCommand(number int) bool {
-	if number <= 0 || number > len(s.history) {
-		gui.ErrorBox(fmt.Sprintf("Invalid history number: %d", number))
-		return false
-	}
-
-	cmd := s.history[number-1]
-	gui.AlertBox(fmt.Sprintf("Running: %s", cmd))
-	s.processCommand(cmd)
-	return true
-}
-
-func (s *SecShell) interactiveHistorySearch() {
-	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
-	if err != nil {
-		logging.LogError(err)
-		gui.ErrorBox(fmt.Sprintf("Failed to set terminal to raw mode: %s", err))
-		return
-	}
-	defer term.Restore(int(os.Stdin.Fd()), oldState)
-
-	query := ""
-	selectedIndex := 0
-	filteredHistory := []string{}
-
-	// Hide cursor while navigating
-	fmt.Print("\033[?25l")
-	defer fmt.Print("\033[?25h") // Ensure cursor is shown when function exits
-
-	// Helper function to refresh display
-	refreshDisplay := func() {
-		fmt.Print("\033[H\033[2J\033[3J") // Clear screen and scrollback buffer
-		// Display header with drawbox
-		fmt.Print("\n")
-		ui.ClearLine()
-		fmt.Print(colors.BoldGreen + "┌─[Interactive History Search]" + colors.Reset + "\n")
-		ui.ClearLine()
-		fmt.Printf(colors.BoldGreen+"└─"+colors.Reset+"$ %s", query)
-
-		// Print instructions
-		fmt.Print("\n")
-		ui.ClearLine()
-		fmt.Println("Type to search, Up/Down arrows to navigate, Enter to select, Esc to cancel")
-
-		// Filter history based on query
-		filteredHistory = []string{}
-		for _, cmd := range s.history {
-			if query == "" || strings.Contains(strings.ToLower(cmd), strings.ToLower(query)) {
-				filteredHistory = append(filteredHistory, cmd)
-			}
-		}
-
-		// Display results with selection highlight
-		for i, cmd := range filteredHistory {
-			if i == selectedIndex {
-				ui.ClearLine()
-				fmt.Printf("%s→ %d: %s%s\n", colors.BoldGreen, i+1, cmd, colors.Reset)
-			} else {
-				ui.ClearLine()
-				fmt.Printf("  %d: %s\n", i+1, cmd)
-			}
-		}
-
-		if len(filteredHistory) == 0 {
-			ui.ClearLine()
-			fmt.Println("  No matching commands found.")
-		}
-	}
-
-	// Initial display
-	refreshDisplay()
-
-	// Input loop
-	buf := make([]byte, 3)
-	for {
-		n, err := os.Stdin.Read(buf)
-		if err != nil {
-			logging.LogError(err)
-			gui.ErrorBox(fmt.Sprintf("Failed to read input: %s", err))
-			return
-		}
-
-		if n == 1 {
-			switch buf[0] {
-			case 27: // ESC
-				// Clear screen before returning to normal mode
-				fmt.Print("\033[H\033[2J\033[3J") // Clear screen and scrollback buffer
-				return
-
-			case 13: // Enter
-				if len(filteredHistory) > 0 && selectedIndex >= 0 && selectedIndex < len(filteredHistory) {
-					selectedCmd := filteredHistory[selectedIndex]
-					// Restore terminal and run command
-					fmt.Print("\033[?25h") // Make sure cursor is visible
-					term.Restore(int(os.Stdin.Fd()), oldState)
-					fmt.Print("\033[H\033[2J\033[3J") // Clear screen and scrollback buffer
-					gui.AlertBox("Running: " + selectedCmd)
-					s.processCommand(selectedCmd)
-					return
-				}
-
-			case 127, 8: // Backspace/Delete
-				if len(query) > 0 {
-					query = query[:len(query)-1]
-					selectedIndex = 0
-					refreshDisplay()
-				}
-
-			default:
-				// Add printable characters to query
-				if buf[0] >= 32 && buf[0] <= 126 {
-					query += string(buf[0])
-					selectedIndex = 0
-					refreshDisplay()
-				}
-			}
-		} else if n == 3 && buf[0] == 27 && buf[1] == 91 {
-			// Handle arrow keys
-			switch buf[2] {
-			case 65: // Up arrow
-				if selectedIndex > 0 {
-					selectedIndex--
-					refreshDisplay()
-				}
-
-			case 66: // Down arrow
-				if len(filteredHistory) > 0 && selectedIndex < len(filteredHistory)-1 {
-					selectedIndex++
-					refreshDisplay()
-				}
-			}
-		}
-	}
-}
-
-func highlightText(text, query string) string {
-	if query == "" {
-		return text
-	}
-
-	// Case-insensitive search
-	lowerText := strings.ToLower(text)
-	lowerQuery := strings.ToLower(query)
-
-	var result strings.Builder
-	lastIndex := 0
-
-	for {
-		index := strings.Index(lowerText[lastIndex:], lowerQuery)
-		if index == -1 {
-			break
-		}
-
-		// Adjust index to account for the slice
-		index += lastIndex
-
-		// Append text before the match
-		result.WriteString(text[lastIndex:index])
-
-		// Append the highlighted match
-		result.WriteString(colors.BoldYellow)
-		result.WriteString(text[index : index+len(query)])
-		result.WriteString(colors.Reset)
-
-		// Update lastIndex
-		lastIndex = index + len(query)
-	}
-
-	// Append the remaining text
-	result.WriteString(text[lastIndex:])
-
-	return result.String()
-}
-
 // reloadBlacklist reloads the blacklist from the file
 func (s *SecShell) reloadBlacklist() {
 	s.blacklistedCommands = nil
@@ -546,7 +344,7 @@ func (s *SecShell) processCommand(input string) {
 			}
 		} else if num, err := strconv.Atoi(input[1:]); err == nil {
 			logging.LogError(err)
-			s.runHistoryCommand(num)
+			history.RunHistoryCommand(s.history, num, s.processCommand)
 		}
 		return
 	}
@@ -692,7 +490,7 @@ func (s *SecShell) processCommand(input string) {
 			}
 		case "history":
 			if len(args) == 1 {
-				s.displayHistory()
+				history.DisplayHistory(s.history) // Display command history
 			} else {
 				switch args[1] {
 				case "-s":
@@ -701,9 +499,9 @@ func (s *SecShell) processCommand(input string) {
 						gui.ErrorBox("Usage: history -s <query>")
 						return
 					}
-					s.searchHistory(strings.Join(args[2:], " ")) // Search history for the given query
+					history.SearchHistory(s.history, strings.Join(args[2:], " ")) // Search history for the given query
 				case "-i":
-					s.interactiveHistorySearch() // Run interactive history search
+					history.InteractiveHistorySearch(s.history, s.processCommand) // Run interactive history search
 				case "clear":
 					core.ClearHistory(s.historyFile)
 				default:
@@ -763,20 +561,6 @@ func (s *SecShell) processCommand(input string) {
 			s.toggleSecurity()
 		case "download":
 			download.DownloadFiles(args)
-		case "banner":
-			if len(args) < 2 {
-				gui.ErrorBox("Usage: banner <text> -s,--style <style> -c,--color <color> -b,--background <bg> -w,--width <width> -h,--height <height> -a,--align <align>")
-				return
-			} else {
-				gui.ParseAndPrintBanner(args)
-			}
-		case "window":
-			if len(args) < 2 {
-				gui.ErrorBox("Usage: window <icon> <title> <content> -w,--width <width> -h,--height <height> -b,--background <color> -bc, --border-color <color> -tc, --title-color <color> -cc,content-color <color>")
-				return
-			} else {
-				gui.ParseAndPrintWindow(args)
-			}
 		case "portscan":
 			if len(args) < 2 {
 				gui.ErrorBox("Usage: portscan [-p ports] [-udp] [-t timing] [-v] [-j|-html] [-o file] [-syn] [-os] [-e] <target>")
@@ -1051,6 +835,30 @@ func (s *SecShell) processCommand(input string) {
 				gui.ErrorBox(fmt.Sprintf("String extraction failed: %v", err))
 			}
 			return
+
+		case "more":
+			// Handle the more command
+			if len(args) < 2 {
+				// If no argument is provided, show usage
+				gui.ErrorBox("Usage: more <file> or command | more")
+				return
+			}
+
+			// Remove "more" from the args and pass the rest to RunMore
+			err := core.RunMore(args[1:])
+			if err != nil {
+				logging.LogError(err)
+				gui.ErrorBox(fmt.Sprintf("Error: %v", err))
+			}
+			return
+
+		case "edit":
+			// Open the file in the default editor
+			tools.EditCommand(args[1:])
+			return
+
+		case "testwindow": // Add this case
+			gui.TestWindowApp() // Call the test function from the gui package
 
 		default:
 			// Handle quoted arguments
@@ -1615,6 +1423,22 @@ func isSignalKilled(err error) bool {
 		}
 	}
 	return false
+}
+
+// Helper min function
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// Helper max function
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // main function to start the shell
