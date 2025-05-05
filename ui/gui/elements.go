@@ -374,3 +374,101 @@ func (rb *RadioButton) Render(buffer *strings.Builder, winX, winY int, _ int) {
 
 	buffer.WriteString(colors.Reset) // Reset color and video attributes
 }
+
+// --- Progress Bar ---
+
+// ProgressBar represents a visual progress indicator.
+type ProgressBar struct {
+	Value          float64 // Current value
+	MaxValue       float64 // Maximum value (represents 100%)
+	Color          string  // Color of the filled portion
+	UnfilledColor  string  // Color of the unfilled portion
+	ShowPercentage bool    // Whether to display the percentage text
+	X, Y           int     // Position relative to window content area
+	Width          int     // Total width of the bar in characters
+}
+
+// NewProgressBar creates a new ProgressBar instance.
+func NewProgressBar(x, y, width int, initialValue, maxValue float64, color, unfilledColor string, showPercentage bool) *ProgressBar {
+	if maxValue <= 0 {
+		maxValue = 100 // Default max value if invalid
+	}
+	if initialValue < 0 {
+		initialValue = 0
+	}
+	if initialValue > maxValue {
+		initialValue = maxValue
+	}
+	// Use default unfilled color if none provided
+	if unfilledColor == "" {
+		unfilledColor = colors.Reset // Default to reset/terminal default
+	}
+	return &ProgressBar{
+		Value:          initialValue,
+		MaxValue:       maxValue,
+		Color:          color,
+		UnfilledColor:  unfilledColor,
+		ShowPercentage: showPercentage,
+		X:              x,
+		Y:              y,
+		Width:          width,
+	}
+}
+
+// SetValue updates the progress bar's current value, clamping it between 0 and MaxValue.
+func (pb *ProgressBar) SetValue(value float64) {
+	if value < 0 {
+		pb.Value = 0
+	} else if value > pb.MaxValue {
+		pb.Value = pb.MaxValue
+	} else {
+		pb.Value = value
+	}
+}
+
+// Render draws the progress bar element.
+func (pb *ProgressBar) Render(buffer *strings.Builder, winX, winY int, _ int) {
+	absX := winX + pb.X
+	absY := winY + pb.Y
+	buffer.WriteString(MoveCursorCmd(absY, absX))
+
+	percentage := 0.0
+	if pb.MaxValue > 0 {
+		percentage = pb.Value / pb.MaxValue
+	}
+
+	// Calculate the width available for the bar itself
+	barWidth := pb.Width
+	percentageText := ""
+	if pb.ShowPercentage {
+		percentageText = fmt.Sprintf(" %.0f%%", percentage*100)
+		// Reduce bar width to make space for the text
+		barWidth -= len(percentageText)
+		if barWidth < 0 {
+			barWidth = 0 // Ensure bar width isn't negative
+		}
+	}
+
+	filledWidth := int(float64(barWidth) * percentage)
+	emptyWidth := barWidth - filledWidth
+
+	// Draw the filled part
+	buffer.WriteString(pb.Color)
+	buffer.WriteString(strings.Repeat("█", filledWidth)) // Use a block character for filled part
+
+	// Draw the empty part (set unfilled color first)
+	buffer.WriteString(colors.Reset)                    // Reset to default before unfilled color
+	buffer.WriteString(pb.UnfilledColor)                // Set color for the empty part
+	buffer.WriteString(strings.Repeat("░", emptyWidth)) // Use a lighter shade or space for empty part
+
+	// Draw the percentage text if enabled
+	if pb.ShowPercentage {
+		// Ensure percentage text uses a predictable color (e.g., reset)
+		// or allow it to inherit the UnfilledColor if desired.
+		// Here, we reset before the text for clarity.
+		buffer.WriteString(colors.Reset)
+		buffer.WriteString(percentageText)
+	}
+
+	buffer.WriteString(colors.Reset) // Ensure color is reset at the end
+}

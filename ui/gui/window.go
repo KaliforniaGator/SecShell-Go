@@ -467,8 +467,8 @@ func TestWindowApp() {
 		winWidth = 60
 	}
 	winHeight := termHeight / 2
-	if winHeight < 21 { // Increased min height slightly for spacer
-		winHeight = 21
+	if winHeight < 23 { // Increased min height slightly for progress bar + spacer
+		winHeight = 23
 	}
 	winX := (termWidth - winWidth) / 2
 	winY := (termHeight - winHeight) / 2
@@ -544,6 +544,19 @@ func TestWindowApp() {
 	// Set a default selection for the radio group
 	optionGroup.Select(2) // Select "Option C" by default
 
+	// --- Add Spacer ---
+	currentY += 1 // Add space before progress bar
+	spacer2 := NewSpacer(1, currentY, 1)
+	testWin.AddElement(spacer2)
+	currentY += 1
+
+	// --- Add Progress Bar ---
+	progressBarY := currentY
+	progressBarWidth := winWidth - 4 // Make it slightly less than full content width
+	progressBar := NewProgressBar(1, progressBarY, progressBarWidth, 50, 100, colors.BgGreen+colors.Green, colors.Yellow, true)
+	testWin.AddElement(progressBar)
+	currentY += 1 // Move down past the progress bar row
+
 	// --- Buttons ---
 	buttonWidth := 12
 
@@ -572,6 +585,12 @@ func TestWindowApp() {
 		// Update infoLabel text (it will re-render and potentially wrap)
 		infoLabel.Text = fmt.Sprintf("N: '%s', E: '%s', Agr: %t, Opt: %s | Tab/S-Tab, Enter, q/Ctrl+C", submittedName, submittedEmail, agreed, selectedOption)
 		infoLabel.Color = colors.BoldGreen
+
+		// Update progress bar based on name length (example)
+		nameLen := float64(len(submittedName))
+		maxLen := 20.0 // Arbitrary max length for 100%
+		progressBar.SetValue((nameLen / maxLen) * 100)
+
 		return false // Don't quit
 	})
 	testWin.AddElement(submitButton)
@@ -581,7 +600,8 @@ func TestWindowApp() {
 	quitButton := NewButton("Quit App", quitButtonX, quitButtonY, buttonWidth, colors.BoldRed, colors.BgRed+colors.BoldWhite, func() bool {
 		infoLabel.Text = "Quitting..." // Update info label text
 		infoLabel.Color = colors.BoldRed
-		testWin.Render() // Render the "Quitting..." message
+		progressBar.SetValue(100) // Set progress to 100 on quit
+		testWin.Render()          // Render the "Quitting..." message and final progress
 		time.Sleep(300 * time.Millisecond)
 		return true // Action returns true to signal quitting
 	})
