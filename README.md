@@ -14,7 +14,7 @@
 - **Job Management**: Track, control, and inspect background jobs.
 - **Service Management**: Start, stop, restart, and check system services securely.
 - **Piped & Background Execution**: Full support for pipes (`|`), redirection (`>`, `<`), and background jobs (`&`).
-- **Command History & Search**: Persistent history with interactive and query-based search.
+- **Command History & Search**: Persistent history with interactive and query-based search, including interactive search mode.
 - **Environment Variable Control**: Set, unset, and list environment variables.
 - **Security Toggle (Admin Only)**: Temporarily bypass security checks with authentication.
 - **Pentesting Utilities**: Built-in port, host, and web scanners, reverse shell payload generation, and session management.
@@ -24,6 +24,8 @@
 - **Script Execution**: Run scripts with automatic interpreter detection.
 - **Update & Version Control**: Self-update and version display commands.
 - **Comprehensive Logging**: All actions are logged for audit and review.
+- **Interactive Paged Output**: View long output with paging and search (`more` command).
+- **Built-in Text Editor**: Edit files directly with the `edit` command.
 
 ---
 
@@ -102,8 +104,8 @@ ________________________________________________________________________________
 | **Scripting**          |                                                                                                     |
 | `./<script>`           | Execute scripts with automatic interpreter detection.                                               |
 | **UI/Display**         |                                                                                                     |
-| `banner`               | Print a styled banner.<br>Usage: `banner <text> [options]`                                          |
-| `window`               | Print a styled window.<br>Usage: `window <icon> <title> <content> [options]`                        |
+| `more`                 | Display text files or command output with interactive paging and search.<br>Usage: `more <file>` or `command | more` |
+| `edit`                 | Open a file in the built-in text editor.<br>Usage: `edit <filename>`                                |
 --------------------------------------------------------------------------------------------------------------------------------
 
 ---
@@ -147,6 +149,8 @@ secshell
 - Interactive history search: `history -i`
 - Download a file: `download https://example.com/file.txt`
 - Scan ports: `portscan 192.168.1.1 1-1000`
+- View file content page by page: `more /var/log/syslog` or `ls -la | more`
+- Edit a file: `edit myfile.txt`
 - Toggle security (admin): `toggle-security`
 - Encode a string in base64: `base64 -e "Hello"`
 - Decode a hex string: `hex -d "48656c6c6f"`
