@@ -85,6 +85,101 @@ func (b *Button) Render(buffer *strings.Builder, winX, winY int, _ int) {
 	buffer.WriteString(colors.Reset) // Reset color and video attributes
 }
 
+// TextBox represents an editable text input field.
+type TextBox struct {
+	Text        string
+	Color       string
+	ActiveColor string // Color when selected/active
+	X, Y        int    // Position relative to window content area
+	Width       int
+	IsActive    bool // State for rendering/input handling
+	cursorPos   int  // Position of the cursor within the text
+	isPristine  bool // Flag to track if default text is present and untouched
+}
+
+// NewTextBox creates a new TextBox instance.
+func NewTextBox(initialText string, x, y, width int, color, activeColor string) *TextBox {
+	tb := &TextBox{
+		Text:        initialText,
+		X:           x,
+		Y:           y,
+		Width:       width,
+		Color:       color,
+		ActiveColor: activeColor,
+		IsActive:    false,
+		cursorPos:   len(initialText), // Cursor at the end initially
+		isPristine:  true,             // Initially contains default text
+	}
+	// Clamp initial cursor position
+	if tb.cursorPos > len(tb.Text) {
+		tb.cursorPos = len(tb.Text)
+	}
+	return tb
+}
+
+// Render draws the textbox element.
+func (tb *TextBox) Render(buffer *strings.Builder, winX, winY int, _ int) {
+	absX := winX + tb.X
+	absY := winY + tb.Y
+	buffer.WriteString(MoveCursorCmd(absY, absX))
+
+	renderColor := tb.Color
+	if tb.IsActive {
+		renderColor = tb.ActiveColor
+	}
+	buffer.WriteString(renderColor)
+
+	// --- Text Rendering with Scrolling ---
+	textLen := len(tb.Text)
+	viewStart := 0 // Index in tb.Text that corresponds to the start of the visible area
+
+	// Adjust viewStart based on cursor position to keep cursor visible
+	if tb.cursorPos >= tb.Width {
+		viewStart = tb.cursorPos - tb.Width + 1
+	}
+	if viewStart < 0 { // Should not happen with above logic, but safety check
+		viewStart = 0
+	}
+	// Ensure viewStart doesn't go beyond possible text start
+	if viewStart > textLen {
+		viewStart = textLen
+	}
+
+	viewEnd := viewStart + tb.Width
+	if viewEnd > textLen {
+		viewEnd = textLen
+	}
+
+	// Get the visible portion of the text
+	visibleText := ""
+	if viewStart < textLen {
+		visibleText = tb.Text[viewStart:viewEnd]
+	}
+
+	// Render the visible text and padding
+	buffer.WriteString(visibleText)
+	buffer.WriteString(strings.Repeat(" ", tb.Width-len(visibleText)))
+	// --- End Text Rendering ---
+
+	// --- Cursor Rendering ---
+	if tb.IsActive {
+		// Calculate cursor position relative to the *visible* text area
+		cursorRenderPos := tb.cursorPos - viewStart
+		if cursorRenderPos >= 0 && cursorRenderPos < tb.Width {
+			buffer.WriteString(MoveCursorCmd(absY, absX+cursorRenderPos))
+			buffer.WriteString(ShowCursor()) // Make cursor visible at the calculated position
+		} else {
+			// If cursor is somehow outside visible area (e.g., exactly at tb.Width),
+			// place it at the end of the visible area.
+			buffer.WriteString(MoveCursorCmd(absY, absX+tb.Width-1))
+			buffer.WriteString(ShowCursor())
+		}
+	}
+	// --- End Cursor Rendering ---
+
+	buffer.WriteString(colors.Reset) // Reset color
+}
+
 // --- Window Structure ---
 
 // Window represents a bordered area on the screen containing UI elements.
@@ -131,13 +226,29 @@ func NewWindow(icon, title string, x, y, width, height int, boxStyle, titleColor
 func (w *Window) AddElement(element UIElement) {
 	w.Elements = append(w.Elements, element)
 
-	// Check if the element is focusable (currently, only Buttons)
-	if btn, ok := element.(*Button); ok {
-		w.focusableElements = append(w.focusableElements, btn)
+	// Check if the element is focusable (Buttons, TextBoxes)
+	isFocusable := false
+	switch v := element.(type) {
+	case *Button:
+		isFocusable = true
+	case *TextBox:
+		isFocusable = true
+		// Ensure cursor is initially hidden for inactive textboxes
+		v.IsActive = false // Explicitly set inactive
+	}
+
+	if isFocusable {
+		w.focusableElements = append(w.focusableElements, element)
 		// If this is the first focusable element, focus it
 		if w.focusedIndex == -1 {
 			w.focusedIndex = 0
-			btn.IsActive = true // Activate the first button
+			// Activate the first focusable element
+			switch el := w.focusableElements[0].(type) {
+			case *Button:
+				el.IsActive = true
+			case *TextBox:
+				el.IsActive = true // Activate and make cursor potentially visible on first render
+			}
 		}
 	}
 }
@@ -230,8 +341,11 @@ func (w *Window) setFocus(newIndex int) {
 
 	// Deactivate the previously focused element (if any)
 	if w.focusedIndex >= 0 && w.focusedIndex < len(w.focusableElements) {
-		if btn, ok := w.focusableElements[w.focusedIndex].(*Button); ok {
-			btn.IsActive = false
+		switch el := w.focusableElements[w.focusedIndex].(type) {
+		case *Button:
+			el.IsActive = false
+		case *TextBox:
+			el.IsActive = false
 		}
 	}
 
@@ -246,8 +360,11 @@ func (w *Window) setFocus(newIndex int) {
 
 	// Activate the newly focused element
 	if w.focusedIndex >= 0 && w.focusedIndex < len(w.focusableElements) {
-		if btn, ok := w.focusableElements[w.focusedIndex].(*Button); ok {
-			btn.IsActive = true
+		switch el := w.focusableElements[w.focusedIndex].(type) {
+		case *Button:
+			el.IsActive = true
+		case *TextBox:
+			el.IsActive = true
 		}
 	}
 }
@@ -299,9 +416,13 @@ func (w *Window) WindowActions() {
 	w.Render()
 
 	// Buffer for reading input bytes
-	inputBuf := make([]byte, 3) // Read up to 3 bytes for escape sequences
+	inputBuf := make([]byte, 6) // Increased buffer for escape sequences (arrows, delete)
 
 	for {
+		// Hide cursor before reading input to prevent flicker at old position
+		// Render will show it again if a TextBox is active
+		fmt.Print(HideCursor())
+
 		// Read input from the raw terminal
 		n, err := os.Stdin.Read(inputBuf)
 		if err != nil {
@@ -317,17 +438,91 @@ func (w *Window) WindowActions() {
 		shouldQuit := false
 		needsRender := false
 
+		// Get the currently focused element, if any
+		var focusedElement UIElement
+		var focusedTextBox *TextBox
+		if w.focusedIndex >= 0 && w.focusedIndex < len(w.focusableElements) {
+			focusedElement = w.focusableElements[w.focusedIndex]
+			// Check if the focused element is a TextBox and cast it
+			if tb, ok := focusedElement.(*TextBox); ok {
+				focusedTextBox = tb
+			}
+		}
+
 		// --- Key Handling ---
-		if n == 1 {
-			switch key[0] {
-			case '\t': // Tab key
-				if len(w.focusableElements) > 0 {
+		// Check if the focused element is an active TextBox first
+		if focusedTextBox != nil && focusedTextBox.IsActive {
+			isPrintable := n == 1 && key[0] >= 32 && key[0] < 127 // Printable ASCII (excluding DEL)
+
+			if isPrintable {
+				// If it's the first keypress in a pristine box, clear it first.
+				if focusedTextBox.isPristine {
+					focusedTextBox.Text = ""
+					focusedTextBox.cursorPos = 0
+					focusedTextBox.isPristine = false
+				}
+				// Insert character at cursor position
+				focusedTextBox.Text = focusedTextBox.Text[:focusedTextBox.cursorPos] + string(key[0]) + focusedTextBox.Text[focusedTextBox.cursorPos:]
+				focusedTextBox.cursorPos++
+				needsRender = true
+			} else if n == 1 {
+				switch key[0] {
+				case 127, 8: // Backspace (DEL or ASCII BS)
+					if focusedTextBox.cursorPos > 0 {
+						focusedTextBox.Text = focusedTextBox.Text[:focusedTextBox.cursorPos-1] + focusedTextBox.Text[focusedTextBox.cursorPos:]
+						focusedTextBox.cursorPos--
+						focusedTextBox.isPristine = false // Edited
+						needsRender = true
+					}
+				case '\t': // Tab - Move focus to next element
 					w.setFocus(w.focusedIndex + 1)
 					needsRender = true
+				case '\r': // Enter - Treat like Tab for now (move focus)
+					w.setFocus(w.focusedIndex + 1)
+					needsRender = true
+				case 3: // Ctrl+C - Quit
+					shouldQuit = true
 				}
-			case '\r': // Enter key (Carriage Return in raw mode)
-				if w.focusedIndex >= 0 && w.focusedIndex < len(w.focusableElements) {
-					if btn, ok := w.focusableElements[w.focusedIndex].(*Button); ok {
+			} else if n == 3 && key[0] == '\x1b' && key[1] == '[' { // ANSI Escape sequences (Arrows, etc.)
+				switch key[2] {
+				case 'D': // Left Arrow
+					if focusedTextBox.cursorPos > 0 {
+						focusedTextBox.cursorPos--
+						focusedTextBox.isPristine = false // Interacted
+						needsRender = true                // Need re-render to show cursor move
+					}
+				case 'C': // Right Arrow
+					if focusedTextBox.cursorPos < len(focusedTextBox.Text) {
+						focusedTextBox.cursorPos++
+						focusedTextBox.isPristine = false // Interacted
+						needsRender = true                // Need re-render to show cursor move
+					}
+				case 'Z': // Shift+Tab
+					w.setFocus(w.focusedIndex - 1)
+					needsRender = true
+				}
+			} else if n == 4 && key[0] == '\x1b' && key[1] == '[' && key[3] == '~' { // More escape sequences
+				switch key[2] {
+				case '3': // Delete key (\x1b[3~)
+					if focusedTextBox.cursorPos < len(focusedTextBox.Text) {
+						focusedTextBox.Text = focusedTextBox.Text[:focusedTextBox.cursorPos] + focusedTextBox.Text[focusedTextBox.cursorPos+1:]
+						focusedTextBox.isPristine = false // Edited
+						needsRender = true
+					}
+				}
+			}
+		} else {
+			// --- Input Handling when TextBox is NOT active (or no focus) ---
+			if n == 1 {
+				switch key[0] {
+				case '\t': // Tab key
+					if len(w.focusableElements) > 0 {
+						w.setFocus(w.focusedIndex + 1)
+						needsRender = true
+					}
+				case '\r': // Enter key (Carriage Return in raw mode)
+					// Activate focused button if it's a button
+					if btn, ok := focusedElement.(*Button); ok && btn.IsActive {
 						if btn.Action != nil {
 							if btn.Action() { // Execute action, check quit signal
 								shouldQuit = true
@@ -336,26 +531,27 @@ func (w *Window) WindowActions() {
 								needsRender = true
 							}
 						}
+					} else {
+						// If Enter is pressed and not on an active button,
+						// move focus like Tab.
+						w.setFocus(w.focusedIndex + 1)
+						needsRender = true
 					}
+				case 'q', 'Q': // Quit key
+					shouldQuit = true
+				case 3: // Ctrl+C
+					shouldQuit = true
 				}
-			case 'q', 'Q': // Quit key
-				shouldQuit = true
-			case 3: // Ctrl+C
-				shouldQuit = true
-			}
-		} else if n == 3 && key[0] == '\x1b' && key[1] == '[' { // Check for escape sequences
-			switch key[2] {
-			// Potentially add arrow keys later if needed
-			// case 'A': // Up Arrow
-			// case 'B': // Down Arrow
-			case 'Z': // Shift+Tab (Common sequence, might vary)
-				if len(w.focusableElements) > 0 {
-					w.setFocus(w.focusedIndex - 1)
-					needsRender = true
+			} else if n == 3 && key[0] == '\x1b' && key[1] == '[' { // Check for escape sequences
+				switch key[2] {
+				case 'Z': // Shift+Tab (Common sequence, might vary)
+					if len(w.focusableElements) > 0 {
+						w.setFocus(w.focusedIndex - 1)
+						needsRender = true
+					}
 				}
 			}
 		}
-		// Add more key handling as needed (e.g., arrow keys)
 
 		// --- Loop Control and Rendering ---
 		if shouldQuit {
@@ -376,7 +572,6 @@ func (w *Window) WindowActions() {
 func TestWindowApp() {
 	// Clear screen before drawing
 	fmt.Print(ClearScreenAndBuffer())
-	// Hide cursor is now handled within WindowActions start
 
 	// Get terminal dimensions
 	termWidth := GetTerminalWidth()
@@ -384,68 +579,103 @@ func TestWindowApp() {
 
 	// Define window dimensions and position (centered)
 	winWidth := termWidth / 2
-	if winWidth < 40 {
-		winWidth = 40 // Minimum width
+	if winWidth < 50 { // Ensure enough width for label + textbox
+		winWidth = 50
 	}
 	winHeight := termHeight / 2
-	if winHeight < 12 { // Increased min height for more elements
-		winHeight = 12
+	if winHeight < 17 { // Increased min height again
+		winHeight = 17
 	}
 	winX := (termWidth - winWidth) / 2
 	winY := (termHeight - winHeight) / 2
 
 	// Create the window
-	testWin := NewWindow("🚀", "Raw Input Test", winX, winY, winWidth, winHeight,
+	testWin := NewWindow("📝", "Input Test", winX, winY, winWidth, winHeight,
 		"double", colors.BoldCyan, colors.BoldYellow, colors.BgBlack, colors.White)
 
-	// Add elements
-	infoLabel := NewLabel("Tab/Shift+Tab: Cycle | Enter: Activate | q/Ctrl+C: Quit", 1, 1, colors.Green)
+	// --- Add Elements ---
+	infoLabel := NewLabel("Tab/S-Tab: Cycle | Enter: Next/Activate | Arrows: Move Cursor | q/Ctrl+C: Quit", 1, 1, colors.Green)
 	testWin.AddElement(infoLabel)
 
-	detailLabel := NewLabel(fmt.Sprintf("Size: %dx%d Pos: (%d,%d)", winWidth, winHeight, winX, winY), 1, 3, colors.Gray)
-	testWin.AddElement(detailLabel)
+	// --- First TextBox ---
+	nameLabel := NewLabel("Enter Name:", 1, 3, colors.White)
+	testWin.AddElement(nameLabel)
+	textBoxX := len(nameLabel.Text) + 2
+	textBoxWidth := winWidth - 2 - textBoxX - 1
+	if textBoxWidth < 10 {
+		textBoxWidth = 10
+	}
+	nameTextBox := NewTextBox("<Type name here>", textBoxX, 3, textBoxWidth, colors.BgWhite+colors.Black, colors.BgCyan+colors.BoldBlack)
+	testWin.AddElement(nameTextBox)
+
+	// --- Second TextBox ---
+	emailLabelY := 5 // Position below the first textbox
+	emailLabel := NewLabel("Enter Email:", 1, emailLabelY, colors.White)
+	testWin.AddElement(emailLabel)
+	// Use same X and Width calculation, adjust Y
+	emailTextBoxX := len(emailLabel.Text) + 2
+	emailTextBoxWidth := winWidth - 2 - emailTextBoxX - 1
+	if emailTextBoxWidth < 10 {
+		emailTextBoxWidth = 10
+	}
+	emailTextBox := NewTextBox("<Type email here>", emailTextBoxX, emailLabelY, emailTextBoxWidth, colors.BgWhite+colors.Black, colors.BgCyan+colors.BoldBlack)
+	testWin.AddElement(emailTextBox) // Add second textbox
 
 	// --- Buttons ---
 	buttonWidth := 12
-	buttonSpacing := 2 // Vertical space between buttons
-	contentWidth := winWidth - 2
-	buttonX := (contentWidth - buttonWidth) / 2 // Center buttons horizontally
 
-	// Button 1: Placeholder Action
+	contentWidth := winWidth - 2
+	// Center buttons horizontally below the textbox area
+	totalButtonWidth := buttonWidth*2 + 2 // Width of two buttons + space between
+	buttonStartX := (contentWidth - totalButtonWidth) / 2
+	submitButtonX := buttonStartX
+	quitButtonX := buttonStartX + buttonWidth + 2
+
+	// Adjust button Y position further down
 	actionButtonY := winHeight - 6 // Position near bottom
-	actionButton := NewButton("Action 1", buttonX, actionButtonY, buttonWidth, colors.BoldBlue, colors.BgBlue+colors.BoldWhite, func() bool {
-		// Modify UI element state directly instead of printing
-		if lbl, ok := testWin.Elements[0].(*Label); ok { // Assuming infoLabel is the first element
-			lbl.Text = "Action 1 Executed! (Tab/Shift+Tab, Enter, q/Ctrl+C)"
-			lbl.Color = colors.BoldPurple
+	submitButton := NewButton("Submit", submitButtonX, actionButtonY, buttonWidth, colors.BoldGreen, colors.BgGreen+colors.BoldWhite, func() bool {
+		// Access the values from both textboxes
+		submittedName := nameTextBox.Text
+		if nameTextBox.isPristine {
+			submittedName = "" // Treat pristine as empty
 		}
-		// Return false: Don't quit the app on this action
-		return false
+		submittedEmail := emailTextBox.Text
+		if emailTextBox.isPristine {
+			submittedEmail = "" // Treat pristine as empty
+		}
+
+		infoLabel.Text = fmt.Sprintf("Name: '%s', Email: '%s' | Tab/S-Tab, Enter, q/Ctrl+C", submittedName, submittedEmail)
+		infoLabel.Color = colors.BoldGreen
+		return false // Don't quit
 	})
-	testWin.AddElement(actionButton)
+	testWin.AddElement(submitButton)
 
 	// Button 2: Quit Button
-	quitButtonY := actionButtonY + buttonSpacing
-	quitButton := NewButton("Quit App", buttonX, quitButtonY, buttonWidth, colors.BoldRed, colors.BgRed+colors.BoldWhite, func() bool {
-		// Modify UI element state directly if needed (e.g., show a quitting message)
-		if lbl, ok := testWin.Elements[0].(*Label); ok {
-			lbl.Text = "Quitting..."
-			lbl.Color = colors.BoldRed
-		}
-		// Action returns true to signal quitting the interaction loop
-		// A small delay can make the "Quitting..." message visible briefly
+	quitButtonY := actionButtonY
+	quitButton := NewButton("Quit App", quitButtonX, quitButtonY, buttonWidth, colors.BoldRed, colors.BgRed+colors.BoldWhite, func() bool {
+		infoLabel.Text = "Quitting..."
+		infoLabel.Color = colors.BoldRed
 		testWin.Render() // Render the "Quitting..." message
 		time.Sleep(300 * time.Millisecond)
-		return true
+		return true // Action returns true to signal quitting
 	})
 	testWin.AddElement(quitButton)
 
 	// --- Start Interaction ---
-	// WindowActions now handles raw input, rendering loop, and cleanup.
+	// WindowActions now handles raw input, rendering loop, focus, and cleanup.
 	testWin.WindowActions()
 
 	// Code here runs after WindowActions loop finishes
-	// Cursor is shown and terminal restored by defer in WindowActions
-	// Screen is cleared by WindowActions before returning
-	fmt.Println("Application finished.") // This will print after screen clear
+	fmt.Println("Application finished.")
+	// Access the final state of both textboxes
+	finalName := nameTextBox.Text
+	if nameTextBox.isPristine {
+		finalName = "" // Treat pristine state as empty submission
+	}
+	finalEmail := emailTextBox.Text
+	if emailTextBox.isPristine {
+		finalEmail = "" // Treat pristine state as empty submission
+	}
+	fmt.Printf("Final Name content: '%s'\n", finalName)
+	fmt.Printf("Final Email content: '%s'\n", finalEmail)
 }
