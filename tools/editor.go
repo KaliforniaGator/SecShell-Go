@@ -411,10 +411,19 @@ func (e *Editor) moveCursorOnly(key rune) {
 	case keyArrowUp:
 		if e.cursorY > 0 {
 			e.cursorY--
+		} else { // Already on the first line
+			e.cursorX = 0 // Move cursor to the beginning of the line
 		}
 	case keyArrowDown:
 		if e.cursorY < len(e.lines)-1 {
 			e.cursorY++
+		} else { // Already on the last line
+			// Move cursor to the end of the last line
+			if len(e.lines) > 0 {
+				e.cursorX = len([]rune(e.lines[e.cursorY]))
+			} else {
+				e.cursorX = 0
+			}
 		}
 	case keyHome:
 		e.cursorX = 0
