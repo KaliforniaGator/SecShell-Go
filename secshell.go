@@ -31,6 +31,7 @@ import (
 	"secshell/tools/editor"
 	"secshell/ui"
 	"secshell/ui/gui"
+	"secshell/ui/gui/tests"
 	"secshell/update"
 
 	"github.com/msteinert/pam"
@@ -863,6 +864,8 @@ func (s *SecShell) processCommand(input string) {
 		case "testwindow": // Add this case
 			gui.TestWindowApp() // Call the test function from the gui package
 
+		case "test":
+			tests.TestSegmentsApp()
 		default:
 			// Handle quoted arguments
 			args = s.parseQuotedArgs(args)

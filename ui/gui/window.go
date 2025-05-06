@@ -80,6 +80,9 @@ func (w *Window) AddElement(element UIElement) {
 	case *ScrollBar: // Handle scrollbars added directly
 		v.IsActive = false // Explicitly set inactive
 		elementsToAdd = append(elementsToAdd, v)
+	case *TextArea: // Add TextArea as a focusable element
+		v.IsActive = false // Explicitly set inactive
+		elementsToAdd = append(elementsToAdd, v)
 	case *Container: // Make the Container AND its ScrollBar focusable
 		v.IsActive = false                       // Ensure container starts inactive
 		elementsToAdd = append(elementsToAdd, v) // Add the container
@@ -249,6 +252,8 @@ func (w *Window) setFocus(newIndex int) {
 			el.IsActive = false
 		case *Container:
 			el.IsActive = false
+		case *TextArea: // Handle TextArea focus
+			el.IsActive = false
 		}
 	}
 
@@ -275,6 +280,8 @@ func (w *Window) setFocus(newIndex int) {
 		case *ScrollBar: // Handles both direct and container scrollbars
 			el.IsActive = true
 		case *Container:
+			el.IsActive = true
+		case *TextArea: // Handle TextArea focus
 			el.IsActive = true
 		}
 	}
@@ -348,7 +355,9 @@ func (w *Window) WindowActions() {
 		var focusedCheckBox *CheckBox
 		var focusedRadioButton *RadioButton
 		var focusedContainer *Container
-		var focusedScrollBar *ScrollBar // Re-add variable for focused ScrollBar
+		var focusedScrollBar *ScrollBar
+		var focusedTextArea *TextArea // Add variable for focused TextArea
+
 		if w.focusedIndex >= 0 && w.focusedIndex < len(w.focusableElements) {
 			focusedElement = w.focusableElements[w.focusedIndex]
 			// Type assertions to get specific element types
@@ -364,15 +373,65 @@ func (w *Window) WindowActions() {
 			if ct, ok := focusedElement.(*Container); ok {
 				focusedContainer = ct
 			}
-			// Check for focused ScrollBar (could be direct or from container)
 			if sb, ok := focusedElement.(*ScrollBar); ok {
 				focusedScrollBar = sb
+			}
+			// Add check for TextArea
+			if ta, ok := focusedElement.(*TextArea); ok {
+				focusedTextArea = ta
 			}
 		}
 
 		// --- Key Handling ---
-		// Priority: Active TextBox > Active Container > Active ScrollBar > Other focusable elements
-		if focusedTextBox != nil && focusedTextBox.IsActive {
+		// Priority: Active TextArea > Active TextBox > Active Container > Active ScrollBar > Other focusable elements
+		if focusedTextArea != nil && focusedTextArea.IsActive {
+			// Handle TextArea input
+			isPrintable := n == 1 && key[0] >= 32 && key[0] < 127 // Printable ASCII (excluding DEL)
+
+			if isPrintable {
+				// Insert character at cursor position
+				focusedTextArea.InsertChar(rune(key[0]))
+				needsRender = true
+			} else if n == 1 {
+				switch key[0] {
+				case 127, 8: // Backspace (DEL or ASCII BS)
+					focusedTextArea.DeleteChar()
+					needsRender = true
+				case '\t': // Tab - Move focus to next element
+					w.setFocus(w.focusedIndex + 1)
+					needsRender = true
+				case '\r': // Enter - Insert newline
+					focusedTextArea.InsertChar('\n')
+					needsRender = true
+				case 3: // Ctrl+C - Quit
+					shouldQuit = true
+				}
+			} else if n == 3 && key[0] == '\x1b' && key[1] == '[' { // ANSI Escape sequences (Arrows, etc.)
+				switch key[2] {
+				case 'D': // Left Arrow
+					focusedTextArea.MoveCursorLeft()
+					needsRender = true
+				case 'C': // Right Arrow
+					focusedTextArea.MoveCursorRight()
+					needsRender = true
+				case 'A': // Up Arrow
+					focusedTextArea.MoveCursorUp()
+					needsRender = true
+				case 'B': // Down Arrow
+					focusedTextArea.MoveCursorDown()
+					needsRender = true
+				case 'Z': // Shift+Tab
+					w.setFocus(w.focusedIndex - 1)
+					needsRender = true
+				}
+			} else if n == 4 && key[0] == '\x1b' && key[1] == '[' && key[3] == '~' { // More escape sequences
+				switch key[2] {
+				case '3': // Delete key (\x1b[3~)
+					focusedTextArea.DeleteForward()
+					needsRender = true
+				}
+			}
+		} else if focusedTextBox != nil && focusedTextBox.IsActive {
 			// ... (TextBox input handling remains the same) ...
 			isPrintable := n == 1 && key[0] >= 32 && key[0] < 127 // Printable ASCII (excluding DEL)
 

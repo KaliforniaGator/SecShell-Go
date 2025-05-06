@@ -911,3 +911,539 @@ func (c *Container) Render(buffer *strings.Builder, winX, winY int, _ int) {
 func (c *Container) GetScrollbar() *ScrollBar {
 	return c.scrollBar
 }
+
+// --- TextArea ---
+
+// TextArea represents a multi-line text input area with scrolling.
+type TextArea struct {
+	X, Y           int      // Position relative to window content area
+	Width, Height  int      // Dimensions of the text area
+	Color          string   // Default text color
+	ActiveColor    string   // Color when active (e.g., border or cursor)
+	IsActive       bool     // State for rendering/input handling
+	Lines          []string // Content stored as lines
+	cursorLine     int      // Cursor's line index (0-based)
+	cursorCol      int      // Cursor's column index (rune-based, 0-based) within the line
+	viewTopLine    int      // Index of the topmost visible line
+	scrollBar      *ScrollBar
+	needsScroll    bool
+	maxChars       int    // Optional maximum character limit (0 for unlimited)
+	wordCount      int    // Current word count
+	charCount      int    // Current character count
+	cursorAbsX     int    // Absolute X position of cursor (set during Render)
+	cursorAbsY     int    // Absolute Y position of cursor (set during Render)
+	showWordCount  bool   // Flag to control word count visibility
+	showCharCount  bool   // Flag to control char count visibility
+	bottomLineText string // Text to display on the bottom line (word/char count)
+}
+
+// NewTextArea creates a new TextArea instance.
+func NewTextArea(initialText string, x, y, width, height, maxChars int, color, activeColor string, showWordCount, showCharCount bool) *TextArea {
+	if width < 3 { // Need space for text and potentially scrollbar + border
+		width = 3
+	}
+	if height < 2 { // Need space for text and word count line
+		height = 2
+	}
+
+	lines := strings.Split(strings.ReplaceAll(initialText, "\r\n", "\n"), "\n")
+	if len(lines) == 0 {
+		lines = []string{""} // Ensure at least one empty line
+	}
+
+	// Scrollbar position relative to the TextArea's content area
+	sbX := width - 1 // Scrollbar on the far right
+	sbY := 0
+	sbHeight := height - 1 // Leave space for word count line if shown
+	if sbHeight < 1 {
+		sbHeight = 1 // Minimum height for scrollbar
+	}
+
+	containerID := fmt.Sprintf("textarea_%d_%d_scrollbar", x, y)
+	scrollBar := NewScrollBar(sbX, sbY, sbHeight, 0, 0, colors.Gray, colors.BoldWhite, containerID)
+	scrollBar.Visible = false // Start hidden
+
+	ta := &TextArea{
+		X:             x,
+		Y:             y,
+		Width:         width,
+		Height:        height,
+		Color:         color,
+		ActiveColor:   activeColor,
+		IsActive:      false,
+		Lines:         lines,
+		cursorLine:    0, // Start at the beginning
+		cursorCol:     0,
+		viewTopLine:   0,
+		scrollBar:     scrollBar,
+		needsScroll:   false,
+		maxChars:      maxChars,
+		showWordCount: showWordCount,
+		showCharCount: showCharCount,
+	}
+
+	// Set the scrollbar's OnScroll callback to update the viewTopLine
+	ta.scrollBar.OnScroll = func(newValue int) {
+		ta.viewTopLine = newValue
+	}
+
+	ta.calculateCounts()     // Calculate initial counts
+	ta.updateScrollState()   // Calculate initial scroll state
+	ta.ensureCursorVisible() // Ensure initial cursor position is visible
+
+	return ta
+}
+
+// calculateCounts updates word and character counts.
+func (ta *TextArea) calculateCounts() {
+	ta.charCount = 0
+	totalWords := 0
+	fullText := strings.Join(ta.Lines, " ") // Join with space to count words across lines correctly
+	words := strings.Fields(fullText)       // Split by whitespace
+	totalWords = len(words)
+
+	// Calculate character count accurately (including newlines)
+	for i, line := range ta.Lines {
+		ta.charCount += len([]rune(line)) // Use rune count for accuracy
+		if i < len(ta.Lines)-1 {
+			ta.charCount++ // Add 1 for the newline character between lines
+		}
+	}
+
+	ta.wordCount = totalWords
+
+	// Update bottom line text
+	parts := []string{}
+	if ta.showWordCount {
+		parts = append(parts, fmt.Sprintf("Words: %d", ta.wordCount))
+	}
+	if ta.showCharCount {
+		charStr := fmt.Sprintf("Chars: %d", ta.charCount)
+		if ta.maxChars > 0 {
+			charStr += fmt.Sprintf("/%d", ta.maxChars)
+		}
+		parts = append(parts, charStr)
+	}
+	ta.bottomLineText = strings.Join(parts, " | ")
+}
+
+// updateScrollState determines if scrolling is needed and updates the scrollbar.
+func (ta *TextArea) updateScrollState() {
+	contentHeight := len(ta.Lines)
+	// Height available for text lines (excluding bottom count line)
+	visibleHeight := ta.Height - 1
+	if visibleHeight < 1 {
+		visibleHeight = 1
+	}
+
+	ta.needsScroll = contentHeight > visibleHeight
+	ta.scrollBar.Visible = ta.needsScroll
+
+	if ta.needsScroll {
+		sbMaxValue := contentHeight - visibleHeight
+		if sbMaxValue < 0 {
+			sbMaxValue = 0
+		}
+		ta.scrollBar.MaxValue = sbMaxValue
+		// Adjust scrollbar height in case text area height changed
+		ta.scrollBar.Height = visibleHeight
+		// Clamp current scroll value
+		ta.scrollBar.SetValue(ta.scrollBar.Value) // This uses the setter which clamps
+		ta.viewTopLine = ta.scrollBar.Value       // Sync viewTopLine with potentially clamped value
+	} else {
+		ta.scrollBar.MaxValue = 0
+		ta.scrollBar.SetValue(0)
+		ta.viewTopLine = 0
+	}
+}
+
+// ensureCursorVisible adjusts viewTopLine so the cursor is visible.
+func (ta *TextArea) ensureCursorVisible() {
+	visibleHeight := ta.Height - 1
+	if visibleHeight < 1 {
+		visibleHeight = 1
+	}
+	bottomVisibleLine := ta.viewTopLine + visibleHeight - 1
+
+	if ta.cursorLine < ta.viewTopLine {
+		// Cursor is above the view
+		ta.viewTopLine = ta.cursorLine
+		ta.scrollBar.SetValue(ta.viewTopLine)
+	} else if ta.cursorLine > bottomVisibleLine {
+		// Cursor is below the view
+		ta.viewTopLine = ta.cursorLine - visibleHeight + 1
+		ta.scrollBar.SetValue(ta.viewTopLine)
+	}
+}
+
+// Render draws the TextArea element.
+func (ta *TextArea) Render(buffer *strings.Builder, winX, winY int, _ int) {
+	absX := winX + ta.X
+	absY := winY + ta.Y
+	renderColor := ta.Color
+	if ta.IsActive {
+		renderColor = ta.ActiveColor
+		// Optionally draw a border or change background when active
+	}
+	buffer.WriteString(renderColor)
+
+	// --- Render Text Content ---
+	textRenderWidth := ta.Width
+	if ta.needsScroll {
+		textRenderWidth-- // Make space for the scrollbar
+	}
+	if textRenderWidth < 0 {
+		textRenderWidth = 0
+	}
+	// Height available for text lines
+	visibleHeight := ta.Height - 1
+	if visibleHeight < 0 {
+		visibleHeight = 0
+	}
+
+	for i := 0; i < visibleHeight; i++ {
+		lineIndex := ta.viewTopLine + i
+		currentLineY := absY + i
+		buffer.WriteString(MoveCursorCmd(currentLineY, absX))
+
+		if lineIndex >= 0 && lineIndex < len(ta.Lines) {
+			line := ta.Lines[lineIndex]
+			// Basic line rendering (no horizontal scrolling or wrapping yet)
+			visibleLine := ""
+			runes := []rune(line)
+			if len(runes) > textRenderWidth {
+				// Naive truncation for now
+				visibleLine = string(runes[:textRenderWidth])
+			} else {
+				visibleLine = line
+			}
+			buffer.WriteString(visibleLine)
+			// Clear rest of the line within the text area width
+			buffer.WriteString(strings.Repeat(" ", textRenderWidth-len([]rune(visibleLine))))
+		} else {
+			// Empty line within the text area
+			buffer.WriteString(strings.Repeat(" ", textRenderWidth))
+		}
+	}
+	buffer.WriteString(colors.Reset) // Reset color after text lines
+	// --- End Text Content ---
+
+	// --- Render ScrollBar ---
+	// Pass absolute coordinates of the TextArea's top-left corner
+	// The scrollbar's X, Y are relative to this origin.
+	ta.scrollBar.Render(buffer, absX, absY, ta.Width)
+	// --- End ScrollBar ---
+
+	// --- Render Bottom Line (Word Count/Char Count) ---
+	bottomLineY := absY + ta.Height - 1
+	buffer.WriteString(MoveCursorCmd(bottomLineY, absX))
+	buffer.WriteString(colors.Gray) // Use gray color for the status line
+	countText := ta.bottomLineText
+	countRunes := []rune(countText)
+	if len(countRunes) > ta.Width {
+		countText = string(countRunes[:ta.Width])
+	}
+	buffer.WriteString(countText)
+	// Clear rest of bottom line
+	buffer.WriteString(strings.Repeat(" ", ta.Width-len([]rune(countText))))
+	buffer.WriteString(colors.Reset)
+	// --- End Bottom Line ---
+
+	// --- Calculate Cursor Position ---
+	// This needs refinement based on horizontal scrolling/wrapping if implemented
+	cursorScreenLine := ta.cursorLine - ta.viewTopLine
+	cursorScreenCol := ta.cursorCol // Assuming no horizontal scroll/wrap for now
+
+	// Clamp cursor screen position to be within the visible text area bounds
+	if cursorScreenLine < 0 {
+		cursorScreenLine = 0
+		cursorScreenCol = 0 // Force to start if line is scrolled off top
+	} else if cursorScreenLine >= visibleHeight {
+		cursorScreenLine = visibleHeight - 1
+		// Place cursor at the end of the last visible line if scrolled off bottom
+		lastVisibleLineIdx := ta.viewTopLine + visibleHeight - 1
+		if lastVisibleLineIdx >= 0 && lastVisibleLineIdx < len(ta.Lines) {
+			lastLineLen := len([]rune(ta.Lines[lastVisibleLineIdx]))
+			if cursorScreenCol > lastLineLen {
+				cursorScreenCol = lastLineLen
+			}
+		} else {
+			cursorScreenCol = 0 // Fallback if last visible line is invalid
+		}
+		// Clamp column to width as well
+		if cursorScreenCol > textRenderWidth {
+			cursorScreenCol = textRenderWidth
+		}
+	}
+
+	// Clamp column based on current line length and visible width
+	currentLineLen := 0
+	if ta.cursorLine >= 0 && ta.cursorLine < len(ta.Lines) {
+		currentLineLen = len([]rune(ta.Lines[ta.cursorLine]))
+	}
+	if cursorScreenCol > currentLineLen {
+		cursorScreenCol = currentLineLen // Don't go past end of line
+	}
+	if cursorScreenCol < 0 {
+		cursorScreenCol = 0
+	} else if cursorScreenCol > textRenderWidth {
+		cursorScreenCol = textRenderWidth // Clamp to visible width
+	}
+
+	ta.cursorAbsX = absX + cursorScreenCol
+	ta.cursorAbsY = absY + cursorScreenLine
+	// --- End Cursor Position Calculation ---
+}
+
+// NeedsCursor implements CursorManager interface
+func (ta *TextArea) NeedsCursor() bool {
+	return ta.IsActive
+}
+
+// GetCursorPosition implements CursorManager interface
+func (ta *TextArea) GetCursorPosition() (int, int, bool) {
+	if !ta.NeedsCursor() {
+		return 0, 0, false
+	}
+	// Check if the calculated cursor position is within the visible text area
+	visibleHeight := ta.Height - 1
+	if visibleHeight < 0 {
+		visibleHeight = 0
+	}
+	textRenderWidth := ta.Width
+	if ta.needsScroll {
+		textRenderWidth--
+	}
+	if textRenderWidth < 0 {
+		textRenderWidth = 0
+	}
+
+	cursorScreenLine := ta.cursorLine - ta.viewTopLine
+	cursorScreenCol := ta.cursorCol // Simplified check for now
+
+	isCursorVisible := cursorScreenLine >= 0 && cursorScreenLine < visibleHeight &&
+		cursorScreenCol >= 0 && cursorScreenCol <= textRenderWidth // Allow cursor at end of width
+
+	return ta.cursorAbsX, ta.cursorAbsY, isCursorVisible
+}
+
+// --- Text Manipulation Methods ---
+
+// clampCursorCol ensures cursor column is valid for the current line.
+func (ta *TextArea) clampCursorCol() {
+	if ta.cursorLine < 0 {
+		ta.cursorLine = 0
+	}
+	if ta.cursorLine >= len(ta.Lines) {
+		if len(ta.Lines) > 0 {
+			ta.cursorLine = len(ta.Lines) - 1
+		} else {
+			ta.Lines = []string{""}
+			ta.cursorLine = 0
+		}
+	}
+	if len(ta.Lines) == 0 {
+		ta.Lines = []string{""}
+		ta.cursorLine = 0
+		ta.cursorCol = 0
+		return
+	}
+	currentLineLen := len([]rune(ta.Lines[ta.cursorLine]))
+	if ta.cursorCol < 0 {
+		ta.cursorCol = 0
+	} else if ta.cursorCol > currentLineLen {
+		ta.cursorCol = currentLineLen
+	}
+}
+
+// InsertChar inserts a rune at the cursor position.
+func (ta *TextArea) InsertChar(r rune) {
+	if ta.maxChars > 0 && ta.charCount >= ta.maxChars && r != '\n' {
+		return
+	}
+	if ta.cursorLine < 0 || ta.cursorLine >= len(ta.Lines) {
+		ta.clampCursorCol()
+	}
+
+	currentLineRunes := []rune(ta.Lines[ta.cursorLine])
+
+	if r == '\n' {
+		textAfterCursor := string(currentLineRunes[ta.cursorCol:])
+		ta.Lines[ta.cursorLine] = string(currentLineRunes[:ta.cursorCol])
+		nextLineIndex := ta.cursorLine + 1
+		ta.Lines = append(ta.Lines[:nextLineIndex], append([]string{textAfterCursor}, ta.Lines[nextLineIndex:]...)...)
+		ta.cursorLine = nextLineIndex
+		ta.cursorCol = 0
+	} else {
+		newLine := string(currentLineRunes[:ta.cursorCol]) + string(r) + string(currentLineRunes[ta.cursorCol:])
+		ta.Lines[ta.cursorLine] = newLine
+		ta.cursorCol++
+	}
+
+	ta.clampCursorCol()
+	ta.calculateCounts()
+	ta.updateScrollState()
+	ta.ensureCursorVisible()
+}
+
+// DeleteChar deletes the character before the cursor (Backspace).
+func (ta *TextArea) DeleteChar() {
+	if ta.cursorLine == 0 && ta.cursorCol == 0 {
+		return
+	}
+	if ta.cursorLine < 0 || ta.cursorLine >= len(ta.Lines) {
+		ta.clampCursorCol()
+	}
+
+	if ta.cursorCol > 0 {
+		currentLineRunes := []rune(ta.Lines[ta.cursorLine])
+		newLine := string(currentLineRunes[:ta.cursorCol-1]) + string(currentLineRunes[ta.cursorCol:])
+		ta.Lines[ta.cursorLine] = newLine
+		ta.cursorCol--
+	} else {
+		prevLineIndex := ta.cursorLine - 1
+		prevLineRunes := []rune(ta.Lines[prevLineIndex])
+		currentLineRunes := []rune(ta.Lines[ta.cursorLine])
+		newCursorCol := len(prevLineRunes)
+		ta.Lines[prevLineIndex] = string(prevLineRunes) + string(currentLineRunes)
+		ta.Lines = append(ta.Lines[:ta.cursorLine], ta.Lines[ta.cursorLine+1:]...)
+		ta.cursorLine = prevLineIndex
+		ta.cursorCol = newCursorCol
+	}
+
+	ta.clampCursorCol()
+	ta.calculateCounts()
+	ta.updateScrollState()
+	ta.ensureCursorVisible()
+}
+
+// DeleteForward deletes the character after the cursor (Delete).
+func (ta *TextArea) DeleteForward() {
+	if ta.cursorLine < 0 || ta.cursorLine >= len(ta.Lines) {
+		ta.clampCursorCol()
+	}
+	if ta.cursorLine < 0 || ta.cursorLine >= len(ta.Lines) {
+		return
+	}
+
+	currentLineRunes := []rune(ta.Lines[ta.cursorLine])
+
+	if ta.cursorCol < len(currentLineRunes) {
+		newLine := string(currentLineRunes[:ta.cursorCol]) + string(currentLineRunes[ta.cursorCol+1:])
+		ta.Lines[ta.cursorLine] = newLine
+	} else if ta.cursorLine < len(ta.Lines)-1 {
+		nextLineIndex := ta.cursorLine + 1
+		nextLineRunes := []rune(ta.Lines[nextLineIndex])
+		ta.Lines[ta.cursorLine] = string(currentLineRunes) + string(nextLineRunes)
+		ta.Lines = append(ta.Lines[:nextLineIndex], ta.Lines[nextLineIndex+1:]...)
+	} else {
+		return
+	}
+
+	ta.clampCursorCol()
+	ta.calculateCounts()
+	ta.updateScrollState()
+	ta.ensureCursorVisible()
+}
+
+// MoveCursorLeft moves the cursor one position left.
+func (ta *TextArea) MoveCursorLeft() {
+	if ta.cursorCol > 0 {
+		ta.cursorCol--
+	} else if ta.cursorLine > 0 {
+		ta.cursorLine--
+		if ta.cursorLine >= 0 && ta.cursorLine < len(ta.Lines) {
+			ta.cursorCol = len([]rune(ta.Lines[ta.cursorLine]))
+		} else {
+			ta.cursorCol = 0
+		}
+	}
+	ta.ensureCursorVisible()
+}
+
+// MoveCursorRight moves the cursor one position right.
+func (ta *TextArea) MoveCursorRight() {
+	if ta.cursorLine < 0 || ta.cursorLine >= len(ta.Lines) {
+		ta.clampCursorCol()
+	}
+	if ta.cursorLine < 0 || ta.cursorLine >= len(ta.Lines) {
+		return
+	}
+
+	currentLineLen := len([]rune(ta.Lines[ta.cursorLine]))
+	if ta.cursorCol < currentLineLen {
+		ta.cursorCol++
+	} else if ta.cursorLine < len(ta.Lines)-1 {
+		ta.cursorLine++
+		ta.cursorCol = 0
+	}
+	ta.ensureCursorVisible()
+}
+
+// MoveCursorUp moves the cursor one line up.
+func (ta *TextArea) MoveCursorUp() {
+	if ta.cursorLine > 0 {
+		ta.cursorLine--
+		ta.clampCursorCol()
+		ta.ensureCursorVisible()
+	}
+}
+
+// MoveCursorDown moves the cursor one line down.
+func (ta *TextArea) MoveCursorDown() {
+	if ta.cursorLine < len(ta.Lines)-1 {
+		ta.cursorLine++
+		ta.clampCursorCol()
+		ta.ensureCursorVisible()
+	}
+}
+
+// MoveCursor is a general handler (can be used if input library provides deltas)
+func (ta *TextArea) MoveCursor(deltaLine, deltaCol int) {
+	targetLine := ta.cursorLine + deltaLine
+	targetCol := ta.cursorCol + deltaCol
+
+	if targetLine < 0 {
+		targetLine = 0
+	} else if targetLine >= len(ta.Lines) {
+		targetLine = len(ta.Lines) - 1
+	}
+
+	if targetLine != ta.cursorLine {
+		ta.cursorLine = targetLine
+		ta.clampCursorCol()
+		if deltaCol != 0 {
+			ta.cursorCol = targetCol
+			ta.clampCursorCol()
+		}
+	} else if deltaCol != 0 {
+		ta.cursorCol = targetCol
+		ta.clampCursorCol()
+	}
+
+	ta.ensureCursorVisible()
+}
+
+// GetText returns the full text content as a single string.
+func (ta *TextArea) GetText() string {
+	return strings.Join(ta.Lines, "\n")
+}
+
+// SetText replaces the entire content of the text area.
+func (ta *TextArea) SetText(text string) {
+	ta.Lines = strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	if len(ta.Lines) == 0 {
+		ta.Lines = []string{""}
+	}
+	ta.cursorLine = 0
+	ta.cursorCol = 0
+	ta.viewTopLine = 0
+	ta.calculateCounts()
+	ta.updateScrollState()
+	ta.ensureCursorVisible()
+}
+
+// GetScrollbar returns the internal scrollbar.
+func (ta *TextArea) GetScrollbar() *ScrollBar {
+	return ta.scrollBar
+}
