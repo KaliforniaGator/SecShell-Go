@@ -472,3 +472,269 @@ func (pb *ProgressBar) Render(buffer *strings.Builder, winX, winY int, _ int) {
 
 	buffer.WriteString(colors.Reset) // Ensure color is reset at the end
 }
+
+// --- ScrollBar ---
+
+// ScrollBar represents a vertical scrollbar element.
+type ScrollBar struct {
+	X, Y        int                // Position relative to window content area (top-left of the scrollbar)
+	Height      int                // Height of the scrollbar track in characters
+	Value       int                // Current value (e.g., top visible line index), 0-based
+	MaxValue    int                // Maximum value (e.g., total lines - visible lines), 0-based
+	Color       string             // Color of the scrollbar track and thumb
+	ActiveColor string             // Color when focused/active
+	IsActive    bool               // State for rendering/input handling
+	ContainerID string             // Identifier for the container this scrollbar controls (for future use)
+	thumbChar   string             // Character for the thumb
+	trackChar   string             // Character for the track
+	OnScroll    func(newValue int) // Callback function when value changes via SetValue
+}
+
+// NewScrollBar creates a new ScrollBar instance.
+// Value is the initial top visible line index.
+// MaxValue is the maximum possible top visible line index (e.g., total lines - viewport height).
+func NewScrollBar(x, y, height, value, maxValue int, color, activeColor, containerID string) *ScrollBar {
+	if height < 2 {
+		height = 2 // Minimum height for track + thumb
+	}
+	if value < 0 {
+		value = 0
+	}
+	if maxValue < 0 {
+		maxValue = 0
+	}
+	if value > maxValue {
+		value = maxValue
+	}
+	return &ScrollBar{
+		X:           x,
+		Y:           y,
+		Height:      height,
+		Value:       value,
+		MaxValue:    maxValue,
+		Color:       color,
+		ActiveColor: activeColor,
+		IsActive:    false,
+		ContainerID: containerID,
+		thumbChar:   "█", // Block character for thumb
+		trackChar:   "│", // Line character for track
+		OnScroll:    nil, // Initialize callback to nil
+	}
+}
+
+// SetValue updates the scrollbar's current value, clamping it, and calls the OnScroll callback.
+func (sb *ScrollBar) SetValue(value int) {
+	oldValue := sb.Value
+	newValue := value
+	if newValue < 0 {
+		newValue = 0
+	} else if newValue > sb.MaxValue {
+		newValue = sb.MaxValue
+	}
+
+	if newValue != oldValue {
+		sb.Value = newValue
+		// Call the callback if it's set
+		if sb.OnScroll != nil {
+			sb.OnScroll(sb.Value)
+		}
+	}
+}
+
+// Render draws the scrollbar element.
+func (sb *ScrollBar) Render(buffer *strings.Builder, winX, winY int, _ int) {
+	absX := winX + sb.X
+	absY := winY + sb.Y
+
+	renderColor := sb.Color
+	if sb.IsActive {
+		renderColor = sb.ActiveColor
+		// Optionally add reverse video or other indicators for active state
+		// buffer.WriteString(ReverseVideo())
+	}
+	buffer.WriteString(renderColor)
+
+	// Calculate thumb position
+	thumbPos := 0 // Position relative to the top of the scrollbar (0 to Height-1)
+	if sb.MaxValue > 0 {
+		// Calculate position based on value percentage
+		percentage := float64(sb.Value) / float64(sb.MaxValue)
+		thumbPos = int(percentage * float64(sb.Height-1)) // Scale to fit height (minus 1 for 0-based index)
+	}
+	// Clamp thumbPos just in case
+	if thumbPos < 0 {
+		thumbPos = 0
+	} else if thumbPos >= sb.Height {
+		thumbPos = sb.Height - 1
+	}
+
+	// Draw the scrollbar track and thumb
+	for i := 0; i < sb.Height; i++ {
+		buffer.WriteString(MoveCursorCmd(absY+i, absX))
+		if i == thumbPos {
+			buffer.WriteString(sb.thumbChar) // Draw thumb
+		} else {
+			buffer.WriteString(sb.trackChar) // Draw track
+		}
+	}
+
+	buffer.WriteString(colors.Reset) // Reset color
+}
+
+// --- Container ---
+
+// Container represents a scrollable area for content.
+type Container struct {
+	X, Y               int
+	Width, Height      int
+	Content            []string // Initially support only string content
+	scrollBar          *ScrollBar
+	needsScroll        bool
+	totalContentHeight int
+	// TODO: Add BgColor, ContentColor properties if needed
+}
+
+// NewContainer creates a new Container instance.
+func NewContainer(x, y, width, height int, content []string) *Container {
+	// Ensure minimum dimensions
+	if width < 1 {
+		width = 1
+	}
+	if height < 1 {
+		height = 1
+	}
+	c := &Container{
+		X:           x,
+		Y:           y,
+		Width:       width,
+		Height:      height,
+		Content:     content,
+		scrollBar:   nil,
+		needsScroll: false,
+	}
+	c.updateScrollState()
+	return c
+}
+
+// updateScrollState calculates content height and determines if scrolling is needed.
+// It creates or updates the internal scrollbar.
+func (c *Container) updateScrollState() {
+	c.totalContentHeight = len(c.Content)
+	c.needsScroll = c.totalContentHeight > c.Height
+
+	if c.needsScroll {
+		// Scrollbar is needed. Position it in the last column *of the container*.
+		// Its X position is relative to the container's top-left corner.
+		sbX := c.Width - 2
+		sbY := 0
+		sbHeight := c.Height
+		sbMaxValue := c.totalContentHeight - c.Height
+		if sbMaxValue < 0 {
+			sbMaxValue = 0
+		}
+
+		if c.scrollBar == nil {
+			// Create scrollbar
+			containerID := fmt.Sprintf("container_%d_%d_scrollbar", c.X, c.Y)
+			// Use sbX calculated above
+			c.scrollBar = NewScrollBar(sbX, sbY, sbHeight, 0, sbMaxValue, colors.Gray, colors.BoldWhite, containerID)
+		} else {
+			// Update existing scrollbar's properties
+			c.scrollBar.X = sbX // Ensure X is correct relative to container width
+			c.scrollBar.Y = sbY
+			c.scrollBar.Height = sbHeight
+			c.scrollBar.MaxValue = sbMaxValue
+			c.scrollBar.SetValue(c.scrollBar.Value) // Re-clamp current value
+		}
+	} else {
+		// No scroll needed, remove scrollbar if it exists
+		c.scrollBar = nil
+	}
+}
+
+// SetContent updates the container's content and recalculates scrolling state.
+func (c *Container) SetContent(content []string) {
+	c.Content = content
+	c.updateScrollState()
+}
+
+// GetScrollOffset returns the current vertical scroll offset (top visible line index).
+// Returns 0 if scrolling is not needed or the scrollbar doesn't exist.
+func (c *Container) GetScrollOffset() int {
+	if c.scrollBar != nil {
+		return c.scrollBar.Value
+	}
+	return 0 // No scrollbar means no offset
+}
+
+// Render draws the container and its visible content.
+func (c *Container) Render(buffer *strings.Builder, winX, winY int, _ int) {
+	absX := winX + c.X // Absolute X of the container's top-left corner
+	absY := winY + c.Y // Absolute Y of the container's top-left corner
+
+	// Determine the width available *specifically for text content*
+	textContentWidth := c.Width
+	if c.needsScroll {
+		// If scrollbar is needed, reduce text width by 1 column
+		textContentWidth--
+	}
+	// Ensure text content width is never negative
+	if textContentWidth < 0 {
+		textContentWidth = 0
+	}
+
+	scrollOffset := 0
+	if c.scrollBar != nil {
+		scrollOffset = c.scrollBar.Value
+	}
+
+	// Render visible lines of string content
+	for i := 0; i < c.Height; i++ {
+		contentIndex := i + scrollOffset
+		lineY := absY + i // Absolute Y for the current line
+
+		// Move cursor to the start of the line within the container
+		buffer.WriteString(MoveCursorCmd(lineY, absX))
+
+		if contentIndex >= 0 && contentIndex < len(c.Content) {
+			line := c.Content[contentIndex]
+			currentWidth := 0
+			truncatedLine := ""
+			// Build the line rune by rune, respecting textContentWidth
+			for _, r := range line {
+				// Assuming standard width characters for now
+				runeWidth := 1
+				if currentWidth+runeWidth <= textContentWidth {
+					truncatedLine += string(r)
+					currentWidth += runeWidth
+				} else {
+					break // Stop adding runes if width exceeded
+				}
+			}
+			buffer.WriteString(truncatedLine)
+
+			// Clear the rest of the line *within the text content area only*
+			padding := textContentWidth - currentWidth
+			if padding > 0 {
+				buffer.WriteString(strings.Repeat(" ", padding))
+			}
+		} else {
+			// Render empty line within the text content area
+			buffer.WriteString(strings.Repeat(" ", textContentWidth))
+		}
+	} // End of line rendering loop
+
+	// Render the scrollbar if it exists.
+	// Pass the container's absolute top-left (absX, absY) as the origin.
+	// The scrollbar's own Render method uses its relative X (c.Width - 1)
+	// added to this origin to find its correct absolute column.
+	if c.scrollBar != nil {
+		c.scrollBar.Render(buffer, absX, absY, c.Width) // Pass container's abs origin
+	}
+}
+
+// GetScrollbar returns the internal scrollbar if it exists.
+// This allows the window to make the scrollbar focusable.
+func (c *Container) GetScrollbar() *ScrollBar {
+	return c.scrollBar
+}

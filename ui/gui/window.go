@@ -6,8 +6,8 @@ import (
 	"os"
 	"secshell/colors"
 	"strings"
-	"time" // Added for potential brief pauses if needed
 
+	// Added for potential brief pauses if needed
 	"golang.org/x/term" // Import the term package
 )
 
@@ -63,38 +63,67 @@ func NewWindow(icon, title string, x, y, width, height int, boxStyle, titleColor
 func (w *Window) AddElement(element UIElement) {
 	w.Elements = append(w.Elements, element)
 
-	// Check if the element is focusable (Buttons, TextBoxes, CheckBoxes, RadioButtons)
 	isFocusable := false
+	var focusableElement UIElement = nil // Element to potentially add to focus list
+
 	switch v := element.(type) {
 	case *Button:
 		isFocusable = true
+		focusableElement = v
 	case *TextBox:
 		isFocusable = true
-		// Ensure cursor is initially hidden for inactive textboxes
+		focusableElement = v
 		v.IsActive = false // Explicitly set inactive
-	case *CheckBox: // Add CheckBox case
+	case *CheckBox:
 		isFocusable = true
+		focusableElement = v
 		v.IsActive = false // Explicitly set inactive
-	case *RadioButton: // Add RadioButton case
+	case *RadioButton:
 		isFocusable = true
+		focusableElement = v
 		v.IsActive = false // Explicitly set inactive
+	case *ScrollBar: // Handle scrollbars added directly
+		isFocusable = true
+		focusableElement = v
+		v.IsActive = false // Explicitly set inactive
+	case *Container: // Check container for internal scrollbar
+		scrollbar := v.GetScrollbar()
+		if scrollbar != nil {
+			isFocusable = true
+			focusableElement = scrollbar // Make the scrollbar focusable, not the container
+			scrollbar.IsActive = false   // Ensure scrollbar starts inactive
+		}
+		// Note: The Container itself is not directly focusable in this design.
 	}
 
-	if isFocusable {
-		w.focusableElements = append(w.focusableElements, element)
-		// If this is the first focusable element, focus it
-		if w.focusedIndex == -1 {
-			w.focusedIndex = 0
-			// Activate the first focusable element
-			switch el := w.focusableElements[0].(type) {
-			case *Button:
-				el.IsActive = true
-			case *TextBox:
-				el.IsActive = true // Activate and make cursor potentially visible on first render
-			case *CheckBox: // Add CheckBox case
-				el.IsActive = true
-			case *RadioButton: // Add RadioButton case
-				el.IsActive = true
+	if isFocusable && focusableElement != nil {
+		// Check if this specific focusable element (e.g., button, textbox, scrollbar) is already in the list
+		alreadyAdded := false
+		for _, fe := range w.focusableElements {
+			if fe == focusableElement {
+				alreadyAdded = true
+				break
+			}
+		}
+
+		if !alreadyAdded {
+			w.focusableElements = append(w.focusableElements, focusableElement)
+			// If this is the first focusable element added, focus it immediately
+			if w.focusedIndex == -1 {
+				w.focusedIndex = 0
+				// Activate the first focusable element by setting its IsActive flag
+				switch el := w.focusableElements[0].(type) {
+				case *Button:
+					el.IsActive = true
+				case *TextBox:
+					el.IsActive = true
+				case *CheckBox:
+					el.IsActive = true
+				case *RadioButton:
+					el.IsActive = true
+				case *ScrollBar: // This covers both direct and container scrollbars
+					el.IsActive = true
+				}
 			}
 		}
 	}
@@ -197,6 +226,8 @@ func (w *Window) setFocus(newIndex int) {
 			el.IsActive = false
 		case *RadioButton: // Add RadioButton case
 			el.IsActive = false
+		case *ScrollBar: // Add ScrollBar case
+			el.IsActive = false
 		}
 	}
 
@@ -219,6 +250,8 @@ func (w *Window) setFocus(newIndex int) {
 		case *CheckBox: // Add CheckBox case
 			el.IsActive = true
 		case *RadioButton: // Add RadioButton case
+			el.IsActive = true
+		case *ScrollBar: // Add ScrollBar case
 			el.IsActive = true
 		}
 	}
@@ -298,6 +331,7 @@ func (w *Window) WindowActions() {
 		var focusedTextBox *TextBox
 		var focusedCheckBox *CheckBox       // Add variable for focused CheckBox
 		var focusedRadioButton *RadioButton // Add variable for focused RadioButton
+		var focusedScrollBar *ScrollBar     // Add variable for focused ScrollBar
 		if w.focusedIndex >= 0 && w.focusedIndex < len(w.focusableElements) {
 			focusedElement = w.focusableElements[w.focusedIndex]
 			// Check if the focused element is a TextBox and cast it
@@ -311,6 +345,10 @@ func (w *Window) WindowActions() {
 			// Check if the focused element is a RadioButton and cast it
 			if rb, ok := focusedElement.(*RadioButton); ok {
 				focusedRadioButton = rb
+			}
+			// Check if the focused element is a ScrollBar and cast it
+			if sb, ok := focusedElement.(*ScrollBar); ok {
+				focusedScrollBar = sb
 			}
 		}
 
@@ -376,8 +414,35 @@ func (w *Window) WindowActions() {
 					}
 				}
 			}
+		} else if focusedScrollBar != nil && focusedScrollBar.IsActive { // Handle ScrollBar input
+			if n == 3 && key[0] == '\x1b' && key[1] == '[' { // ANSI Escape sequences (Arrows, etc.)
+				switch key[2] {
+				case 'A': // Up Arrow
+					focusedScrollBar.SetValue(focusedScrollBar.Value - 1)
+					needsRender = true
+				case 'B': // Down Arrow
+					focusedScrollBar.SetValue(focusedScrollBar.Value + 1)
+					needsRender = true
+				case 'Z': // Shift+Tab
+					w.setFocus(w.focusedIndex - 1)
+					needsRender = true
+				}
+			} else if n == 1 {
+				switch key[0] {
+				case '\t': // Tab - Move focus to next element
+					w.setFocus(w.focusedIndex + 1)
+					needsRender = true
+				case '\r': // Enter - Treat like Tab for now (move focus)
+					w.setFocus(w.focusedIndex + 1)
+					needsRender = true
+				case 3: // Ctrl+C - Quit
+					shouldQuit = true
+				case 'q', 'Q': // Quit key
+					shouldQuit = true
+				}
+			}
 		} else {
-			// --- Input Handling when TextBox is NOT active (or no focus) ---
+			// --- Input Handling when TextBox/ScrollBar is NOT active (or no focus) ---
 			if n == 1 {
 				switch key[0] {
 				case '\t': // Tab key
@@ -416,7 +481,7 @@ func (w *Window) WindowActions() {
 						// w.setFocus(w.focusedIndex + 1)
 						// needsRender = true
 					} else {
-						// If Enter is pressed and not on an active button, checkbox, or radio button,
+						// If Enter is pressed and not on an active button, checkbox, radio button, or scrollbar,
 						// move focus like Tab.
 						w.setFocus(w.focusedIndex + 1)
 						needsRender = true
@@ -450,182 +515,4 @@ func (w *Window) WindowActions() {
 	// Cleanup is handled by defers (Restore terminal state, Show cursor)
 	// Clear the screen after finishing interaction
 	fmt.Print(ClearScreenAndBuffer())
-}
-
-// TestWindowApp demonstrates creating and rendering a sample window.
-func TestWindowApp() {
-	// Clear screen before drawing
-	fmt.Print(ClearScreenAndBuffer())
-
-	// Get terminal dimensions
-	termWidth := GetTerminalWidth()
-	termHeight := GetTerminalHeight()
-
-	// Define window dimensions and position (centered)
-	winWidth := termWidth / 2
-	if winWidth < 60 { // Increased min width for more elements
-		winWidth = 60
-	}
-	winHeight := termHeight / 2
-	if winHeight < 23 { // Increased min height slightly for progress bar + spacer
-		winHeight = 23
-	}
-	winX := (termWidth - winWidth) / 2
-	winY := (termHeight - winHeight) / 2
-
-	// Create the window
-	testWin := NewWindow("📝", "Input Test", winX, winY, winWidth, winHeight,
-		"double", colors.BoldCyan, colors.BoldYellow, colors.BgBlack, colors.White)
-
-	// --- Add Elements ---
-	currentY := 1 // Start Y position for elements
-	infoLabel := NewLabel("Tab/S-Tab: Cycle | Enter: Next/Activate/Toggle/Select | Arrows: Move Cursor | q/Ctrl+C: Quit", 1, currentY, colors.Green)
-	testWin.AddElement(infoLabel)
-	// Assuming infoLabel might wrap and take 2 lines based on the new Render logic
-	currentY += 2 // Move down past the potential wrapped label lines
-
-	// --- Add Spacer ---
-	spacerHeight := 1
-	spacer := NewSpacer(1, currentY, spacerHeight) // Spacer starts at currentY
-	testWin.AddElement(spacer)
-	currentY += spacerHeight // Add spacer height to current Y
-
-	// --- First TextBox ---
-	nameLabelY := currentY
-	nameLabel := NewLabel("Enter Name:", 1, nameLabelY, colors.White)
-	testWin.AddElement(nameLabel)
-	textBoxX := len(nameLabel.Text) + 2
-	textBoxWidth := winWidth - 2 - textBoxX - 1
-	if textBoxWidth < 10 {
-		textBoxWidth = 10
-	}
-	nameTextBox := NewTextBox("<Type name here>", textBoxX, nameLabelY, textBoxWidth, colors.BgWhite+colors.Black, colors.BgCyan+colors.BoldBlack)
-	testWin.AddElement(nameTextBox)
-	currentY += 2 // Move down past the label and textbox row
-
-	// --- Second TextBox ---
-	emailLabelY := currentY // Position below the first textbox area
-	emailLabel := NewLabel("Enter Email:", 1, emailLabelY, colors.White)
-	testWin.AddElement(emailLabel)
-	// Use same X and Width calculation, adjust Y
-	emailTextBoxX := len(emailLabel.Text) + 2
-	emailTextBoxWidth := winWidth - 2 - emailTextBoxX - 1
-	if emailTextBoxWidth < 10 {
-		emailTextBoxWidth = 10
-	}
-	emailTextBox := NewTextBox("<Type email here>", emailTextBoxX, emailLabelY, emailTextBoxWidth, colors.BgWhite+colors.Black, colors.BgCyan+colors.BoldBlack)
-	testWin.AddElement(emailTextBox) // Add second textbox
-	currentY += 2                    // Move down past the label and textbox row
-
-	// --- Add a CheckBox ---
-	agreeLabelY := currentY // Position below the email textbox area
-	agreeCheckBox := NewCheckBox("Agree to Terms?", 1, agreeLabelY, false, colors.White, colors.BgPurple+colors.BoldWhite)
-	testWin.AddElement(agreeCheckBox)
-	currentY += 2 // Move down past the checkbox row
-
-	// --- Add Radio Buttons ---
-	radioGroupY := currentY
-	radioLabel := NewLabel("Select Option:", 1, radioGroupY, colors.White)
-	testWin.AddElement(radioLabel)
-	currentY += 1 // Move down past the radio label
-
-	optionGroup := NewRadioGroup()
-	// Add radio buttons to the window AND associate them with the group
-	option1 := NewRadioButton("Option A", "A", 1, currentY, colors.White, colors.BgBlue+colors.BoldWhite, optionGroup)
-	testWin.AddElement(option1)
-	currentY += 1
-	option2 := NewRadioButton("Option B", "B", 1, currentY, colors.White, colors.BgBlue+colors.BoldWhite, optionGroup)
-	testWin.AddElement(option2)
-	currentY += 1
-	option3 := NewRadioButton("Option C (Default)", "C", 1, currentY, colors.White, colors.BgBlue+colors.BoldWhite, optionGroup)
-	testWin.AddElement(option3)
-	currentY += 1
-
-	// Set a default selection for the radio group
-	optionGroup.Select(2) // Select "Option C" by default
-
-	// --- Add Spacer ---
-	currentY += 1 // Add space before progress bar
-	spacer2 := NewSpacer(1, currentY, 1)
-	testWin.AddElement(spacer2)
-	currentY += 1
-
-	// --- Add Progress Bar ---
-	progressBarY := currentY
-	progressBarWidth := winWidth - 4 // Make it slightly less than full content width
-	progressBar := NewProgressBar(1, progressBarY, progressBarWidth, 50, 100, colors.BgGreen+colors.Green, colors.Yellow, true)
-	testWin.AddElement(progressBar)
-	currentY += 1 // Move down past the progress bar row
-
-	// --- Buttons ---
-	buttonWidth := 12
-
-	contentWidth := winWidth - 2
-	// Center buttons horizontally below the elements
-	totalButtonWidth := buttonWidth*2 + 2 // Width of two buttons + space between
-	buttonStartX := (contentWidth - totalButtonWidth) / 2
-	submitButtonX := buttonStartX
-	quitButtonX := buttonStartX + buttonWidth + 2
-
-	// Adjust button Y position further down (use fixed position from bottom for robustness)
-	actionButtonY := winHeight - 4 // Place buttons near the bottom border
-	submitButton := NewButton("Submit", submitButtonX, actionButtonY, buttonWidth, colors.BoldGreen, colors.BgGreen+colors.BoldWhite, func() bool {
-		// Access the values from textboxes, checkbox, and radio group
-		submittedName := nameTextBox.Text
-		if nameTextBox.isPristine {
-			submittedName = "" // Treat pristine as empty
-		}
-		submittedEmail := emailTextBox.Text
-		if emailTextBox.isPristine {
-			submittedEmail = "" // Treat pristine as empty
-		}
-		agreed := agreeCheckBox.Checked             // Get checkbox state
-		selectedOption := optionGroup.SelectedValue // Get selected radio value
-
-		// Update infoLabel text (it will re-render and potentially wrap)
-		infoLabel.Text = fmt.Sprintf("N: '%s', E: '%s', Agr: %t, Opt: %s | Tab/S-Tab, Enter, q/Ctrl+C", submittedName, submittedEmail, agreed, selectedOption)
-		infoLabel.Color = colors.BoldGreen
-
-		// Update progress bar based on name length (example)
-		nameLen := float64(len(submittedName))
-		maxLen := 20.0 // Arbitrary max length for 100%
-		progressBar.SetValue((nameLen / maxLen) * 100)
-
-		return false // Don't quit
-	})
-	testWin.AddElement(submitButton)
-
-	// Button 2: Quit Button
-	quitButtonY := actionButtonY
-	quitButton := NewButton("Quit App", quitButtonX, quitButtonY, buttonWidth, colors.BoldRed, colors.BgRed+colors.BoldWhite, func() bool {
-		infoLabel.Text = "Quitting..." // Update info label text
-		infoLabel.Color = colors.BoldRed
-		progressBar.SetValue(100) // Set progress to 100 on quit
-		testWin.Render()          // Render the "Quitting..." message and final progress
-		time.Sleep(300 * time.Millisecond)
-		return true // Action returns true to signal quitting
-	})
-	testWin.AddElement(quitButton)
-
-	// --- Start Interaction ---
-	// WindowActions now handles raw input, rendering loop, focus, and cleanup.
-	testWin.WindowActions()
-
-	// Code here runs after WindowActions loop finishes
-	fmt.Println("Application finished.")
-	// Access the final state of textboxes, checkbox, and radio group
-	finalName := nameTextBox.Text
-	if nameTextBox.isPristine {
-		finalName = "" // Treat pristine state as empty submission
-	}
-	finalEmail := emailTextBox.Text
-	if emailTextBox.isPristine {
-		finalEmail = "" // Treat pristine state as empty submission
-	}
-	finalAgreed := agreeCheckBox.Checked
-	finalOption := optionGroup.SelectedValue
-	fmt.Printf("Final Name content: '%s'\n", finalName)
-	fmt.Printf("Final Email content: '%s'\n", finalEmail)
-	fmt.Printf("Final Agreed state: %t\n", finalAgreed)
-	fmt.Printf("Final Option selected: %s\n", finalOption)
 }
