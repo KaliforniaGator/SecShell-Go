@@ -466,6 +466,8 @@ func (s *SecShell) processCommand(input string) {
 			s.getTime()
 		case "date":
 			s.getDate()
+		case "features": // Added features command case
+			help.DisplayFeatures()
 		case "allowed":
 			if len(args) > 1 {
 				switch args[1] {
