@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"secshell/ui"
 	"strconv"
 	"strings"
 
@@ -27,6 +28,8 @@ func More(items []string) error {
 	fmt.Print("\x1b[?1049h")
 	// Ensure terminal state and alternate buffer are restored on exit
 	defer func() {
+		// Clear Screen
+		ui.ClearScreen()
 		fmt.Print("\x1b[?1049l") // Exit alternate screen buffer
 		term.Restore(int(os.Stdin.Fd()), oldState)
 	}()
