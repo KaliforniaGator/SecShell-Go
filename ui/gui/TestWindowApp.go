@@ -151,31 +151,33 @@ func TestWindowApp() {
 	termWidth := GetTerminalWidth()
 	termHeight := GetTerminalHeight()
 
-	winWidth := termWidth * 3 / 4
-	if winWidth < 80 {
-		winWidth = 80
-	} // Min width
-	winHeight := termHeight * 3 / 4
-	if winHeight < 25 {
-		winHeight = 25
-	} // Min height
+	// Make window larger
+	winWidth := termWidth * 8 / 10 // Use 80% of width
+	if winWidth < 90 {             // Increase min width
+		winWidth = 90
+	}
+	winHeight := termHeight * 8 / 10 // Use 80% of height
+	if winHeight < 30 {              // Increase min height
+		winHeight = 30
+	}
 	winX := (termWidth - winWidth) / 2
 	winY := (termHeight - winHeight) / 2
 
-	testWin := NewWindow("📝", "Task List CRUD", winX, winY, winWidth, winHeight,
-		"double", colors.BoldCyan, colors.BoldYellow, colors.BgBlack, colors.White)
+	// Prettier window style and colors
+	testWin := NewWindow("🚀", "Enhanced Task Manager", winX, winY, winWidth, winHeight,
+		"rounded", colors.BoldMagenta, colors.Cyan, colors.BgBlack, colors.White) // Rounded border, Magenta title, Cyan border
 
 	// --- Elements ---
 	contentAreaWidth := winWidth - 2
 	currentY := 1
 
-	// Info Label (Top)
-	infoLabel = NewLabel("Tab/S-Tab: Cycle | Arrows: Scroll List | Enter: Activate/Select | q/Ctrl+C: Quit", 1, currentY, colors.Green)
+	// Info Label (Top) - Use a softer color
+	infoLabel = NewLabel("Tab/S-Tab: Cycle | Arrows: Scroll List | Enter: Activate/Select | q/Ctrl+C: Quit", 1, currentY, colors.Gray)
 	testWin.AddElement(infoLabel)
 	currentY += 2 // Allow for wrapping
 
-	//Scroll Label (Top)
-	scrollLabel = NewLabel("Scroll: ↑↓ | Up Arrow = Scroll Up | Down Arrow = Scroll Down", 1, currentY, colors.Green)
+	//Scroll Label (Top) - Use a softer color
+	scrollLabel = NewLabel("Scroll: ↑↓ | Up Arrow = Scroll Up | Down Arrow = Scroll Down", 1, currentY, colors.Gray)
 	testWin.AddElement(scrollLabel)
 	currentY += 2 // Allow for wrapping
 
@@ -185,30 +187,33 @@ func TestWindowApp() {
 	inputFieldX := inputStartX + labelWidth + 1
 	inputFieldWidth := contentAreaWidth - inputFieldX - 1 // Width for text boxes
 
-	// Task Name Input
+	// Task Name Input - Black BG, White Text
 	nameLabel := NewLabel("Task Name:", inputStartX, currentY, colors.White)
 	testWin.AddElement(nameLabel)
-	nameInput = NewTextBox("", inputFieldX, currentY, inputFieldWidth, colors.BgWhite+colors.Black, colors.BgCyan+colors.BoldBlack)
+	nameInput = NewTextBox("", inputFieldX, currentY, inputFieldWidth, colors.BgBlack+colors.White, colors.BgCyan+colors.BoldBlack) // Black BG, White Text
 	testWin.AddElement(nameInput)
 	currentY++
 
-	// Done Checkbox
-	doneCheckbox = NewCheckBox("Mark as Done", inputFieldX, currentY, false, colors.White, colors.BgPurple+colors.BoldWhite)
+	// Done Checkbox - Adjusted colors
+	doneCheckbox = NewCheckBox("Mark as Done", inputFieldX, currentY, false, colors.White, colors.BgMagenta+colors.BoldWhite) // Magenta active BG
 	testWin.AddElement(doneCheckbox)
 	currentY++
 
-	// Priority Radio Buttons
+	// Priority Radio Buttons - Specific colors
 	priorityLabel := NewLabel("Priority:", inputStartX, currentY, colors.White)
 	testWin.AddElement(priorityLabel)
 	priorityGroup = NewRadioGroup()
 	prioBtnY := currentY
 	prioBtnX := inputFieldX
-	prioBtnSpacing := 12
-	prioLow := NewRadioButton("Low", "Low", prioBtnX, prioBtnY, colors.White, colors.BgBlue+colors.BoldWhite, priorityGroup)
+	prioBtnSpacing := 12 // Adjust spacing if needed
+	// Low: Green
+	prioLow := NewRadioButton("Low", "Low", prioBtnX, prioBtnY, colors.Green, colors.BgGreen+colors.BoldWhite, priorityGroup)
 	testWin.AddElement(prioLow)
-	prioMedium := NewRadioButton("Medium", "Medium", prioBtnX+prioBtnSpacing, prioBtnY, colors.White, colors.BgBlue+colors.BoldWhite, priorityGroup)
+	// Medium: Yellow
+	prioMedium := NewRadioButton("Medium", "Medium", prioBtnX+prioBtnSpacing, prioBtnY, colors.Yellow, colors.BgYellow+colors.BoldBlack, priorityGroup) // Yellow, Black text on active
 	testWin.AddElement(prioMedium)
-	prioHigh := NewRadioButton("High", "High", prioBtnX+prioBtnSpacing*2, prioBtnY, colors.White, colors.BgBlue+colors.BoldWhite, priorityGroup)
+	// High: Red
+	prioHigh := NewRadioButton("High", "High", prioBtnX+prioBtnSpacing*2, prioBtnY, colors.Red, colors.BgRed+colors.BoldWhite, priorityGroup)
 	testWin.AddElement(prioHigh)
 	priorityGroup.Select(0) // Default to Low
 	currentY++
@@ -218,28 +223,25 @@ func TestWindowApp() {
 	// Task List Container
 	containerX := 1
 	containerY := currentY
-	containerHeight := winHeight - currentY - 7 // Adjusted height calculation
-	if containerHeight < 3 {
-		containerHeight = 3
+	containerHeight := winHeight - currentY - 9 // Adjusted height calculation for more elements/spacing
+	if containerHeight < 5 {                    // Increase min height
+		containerHeight = 5
 	}
-	// Use the full contentAreaWidth for the container.
-	// The container's internal rendering logic handles the scrollbar placement.
-	containerWidth := contentAreaWidth // Use full width
+	containerWidth := contentAreaWidth
 
-	// Create the container WITH the initial content generated earlier.
-	// This ensures the scrollbar exists when AddElement is called.
 	taskListContainer = NewContainer(containerX, containerY, containerWidth, containerHeight, initialContent)
-	testWin.AddElement(taskListContainer) // Now AddElement should find the scrollbar
-	currentY += containerHeight           // Move Y past the container
+	testWin.AddElement(taskListContainer)
+	currentY += containerHeight
 
 	// Spacer
 	testWin.AddElement(NewSpacer(1, currentY, 1))
 	currentY++
 
-	// Progress Bar
+	// Progress Bar - Adjusted colors (e.g., Cyan bar)
 	progressY := currentY
 	progressWidth := contentAreaWidth - 2 // Slightly inset
-	completionProgress = NewProgressBar(1, progressY, progressWidth, 0, 100, colors.BgGreen+colors.Green, colors.Gray, true)
+	// Use Cyan for the bar, keep Gray for unfilled, disable percentage
+	completionProgress = NewProgressBar(1, progressY, progressWidth, 0, 0, colors.BgCyan+colors.Cyan, colors.Gray2, false)
 	testWin.AddElement(completionProgress)
 	currentY++ // Move past progress bar row
 
@@ -247,16 +249,17 @@ func TestWindowApp() {
 	testWin.AddElement(NewSpacer(1, currentY, 1))
 	currentY++
 
-	// Index Input (Moved to Bottom)
+	// Index Input (Moved to Bottom) - Black BG, White Text
 	indexInputY := currentY
 	indexLabelWidth := 25
 	indexInputX := inputStartX + indexLabelWidth + 1
 	indexLabel := NewLabel("Index (for Update/Delete):", inputStartX, indexInputY, colors.White)
 	testWin.AddElement(indexLabel)
 	indexInputWidth := 6
-	indexInput = NewTextBox("", indexInputX, indexInputY, indexInputWidth, colors.BgWhite+colors.Black, colors.BgCyan+colors.BoldBlack)
+	indexInput = NewTextBox("", indexInputX, indexInputY, indexInputWidth, colors.BgBlack+colors.White, colors.BgCyan+colors.BoldBlack) // Black BG, White Text
 	testWin.AddElement(indexInput)
-	loadButton := NewButton("Load", indexInputX+indexInputWidth+1, indexInputY, 8, colors.BoldCyan, colors.BgCyan+colors.BoldWhite, func() bool {
+	// Load button - Adjusted colors
+	loadButton := NewButton("Load", indexInputX+indexInputWidth+1, indexInputY, 8, colors.BoldCyan, colors.BgCyan+colors.BoldBlack, func() bool { // Black text on active
 		idxStr := indexInput.Text
 		idx, err := strconv.Atoi(idxStr)
 		if err != nil {
@@ -283,7 +286,7 @@ func TestWindowApp() {
 	}
 	actionButtonY := winHeight - 4 // Position near bottom
 
-	// Add Button
+	// Add Button - Keep Green
 	addButton := NewButton("Add", buttonStartX, actionButtonY, buttonWidth, colors.BoldGreen, colors.BgGreen+colors.BoldWhite, func() bool {
 		taskName := nameInput.Text
 		if nameInput.isPristine || taskName == "" {
@@ -305,7 +308,7 @@ func TestWindowApp() {
 	})
 	testWin.AddElement(addButton)
 
-	// Update Button
+	// Update Button - Keep Blue
 	updateButtonX := buttonStartX + buttonWidth + buttonSpacing
 	updateButton := NewButton("Update", updateButtonX, actionButtonY, buttonWidth, colors.BoldBlue, colors.BgBlue+colors.BoldWhite, func() bool {
 		idxStr := indexInput.Text
@@ -332,7 +335,7 @@ func TestWindowApp() {
 	})
 	testWin.AddElement(updateButton)
 
-	// Delete Button
+	// Delete Button - Keep Red
 	deleteButtonX := updateButtonX + buttonWidth + buttonSpacing
 	deleteButton := NewButton("Delete", deleteButtonX, actionButtonY, buttonWidth, colors.BoldRed, colors.BgRed+colors.BoldWhite, func() bool {
 		idxStr := indexInput.Text
@@ -352,9 +355,9 @@ func TestWindowApp() {
 	})
 	testWin.AddElement(deleteButton)
 
-	// Quit Button
+	// Quit Button - Bold Red
 	quitButtonX := deleteButtonX + buttonWidth + buttonSpacing
-	quitButton := NewButton("Quit", quitButtonX, actionButtonY, buttonWidth, colors.BoldWhite, colors.BgGray+colors.BoldWhite, func() bool {
+	quitButton := NewButton("Quit", quitButtonX, actionButtonY, buttonWidth, colors.BoldRed, colors.BgRed+colors.BoldWhite, func() bool { // Bold Red, Red BG active
 		infoLabel.Text = "Quitting..."
 		infoLabel.Color = colors.BoldRed
 		testWin.Render() // Render final message
