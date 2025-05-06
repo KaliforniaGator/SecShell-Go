@@ -12,16 +12,17 @@ var (
 	Gray5 = "\033[38;5;247m" // Very Light Gray
 
 	// Regular Foreground Colors
-	Reset  = "\033[0m"
-	Red    = "\033[31m"
-	Green  = "\033[32m"
-	Yellow = "\033[33m"
-	Blue   = "\033[34m"
-	Purple = "\033[35m"
-	Cyan   = "\033[36m"
-	Gray   = "\033[37m"
-	White  = "\033[97m"
-	Black  = "\033[30m"
+	Reset   = "\033[0m"
+	Red     = "\033[31m"
+	Green   = "\033[32m"
+	Yellow  = "\033[33m"
+	Blue    = "\033[34m"
+	Purple  = "\033[35m"
+	Magenta = "\033[35m"
+	Cyan    = "\033[36m"
+	Gray    = "\033[37m"
+	White   = "\033[97m"
+	Black   = "\033[30m"
 
 	// Bold Gray Variants
 	BoldGray1 = "\033[1;38;5;232m"
@@ -31,15 +32,16 @@ var (
 	BoldGray5 = "\033[1;38;5;247m"
 
 	// Bold/Bright Foreground Colors
-	BoldRed    = "\033[1;31m"
-	BoldGreen  = "\033[1;32m"
-	BoldYellow = "\033[1;33m"
-	BoldBlue   = "\033[1;34m"
-	BoldPurple = "\033[1;35m"
-	BoldCyan   = "\033[1;36m"
-	BoldGray   = "\033[1;37m"
-	BoldWhite  = "\033[1;97m"
-	BoldBlack  = "\033[1;30m"
+	BoldRed     = "\033[1;31m"
+	BoldGreen   = "\033[1;32m"
+	BoldYellow  = "\033[1;33m"
+	BoldBlue    = "\033[1;34m"
+	BoldPurple  = "\033[1;35m"
+	BoldMagenta = "\033[1;35m"
+	BoldCyan    = "\033[1;36m"
+	BoldGray    = "\033[1;37m"
+	BoldWhite   = "\033[1;97m"
+	BoldBlack   = "\033[1;30m"
 
 	// Gray Backgrounds
 	BgGray1 = "\033[48;5;232m" // Very Dark Gray Background
@@ -49,15 +51,16 @@ var (
 	BgGray5 = "\033[48;5;247m" // Very Light Gray Background
 
 	// Regular Background Colors
-	BgBlack  = "\033[40m"
-	BgRed    = "\033[41m"
-	BgGreen  = "\033[42m"
-	BgYellow = "\033[43m"
-	BgBlue   = "\033[44m"
-	BgPurple = "\033[45m"
-	BgCyan   = "\033[46m"
-	BgGray   = "\033[47m"
-	BgWhite  = "\033[107m" // White background
+	BgBlack   = "\033[40m"
+	BgRed     = "\033[41m"
+	BgGreen   = "\033[42m"
+	BgYellow  = "\033[43m"
+	BgBlue    = "\033[44m"
+	BgPurple  = "\033[45m"
+	BgMagenta = "\033[45m"
+	BgCyan    = "\033[46m"
+	BgGray    = "\033[47m"
+	BgWhite   = "\033[107m" // White background
 
 	// Bold Gray Background Variants
 	BgBoldGray1 = "\033[1;48;5;232m"
@@ -67,14 +70,15 @@ var (
 	BgBoldGray5 = "\033[1;48;5;247m"
 
 	// Bold/Bright Background Colors
-	BgBrightBlack  = "\033[100m"
-	BgBrightRed    = "\033[101m"
-	BgBrightGreen  = "\033[102m"
-	BgBrightYellow = "\033[103m"
-	BgBrightBlue   = "\033[104m"
-	BgBrightPurple = "\033[105m"
-	BgBrightCyan   = "\033[106m"
-	BgBrightWhite  = "\033[107m"
+	BgBrightBlack   = "\033[100m"
+	BgBrightRed     = "\033[101m"
+	BgBrightGreen   = "\033[102m"
+	BgBrightYellow  = "\033[103m"
+	BgBrightBlue    = "\033[104m"
+	BgBrightPurple  = "\033[105m"
+	BgBrightMagenta = "\033[105m"
+	BgBrightCyan    = "\033[106m"
+	BgBrightWhite   = "\033[107m"
 
 	// Reset Background Color
 	BgReset = "\033[49m"

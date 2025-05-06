@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"secshell/ui"
 	"secshell/ui/gui"
 	"strings"
 	"unicode"
@@ -98,6 +99,8 @@ func (e *Editor) enableRawMode() error {
 // disableRawMode exits the alternate screen buffer and restores the terminal to its original state
 func (e *Editor) disableRawMode() {
 	if e.originalTerm != nil {
+		// Clear the screen
+		ui.ClearScreen()
 		// Exit alternate screen buffer (restores previous screen and scrollback)
 		fmt.Print("\x1b[?1049l")
 		term.Restore(int(os.Stdin.Fd()), e.originalTerm)

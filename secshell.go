@@ -31,6 +31,7 @@ import (
 	"secshell/tools/editor"
 	"secshell/ui"
 	"secshell/ui/gui"
+	"secshell/ui/gui/tests"
 	"secshell/update"
 
 	"github.com/msteinert/pam"
@@ -466,6 +467,8 @@ func (s *SecShell) processCommand(input string) {
 			s.getTime()
 		case "date":
 			s.getDate()
+		case "features": // Added features command case
+			help.DisplayFeatures()
 		case "allowed":
 			if len(args) > 1 {
 				switch args[1] {
@@ -861,6 +864,8 @@ func (s *SecShell) processCommand(input string) {
 		case "testwindow": // Add this case
 			gui.TestWindowApp() // Call the test function from the gui package
 
+		case "test":
+			tests.TestSegmentsApp()
 		default:
 			// Handle quoted arguments
 			args = s.parseQuotedArgs(args)
@@ -1444,6 +1449,10 @@ func max(a, b int) int {
 
 // main function to start the shell
 func main() {
+
+	// Set language environment variable for consistent character set handling
+	os.Setenv("LANG", "en_US.UTF-8")
+
 	// Check for version flags
 	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
 		shell := NewSecShell(globals.BlacklistPath, globals.WhitelistPath)

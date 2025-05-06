@@ -7,6 +7,7 @@ import (
 	"secshell/colors"
 	"secshell/globals"
 	"secshell/ui/gui"
+	"sort" // Import the sort package
 	"strings"
 )
 
@@ -57,7 +58,8 @@ var HelpCommands = []string{
 	"hash",
 	"extract-strings",
 	"more",
-	"edit", // Added edit command
+	"edit",
+	"features",
 }
 
 // HelpTopics contains detailed help information for each command
@@ -421,6 +423,13 @@ Options:
 		},
 		Category: "FileSystem",
 	},
+	"features": { // Added help topic for features
+		Command:     "features",
+		Description: "List all available features",
+		Usage:       "features",
+		Examples:    []string{"features"},
+		Category:    "System",
+	},
 }
 
 // DisplayHelp shows the help message or specific command help
@@ -444,6 +453,11 @@ func DisplayHelp(args ...string) {
 		}
 	}
 
+	// Sort commands within each category alphabetically
+	for category := range commandsByCategory {
+		sort.Strings(commandsByCategory[category])
+	}
+
 	// Print commands by category
 	fmt.Println("\nAvailable Commands:")
 
@@ -455,7 +469,7 @@ func DisplayHelp(args ...string) {
 		if exists && len(commands) > 0 {
 			fmt.Printf("\n%s%s Commands:%s\n", colors.Cyan, category, colors.Reset)
 
-			// Print each command in this category
+			// Print each command in this category (now sorted)
 			for _, cmd := range commands {
 				if topic, exists := HelpTopics[cmd]; exists {
 					fmt.Printf("  %s%-12s%s - %s\n",
@@ -467,22 +481,6 @@ func DisplayHelp(args ...string) {
 			}
 		}
 	}
-
-	fmt.Printf("\n%sAllowed System Commands:%s\n", colors.Cyan, colors.Reset)
-	fmt.Println("  ls, ps, netstat, tcpdump, clear, ifconfig")
-
-	fmt.Printf("\n%sSecurity Features:%s\n", colors.Cyan, colors.Reset)
-	fmt.Println("  - Command whitelisting")
-	fmt.Println("  - Input sanitization")
-	fmt.Println("  - Process isolation")
-	fmt.Println("  - Job tracking")
-	fmt.Println("  - Service Management")
-	fmt.Println("  - Background job execution")
-	fmt.Println("  - Piped command execution")
-	fmt.Println("  - Input/output redirection")
-	fmt.Println("  - Data encoding/decoding utilities")
-	fmt.Println("  - Script execution with interpreter detection")
-
 	fmt.Printf("\n%sUsage:%s Type '%shelp <command>%s' for more details on a specific command\n",
 		colors.Cyan, colors.Reset, colors.BoldWhite, colors.Reset)
 }

@@ -69,6 +69,7 @@ func InteractiveHistorySearch(history []string, processCommand processCommand) {
 	fmt.Print("\x1b[?1049h")
 	// Ensure terminal state and alternate buffer are restored on exit
 	defer func() {
+		ui.ClearScreen()
 		fmt.Print("\x1b[?1049l") // Exit alternate screen buffer
 		term.Restore(int(os.Stdin.Fd()), oldState)
 		fmt.Print("\033[?25h") // Ensure cursor is shown
@@ -191,6 +192,7 @@ func InteractiveHistorySearch(history []string, processCommand processCommand) {
 					selectedCmd := filteredHistory[selectedIndex]
 					// Exit alternate buffer and restore terminal state via defer
 					// Need to print the alert *after* restoring
+					ui.ClearScreen()
 					fmt.Print("\x1b[?1049l") // Exit alternate screen buffer manually here
 					term.Restore(int(os.Stdin.Fd()), oldState)
 					fmt.Print("\033[?25h") // Show cursor manually here
