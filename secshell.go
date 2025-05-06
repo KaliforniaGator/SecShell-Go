@@ -1444,6 +1444,10 @@ func max(a, b int) int {
 
 // main function to start the shell
 func main() {
+
+	// Set language environment variable for consistent character set handling
+	os.Setenv("LANG", "en_US.UTF-8")
+
 	// Check for version flags
 	if len(os.Args) > 1 && (os.Args[1] == "--version" || os.Args[1] == "-v") {
 		shell := NewSecShell(globals.BlacklistPath, globals.WhitelistPath)
