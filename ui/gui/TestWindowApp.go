@@ -41,7 +41,17 @@ func TestWindowApp() {
 		if task.Done {
 			status = "[X]"
 		}
-		line := fmt.Sprintf("%d: %s %s (%s)", i, status, task.Name, task.Priority)
+		// Determine color based on priority
+		lineColor := colors.White // Default color
+		switch task.Priority {
+		case "Low":
+			lineColor = colors.Blue
+		case "Medium":
+			lineColor = colors.White
+		case "High":
+			lineColor = colors.Red
+		}
+		line := fmt.Sprintf("%s%d: %s %s (%s)%s", lineColor, i, status, task.Name, task.Priority, colors.Reset)
 		initialContent = append(initialContent, line)
 	}
 
@@ -69,39 +79,57 @@ func TestWindowApp() {
 					status = "[X]"
 					doneCount++
 				}
-				// Format: "Index: Status Name (Priority)"
-				line := fmt.Sprintf("%d: %s %s (%s)", i, status, task.Name, task.Priority)
+				// Determine color based on priority
+				lineColor := colors.White // Default color
+				switch task.Priority {
+				case "Low":
+					lineColor = colors.Blue
+				case "Medium":
+					lineColor = colors.White
+				case "High":
+					lineColor = colors.Red
+				}
+				// Format: "Index: Status Name (Priority)" with color
+				line := fmt.Sprintf("%s%d: %s %s (%s)%s", lineColor, i, status, task.Name, task.Priority, colors.Reset)
 				content = append(content, line)
 			}
 		}
 		// Only call SetContent if the container already exists
 		if taskListContainer != nil {
-			taskListContainer.SetContent(content) // Update container's internal content & scroll state
+			// This call updates container content AND scrollbar state (visibility, maxvalue)
+			taskListContainer.SetContent(content)
 		}
 
-		// Update progress bar based on scroll position
+		// Update progress bar based on the LATEST scroll state
 		// Check if completionProgress and taskListContainer exist before using
 		if completionProgress != nil && taskListContainer != nil {
-			scrollbar := taskListContainer.GetScrollbar()
-			if scrollbar != nil {
-				// Use scrollbar's state to set MaxValue and initial Value
-				completionProgress.MaxValue = float64(scrollbar.MaxValue)
-				completionProgress.SetValue(float64(scrollbar.Value)) // Set initial value
+			scrollbar := taskListContainer.GetScrollbar() // Scrollbar always exists now
 
-				// Set the OnScroll callback if it hasn't been set yet
+			// Check if the scrollbar is currently needed/visible
+			if scrollbar.Visible {
+				// Update MaxValue based on current scrollbar state
+				completionProgress.MaxValue = float64(scrollbar.MaxValue)
+				// Update Value based on current scrollbar state
+				completionProgress.SetValue(float64(scrollbar.Value))
+
+				// Ensure the OnScroll callback is attached ONCE to update progress bar DURING scrolling
 				if scrollbar.OnScroll == nil {
 					scrollbar.OnScroll = func(newValue int) {
-						// This function will be called by scrollbar.SetValue
+						// This function will be called by scrollbar.SetValue during scroll actions
 						if completionProgress != nil {
+							// Directly update progress bar value when scrollbar value changes
 							completionProgress.SetValue(float64(newValue))
-							// No need to call Render here, WindowActions handles it
+							// NOTE: We rely on the WindowActions loop to trigger a Render after scroll input.
+							// If we needed immediate render on scroll *callback*, we'd need a way to signal it.
 						}
 					}
 				}
 			} else {
-				// No scrollbar, set progress to 0
+				// Scrollbar is not visible, set progress to 0
 				completionProgress.MaxValue = 0
 				completionProgress.SetValue(0)
+				// Detach callback? Not strictly necessary, but good practice if scrollbar could be destroyed/recreated.
+				// scrollbar.OnScroll = nil // Optional cleanup
 			}
 		}
 	}
@@ -164,7 +192,7 @@ func TestWindowApp() {
 	winY := (termHeight - winHeight) / 2
 
 	// Prettier window style and colors
-	testWin := NewWindow("🚀", "Enhanced Task Manager", winX, winY, winWidth, winHeight,
+	testWin := NewWindow("🚀", "Freedom Task", winX, winY, winWidth, winHeight,
 		"rounded", colors.BoldMagenta, colors.Cyan, colors.BgBlack, colors.White) // Rounded border, Magenta title, Cyan border
 
 	// --- Elements ---
@@ -207,10 +235,10 @@ func TestWindowApp() {
 	prioBtnX := inputFieldX
 	prioBtnSpacing := 12 // Adjust spacing if needed
 	// Low: Green
-	prioLow := NewRadioButton("Low", "Low", prioBtnX, prioBtnY, colors.Green, colors.BgGreen+colors.BoldWhite, priorityGroup)
+	prioLow := NewRadioButton("Low", "Low", prioBtnX, prioBtnY, colors.Blue, colors.BgBlue+colors.BoldWhite, priorityGroup)
 	testWin.AddElement(prioLow)
 	// Medium: Yellow
-	prioMedium := NewRadioButton("Medium", "Medium", prioBtnX+prioBtnSpacing, prioBtnY, colors.Yellow, colors.BgYellow+colors.BoldBlack, priorityGroup) // Yellow, Black text on active
+	prioMedium := NewRadioButton("Medium", "Medium", prioBtnX+prioBtnSpacing, prioBtnY, colors.White, colors.BgWhite+colors.BoldBlack, priorityGroup) // Yellow, Black text on active
 	testWin.AddElement(prioMedium)
 	// High: Red
 	prioHigh := NewRadioButton("High", "High", prioBtnX+prioBtnSpacing*2, prioBtnY, colors.Red, colors.BgRed+colors.BoldWhite, priorityGroup)
@@ -230,6 +258,18 @@ func TestWindowApp() {
 	containerWidth := contentAreaWidth
 
 	taskListContainer = NewContainer(containerX, containerY, containerWidth, containerHeight, initialContent)
+	// Add the OnSelectionChange callback
+	taskListContainer.OnItemSelected = func(newIndex int) {
+		if indexInput != nil { // Ensure indexInput exists
+			idxStr := strconv.Itoa(newIndex)
+			indexInput.Text = idxStr
+			indexInput.cursorPos = len(idxStr)
+			indexInput.isPristine = false // Mark as edited since it reflects selection
+			// Optionally update info label
+			infoLabel.Text = fmt.Sprintf("Selected task index: %d", newIndex)
+			infoLabel.Color = colors.Gray
+		}
+	}
 	testWin.AddElement(taskListContainer)
 	currentY += containerHeight
 

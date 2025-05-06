@@ -6,6 +6,12 @@ import (
 	"strings"
 )
 
+// CursorManager is an interface for elements that need to manage cursor visibility
+type CursorManager interface {
+	NeedsCursor() bool                   // Returns true if the element currently wants the cursor visible
+	GetCursorPosition() (int, int, bool) // Returns absolute cursor x, y position and whether it's valid
+}
+
 // --- Basic UI Elements ---
 
 // Label represents a simple text element.
@@ -117,6 +123,15 @@ func (b *Button) Render(buffer *strings.Builder, winX, winY int, _ int) {
 	buffer.WriteString(colors.Reset) // Reset color and video attributes
 }
 
+// NeedsCursor implements CursorManager interface (never needs cursor)
+func (b *Button) NeedsCursor() bool {
+	return false
+}
+
+func (b *Button) GetCursorPosition() (int, int, bool) {
+	return 0, 0, false
+}
+
 // TextBox represents an editable text input field.
 type TextBox struct {
 	Text        string
@@ -127,6 +142,8 @@ type TextBox struct {
 	IsActive    bool // State for rendering/input handling
 	cursorPos   int  // Position of the cursor within the text
 	isPristine  bool // Flag to track if default text is present and untouched
+	cursorAbsX  int  // Absolute X position of cursor (set during Render)
+	cursorAbsY  int  // Absolute Y position of cursor (set during Render)
 }
 
 // NewTextBox creates a new TextBox instance.
@@ -147,6 +164,19 @@ func NewTextBox(initialText string, x, y, width int, color, activeColor string) 
 		tb.cursorPos = len(tb.Text)
 	}
 	return tb
+}
+
+// NeedsCursor implements CursorManager interface
+func (tb *TextBox) NeedsCursor() bool {
+	return tb.IsActive // Only show cursor when the textbox is active
+}
+
+// GetCursorPosition implements CursorManager interface
+func (tb *TextBox) GetCursorPosition() (int, int, bool) {
+	if !tb.NeedsCursor() {
+		return 0, 0, false
+	}
+	return tb.cursorAbsX, tb.cursorAbsY, true
 }
 
 // Render draws the textbox element.
@@ -193,21 +223,25 @@ func (tb *TextBox) Render(buffer *strings.Builder, winX, winY int, _ int) {
 	buffer.WriteString(strings.Repeat(" ", tb.Width-len(visibleText)))
 	// --- End Text Rendering ---
 
-	// --- Cursor Rendering ---
-	if tb.IsActive {
-		// Calculate cursor position relative to the *visible* text area
-		cursorRenderPos := tb.cursorPos - viewStart
-		if cursorRenderPos >= 0 && cursorRenderPos < tb.Width {
-			buffer.WriteString(MoveCursorCmd(absY, absX+cursorRenderPos))
-			buffer.WriteString(ShowCursor()) // Make cursor visible at the calculated position
-		} else {
-			// If cursor is somehow outside visible area (e.g., exactly at tb.Width),
-			// place it at the end of the visible area.
-			buffer.WriteString(MoveCursorCmd(absY, absX+tb.Width-1))
-			buffer.WriteString(ShowCursor())
-		}
+	// --- Cursor Position Calculation ---
+	// Calculate cursor position relative to the *start* of the textbox's absolute position
+	cursorRenderPos := tb.cursorPos - viewStart
+
+	// Clamp the render position to be within the visible bounds of the textbox [0, tb.Width]
+	if cursorRenderPos < 0 {
+		cursorRenderPos = 0
+	} else if cursorRenderPos > tb.Width {
+		// This case might happen if text length equals width and cursor is at the end
+		cursorRenderPos = tb.Width
 	}
-	// --- End Cursor Rendering ---
+
+	// Store the final absolute screen coordinates for the cursor
+	tb.cursorAbsX = absX + cursorRenderPos
+	tb.cursorAbsY = absY
+
+	// Don't add cursor show/hide commands here - the Window will handle cursor visibility
+	// based on the CursorManager interface implementation
+	// --- End Cursor Position Calculation ---
 
 	buffer.WriteString(colors.Reset) // Reset color
 }
@@ -255,6 +289,15 @@ func (cb *CheckBox) Render(buffer *strings.Builder, winX, winY int, _ int) {
 	buffer.WriteString(fmt.Sprintf("[%s] %s", checkMark, cb.Label))
 
 	buffer.WriteString(colors.Reset) // Reset color and video attributes
+}
+
+// NeedsCursor implements CursorManager interface (never needs cursor)
+func (cb *CheckBox) NeedsCursor() bool {
+	return false
+}
+
+func (cb *CheckBox) GetCursorPosition() (int, int, bool) {
+	return 0, 0, false
 }
 
 // --- Spacer ---
@@ -375,6 +418,15 @@ func (rb *RadioButton) Render(buffer *strings.Builder, winX, winY int, _ int) {
 	buffer.WriteString(colors.Reset) // Reset color and video attributes
 }
 
+// NeedsCursor implements CursorManager interface (never needs cursor)
+func (rb *RadioButton) NeedsCursor() bool {
+	return false
+}
+
+func (rb *RadioButton) GetCursorPosition() (int, int, bool) {
+	return 0, 0, false
+}
+
 // --- Progress Bar ---
 
 // ProgressBar represents a visual progress indicator.
@@ -484,6 +536,7 @@ type ScrollBar struct {
 	Color       string             // Color of the scrollbar track and thumb
 	ActiveColor string             // Color when focused/active
 	IsActive    bool               // State for rendering/input handling
+	Visible     bool               // Controls whether the scrollbar is rendered
 	ContainerID string             // Identifier for the container this scrollbar controls (for future use)
 	thumbChar   string             // Character for the thumb
 	trackChar   string             // Character for the track
@@ -515,6 +568,7 @@ func NewScrollBar(x, y, height, value, maxValue int, color, activeColor, contain
 		Color:       color,
 		ActiveColor: activeColor,
 		IsActive:    false,
+		Visible:     false, // Start hidden by default, container will make it visible
 		ContainerID: containerID,
 		thumbChar:   "█", // Block character for thumb
 		trackChar:   "│", // Line character for track
@@ -543,6 +597,19 @@ func (sb *ScrollBar) SetValue(value int) {
 
 // Render draws the scrollbar element.
 func (sb *ScrollBar) Render(buffer *strings.Builder, winX, winY int, _ int) {
+	// Only render if visible
+	if !sb.Visible {
+		// If not visible, we might need to clear the area it would occupy
+		// This prevents artifacts if it was previously visible.
+		absX := winX + sb.X
+		absY := winY + sb.Y
+		for i := 0; i < sb.Height; i++ {
+			buffer.WriteString(MoveCursorCmd(absY+i, absX))
+			buffer.WriteString(" ") // Overwrite with space
+		}
+		return
+	}
+
 	absX := winX + sb.X
 	absY := winY + sb.Y
 
@@ -581,6 +648,15 @@ func (sb *ScrollBar) Render(buffer *strings.Builder, winX, winY int, _ int) {
 	buffer.WriteString(colors.Reset) // Reset color
 }
 
+// NeedsCursor implements CursorManager interface (never needs cursor)
+func (sb *ScrollBar) NeedsCursor() bool {
+	return false
+}
+
+func (sb *ScrollBar) GetCursorPosition() (int, int, bool) {
+	return 0, 0, false
+}
+
 // --- Container ---
 
 // Container represents a scrollable area for content.
@@ -591,7 +667,15 @@ type Container struct {
 	scrollBar          *ScrollBar
 	needsScroll        bool
 	totalContentHeight int
-	// TODO: Add BgColor, ContentColor properties if needed
+	IsActive           bool                    // Tracks if the container itself has focus
+	SelectedIndex      int                     // Index of the selected line in Content
+	Color              string                  // Default background/text color (use window's if empty)
+	ActiveColor        string                  // Border/indicator color when active (unused for now, but good practice)
+	SelectionColor     string                  // Background/text color for the selected line
+	OnItemSelected     func(selectedIndex int) // Callback when an item is selected via Enter
+	cursorAbsX         int                     // Used for cursor position tracking
+	cursorAbsY         int                     // Used for cursor position tracking
+	// TODO: Add BgColor, ContentColor properties if needed explicitly for container
 }
 
 // NewContainer creates a new Container instance.
@@ -603,59 +687,86 @@ func NewContainer(x, y, width, height int, content []string) *Container {
 	if height < 1 {
 		height = 1
 	}
+
+	// Determine scrollbar position relative to container
+	sbX := width - 2 // Scrollbar always occupies the last column conceptually
+	sbY := 0
+	sbHeight := height
+
+	// Always create the scrollbar instance
+	containerID := fmt.Sprintf("container_%d_%d_scrollbar", x, y)
+	// Initial MaxValue is 0, updateScrollState will fix it
+	scrollBar := NewScrollBar(sbX, sbY, sbHeight, 0, 0, colors.Gray, colors.BoldWhite, containerID)
+	scrollBar.Visible = false // Start hidden
+
 	c := &Container{
-		X:           x,
-		Y:           y,
-		Width:       width,
-		Height:      height,
-		Content:     content,
-		scrollBar:   nil,
-		needsScroll: false,
+		X:              x,
+		Y:              y,
+		Width:          width,
+		Height:         height,
+		Content:        content,
+		scrollBar:      scrollBar, // Assign the created scrollbar
+		needsScroll:    false,     // Will be set by updateScrollState
+		IsActive:       false,
+		SelectedIndex:  0,
+		Color:          "",
+		ActiveColor:    colors.BoldWhite,
+		SelectionColor: colors.BgBlue + colors.BoldWhite,
+		OnItemSelected: nil, // Initialize new callback to nil
 	}
-	c.updateScrollState()
+
+	c.updateScrollState() // Calculate initial scroll state and visibility
+
+	// Ensure initial selection is valid
+	if c.SelectedIndex >= len(c.Content) && len(c.Content) > 0 {
+		c.SelectedIndex = len(c.Content) - 1
+	} else if len(c.Content) == 0 {
+		c.SelectedIndex = -1 // No selection possible
+	}
+	// Ensure initial selection is visible after state update
+	c.ensureSelectionVisible()
+
 	return c
 }
 
 // updateScrollState calculates content height and determines if scrolling is needed.
-// It creates or updates the internal scrollbar.
+// It updates the internal scrollbar's visibility and properties.
 func (c *Container) updateScrollState() {
 	c.totalContentHeight = len(c.Content)
 	c.needsScroll = c.totalContentHeight > c.Height
 
+	// Adjust SelectedIndex if it's now out of bounds
+	if c.SelectedIndex >= c.totalContentHeight {
+		if c.totalContentHeight > 0 {
+			c.SelectedIndex = c.totalContentHeight - 1
+		} else {
+			c.SelectedIndex = -1 // No items left
+		}
+	}
+
+	// Update scrollbar visibility and MaxValue
+	c.scrollBar.Visible = c.needsScroll // Set visibility based on need
 	if c.needsScroll {
-		// Scrollbar is needed. Position it in the last column *of the container*.
-		// Its X position is relative to the container's top-left corner.
-		sbX := c.Width - 2
-		sbY := 0
-		sbHeight := c.Height
 		sbMaxValue := c.totalContentHeight - c.Height
 		if sbMaxValue < 0 {
 			sbMaxValue = 0
 		}
-
-		if c.scrollBar == nil {
-			// Create scrollbar
-			containerID := fmt.Sprintf("container_%d_%d_scrollbar", c.X, c.Y)
-			// Use sbX calculated above
-			c.scrollBar = NewScrollBar(sbX, sbY, sbHeight, 0, sbMaxValue, colors.Gray, colors.BoldWhite, containerID)
-		} else {
-			// Update existing scrollbar's properties
-			c.scrollBar.X = sbX // Ensure X is correct relative to container width
-			c.scrollBar.Y = sbY
-			c.scrollBar.Height = sbHeight
-			c.scrollBar.MaxValue = sbMaxValue
-			c.scrollBar.SetValue(c.scrollBar.Value) // Re-clamp current value
-		}
+		c.scrollBar.MaxValue = sbMaxValue
+		// Clamp current scroll value if necessary
+		c.scrollBar.SetValue(c.scrollBar.Value)
 	} else {
-		// No scroll needed, remove scrollbar if it exists
-		c.scrollBar = nil
+		c.scrollBar.MaxValue = 0
+		c.scrollBar.SetValue(0) // Reset scroll value if not needed
 	}
+
+	// Ensure selection is visible after potential scrollbar update
+	c.ensureSelectionVisible()
 }
 
 // SetContent updates the container's content and recalculates scrolling state.
 func (c *Container) SetContent(content []string) {
 	c.Content = content
-	c.updateScrollState()
+	c.updateScrollState() // This will also adjust SelectedIndex if needed
 }
 
 // GetScrollOffset returns the current vertical scroll offset (top visible line index).
@@ -667,6 +778,59 @@ func (c *Container) GetScrollOffset() int {
 	return 0 // No scrollbar means no offset
 }
 
+// ensureSelectionVisible adjusts the scroll offset if the selected item is out of view.
+func (c *Container) ensureSelectionVisible() {
+	// Only adjust if scrollbar is currently needed/visible and selection is valid
+	if !c.scrollBar.Visible || c.SelectedIndex < 0 {
+		return
+	}
+
+	scrollOffset := c.scrollBar.Value
+	bottomVisibleIndex := scrollOffset + c.Height - 1
+
+	if c.SelectedIndex < scrollOffset {
+		// Selection is above the view, scroll up
+		c.scrollBar.SetValue(c.SelectedIndex)
+	} else if c.SelectedIndex > bottomVisibleIndex {
+		// Selection is below the view, scroll down
+		c.scrollBar.SetValue(c.SelectedIndex - c.Height + 1)
+	}
+}
+
+// SelectNext selects the next item in the container.
+func (c *Container) SelectNext() {
+	if c.SelectedIndex < c.totalContentHeight-1 {
+		c.SelectedIndex++
+		c.ensureSelectionVisible()
+		// No callback call here anymore
+	}
+}
+
+// SelectPrevious selects the previous item in the container.
+func (c *Container) SelectPrevious() {
+	if c.SelectedIndex > 0 {
+		c.SelectedIndex--
+		c.ensureSelectionVisible()
+		// No callback call here anymore
+	}
+}
+
+// GetSelectedIndex returns the index of the currently selected item.
+// Returns -1 if no item is selected (e.g., empty container).
+func (c *Container) GetSelectedIndex() int {
+	return c.SelectedIndex
+}
+
+// NeedsCursor implements CursorManager interface
+func (c *Container) NeedsCursor() bool {
+	return false // Containers never need a cursor visible
+}
+
+// GetCursorPosition implements CursorManager interface
+func (c *Container) GetCursorPosition() (int, int, bool) {
+	return c.cursorAbsX, c.cursorAbsY, false // Position known but not needed
+}
+
 // Render draws the container and its visible content.
 func (c *Container) Render(buffer *strings.Builder, winX, winY int, _ int) {
 	absX := winX + c.X // Absolute X of the container's top-left corner
@@ -674,8 +838,8 @@ func (c *Container) Render(buffer *strings.Builder, winX, winY int, _ int) {
 
 	// Determine the width available *specifically for text content*
 	textContentWidth := c.Width
-	if c.needsScroll {
-		// If scrollbar is needed, reduce text width by 1 column
+	// Use scrollBar.Visible to decide if width needs reduction
+	if c.scrollBar.Visible {
 		textContentWidth--
 	}
 	// Ensure text content width is never negative
@@ -684,7 +848,8 @@ func (c *Container) Render(buffer *strings.Builder, winX, winY int, _ int) {
 	}
 
 	scrollOffset := 0
-	if c.scrollBar != nil {
+	// Only get offset if scrollbar is visible/active
+	if c.scrollBar.Visible {
 		scrollOffset = c.scrollBar.Value
 	}
 
@@ -695,6 +860,13 @@ func (c *Container) Render(buffer *strings.Builder, winX, winY int, _ int) {
 
 		// Move cursor to the start of the line within the container
 		buffer.WriteString(MoveCursorCmd(lineY, absX))
+
+		// Determine line color
+		lineColor := c.Color                                                                // Use container's default or inherit window's
+		if c.IsActive && contentIndex == c.SelectedIndex && contentIndex < len(c.Content) { // Check contentIndex bounds
+			lineColor = c.SelectionColor // Use selection color if active and selected
+		}
+		buffer.WriteString(lineColor) // Apply line color
 
 		if contentIndex >= 0 && contentIndex < len(c.Content) {
 			line := c.Content[contentIndex]
@@ -713,28 +885,29 @@ func (c *Container) Render(buffer *strings.Builder, winX, winY int, _ int) {
 			}
 			buffer.WriteString(truncatedLine)
 
-			// Clear the rest of the line *within the text content area only*
+			// Clear the rest of the line *within the text content area only* with the current line color
 			padding := textContentWidth - currentWidth
 			if padding > 0 {
 				buffer.WriteString(strings.Repeat(" ", padding))
 			}
 		} else {
-			// Render empty line within the text content area
+			// Render empty line within the text content area with the current line color
 			buffer.WriteString(strings.Repeat(" ", textContentWidth))
 		}
+		buffer.WriteString(colors.Reset) // Reset color after each line to prevent spillover
 	} // End of line rendering loop
 
-	// Render the scrollbar if it exists.
+	// Render the scrollbar (it handles its own visibility check)
 	// Pass the container's absolute top-left (absX, absY) as the origin.
-	// The scrollbar's own Render method uses its relative X (c.Width - 1)
-	// added to this origin to find its correct absolute column.
-	if c.scrollBar != nil {
-		c.scrollBar.Render(buffer, absX, absY, c.Width) // Pass container's abs origin
-	}
+	c.scrollBar.Render(buffer, absX, absY, c.Width) // Pass container's abs origin
+
+	c.cursorAbsX = absX // Store position for cursor management (even though not shown)
+	c.cursorAbsY = absY
 }
 
 // GetScrollbar returns the internal scrollbar if it exists.
 // This allows the window to make the scrollbar focusable.
+// NOTE: We are changing focus logic, so this might not be needed by Window anymore.
 func (c *Container) GetScrollbar() *ScrollBar {
 	return c.scrollBar
 }

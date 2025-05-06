@@ -63,41 +63,40 @@ func NewWindow(icon, title string, x, y, width, height int, boxStyle, titleColor
 func (w *Window) AddElement(element UIElement) {
 	w.Elements = append(w.Elements, element)
 
-	isFocusable := false
-	var focusableElement UIElement = nil // Element to potentially add to focus list
+	elementsToAdd := []UIElement{} // Collect focusable elements to add
 
 	switch v := element.(type) {
 	case *Button:
-		isFocusable = true
-		focusableElement = v
+		elementsToAdd = append(elementsToAdd, v)
 	case *TextBox:
-		isFocusable = true
-		focusableElement = v
 		v.IsActive = false // Explicitly set inactive
+		elementsToAdd = append(elementsToAdd, v)
 	case *CheckBox:
-		isFocusable = true
-		focusableElement = v
 		v.IsActive = false // Explicitly set inactive
+		elementsToAdd = append(elementsToAdd, v)
 	case *RadioButton:
-		isFocusable = true
-		focusableElement = v
 		v.IsActive = false // Explicitly set inactive
+		elementsToAdd = append(elementsToAdd, v)
 	case *ScrollBar: // Handle scrollbars added directly
-		isFocusable = true
-		focusableElement = v
 		v.IsActive = false // Explicitly set inactive
-	case *Container: // Check container for internal scrollbar
+		elementsToAdd = append(elementsToAdd, v)
+	case *Container: // Make the Container AND its ScrollBar focusable
+		v.IsActive = false                       // Ensure container starts inactive
+		elementsToAdd = append(elementsToAdd, v) // Add the container
+		// Check for and add the container's scrollbar
 		scrollbar := v.GetScrollbar()
 		if scrollbar != nil {
-			isFocusable = true
-			focusableElement = scrollbar // Make the scrollbar focusable, not the container
-			scrollbar.IsActive = false   // Ensure scrollbar starts inactive
+			scrollbar.IsActive = false // Ensure scrollbar starts inactive
+			elementsToAdd = append(elementsToAdd, scrollbar)
 		}
-		// Note: The Container itself is not directly focusable in this design.
 	}
 
-	if isFocusable && focusableElement != nil {
-		// Check if this specific focusable element (e.g., button, textbox, scrollbar) is already in the list
+	// Add collected elements to the focus list, checking for duplicates
+	for _, focusableElement := range elementsToAdd {
+		if focusableElement == nil {
+			continue
+		}
+
 		alreadyAdded := false
 		for _, fe := range w.focusableElements {
 			if fe == focusableElement {
@@ -112,18 +111,8 @@ func (w *Window) AddElement(element UIElement) {
 			if w.focusedIndex == -1 {
 				w.focusedIndex = 0
 				// Activate the first focusable element by setting its IsActive flag
-				switch el := w.focusableElements[0].(type) {
-				case *Button:
-					el.IsActive = true
-				case *TextBox:
-					el.IsActive = true
-				case *CheckBox:
-					el.IsActive = true
-				case *RadioButton:
-					el.IsActive = true
-				case *ScrollBar: // This covers both direct and container scrollbars
-					el.IsActive = true
-				}
+				// (The setFocus function handles the type switching)
+				w.setFocus(0) // Call setFocus to activate the first element correctly
 			}
 		}
 	}
@@ -131,7 +120,8 @@ func (w *Window) AddElement(element UIElement) {
 
 // Render draws the window and its elements to the terminal.
 func (w *Window) Render() {
-	w.buffer.Reset() // Clear previous rendering commands
+	w.buffer.Reset()                   // Clear previous rendering commands
+	w.buffer.WriteString(HideCursor()) // Start with cursor hidden by default
 
 	box := BoxTypes[w.BoxStyle]
 	fullTitle := w.Icon + " " + w.Title
@@ -203,6 +193,35 @@ func (w *Window) Render() {
 		element.Render(&w.buffer, contentX, contentY, contentWidth)
 	}
 
+	// --- Cursor Management ---
+	// After rendering all elements, check if any element needs the cursor
+	needsCursor := false
+	var finalCursorX, finalCursorY int
+
+	// Check for active element that wants the cursor
+	for _, element := range w.Elements {
+		if cursorManager, ok := element.(CursorManager); ok {
+			if cursorManager.NeedsCursor() {
+				x, y, valid := cursorManager.GetCursorPosition()
+				if valid {
+					needsCursor = true
+					finalCursorX = x
+					finalCursorY = y
+					break // Use the first element that needs cursor
+				}
+			}
+		}
+	}
+
+	if needsCursor {
+		// Position and show cursor
+		w.buffer.WriteString(MoveCursorCmd(finalCursorY, finalCursorX))
+		w.buffer.WriteString(ShowCursor())
+	} else {
+		// Ensure cursor is hidden if no element needs it
+		w.buffer.WriteString(HideCursor())
+	}
+
 	// Reset colors at the end and print the buffer
 	w.buffer.WriteString(colors.Reset)
 	fmt.Print(w.buffer.String())
@@ -222,11 +241,13 @@ func (w *Window) setFocus(newIndex int) {
 			el.IsActive = false
 		case *TextBox:
 			el.IsActive = false
-		case *CheckBox: // Add CheckBox case
+		case *CheckBox:
 			el.IsActive = false
-		case *RadioButton: // Add RadioButton case
+		case *RadioButton:
 			el.IsActive = false
-		case *ScrollBar: // Add ScrollBar case
+		case *ScrollBar: // Handles both direct and container scrollbars
+			el.IsActive = false
+		case *Container:
 			el.IsActive = false
 		}
 	}
@@ -247,11 +268,13 @@ func (w *Window) setFocus(newIndex int) {
 			el.IsActive = true
 		case *TextBox:
 			el.IsActive = true
-		case *CheckBox: // Add CheckBox case
+		case *CheckBox:
 			el.IsActive = true
-		case *RadioButton: // Add RadioButton case
+		case *RadioButton:
 			el.IsActive = true
-		case *ScrollBar: // Add ScrollBar case
+		case *ScrollBar: // Handles both direct and container scrollbars
+			el.IsActive = true
+		case *Container:
 			el.IsActive = true
 		}
 	}
@@ -297,9 +320,6 @@ func (w *Window) WindowActions() {
 		return
 	}
 
-	// Hide cursor during interaction
-	fmt.Print(HideCursor())
-
 	// Initial render
 	w.Render()
 
@@ -307,10 +327,6 @@ func (w *Window) WindowActions() {
 	inputBuf := make([]byte, 6) // Increased buffer for escape sequences (arrows, delete)
 
 	for {
-		// Hide cursor before reading input to prevent flicker at old position
-		// Render will show it again if a TextBox is active
-		fmt.Print(HideCursor())
-
 		// Read input from the raw terminal
 		n, err := os.Stdin.Read(inputBuf)
 		if err != nil {
@@ -329,32 +345,35 @@ func (w *Window) WindowActions() {
 		// Get the currently focused element, if any
 		var focusedElement UIElement
 		var focusedTextBox *TextBox
-		var focusedCheckBox *CheckBox       // Add variable for focused CheckBox
-		var focusedRadioButton *RadioButton // Add variable for focused RadioButton
-		var focusedScrollBar *ScrollBar     // Add variable for focused ScrollBar
+		var focusedCheckBox *CheckBox
+		var focusedRadioButton *RadioButton
+		var focusedContainer *Container
+		var focusedScrollBar *ScrollBar // Re-add variable for focused ScrollBar
 		if w.focusedIndex >= 0 && w.focusedIndex < len(w.focusableElements) {
 			focusedElement = w.focusableElements[w.focusedIndex]
-			// Check if the focused element is a TextBox and cast it
+			// Type assertions to get specific element types
 			if tb, ok := focusedElement.(*TextBox); ok {
 				focusedTextBox = tb
 			}
-			// Check if the focused element is a CheckBox and cast it
 			if cb, ok := focusedElement.(*CheckBox); ok {
 				focusedCheckBox = cb
 			}
-			// Check if the focused element is a RadioButton and cast it
 			if rb, ok := focusedElement.(*RadioButton); ok {
 				focusedRadioButton = rb
 			}
-			// Check if the focused element is a ScrollBar and cast it
+			if ct, ok := focusedElement.(*Container); ok {
+				focusedContainer = ct
+			}
+			// Check for focused ScrollBar (could be direct or from container)
 			if sb, ok := focusedElement.(*ScrollBar); ok {
 				focusedScrollBar = sb
 			}
 		}
 
 		// --- Key Handling ---
-		// Check if the focused element is an active TextBox first
+		// Priority: Active TextBox > Active Container > Active ScrollBar > Other focusable elements
 		if focusedTextBox != nil && focusedTextBox.IsActive {
+			// ... (TextBox input handling remains the same) ...
 			isPrintable := n == 1 && key[0] >= 32 && key[0] < 127 // Printable ASCII (excluding DEL)
 
 			if isPrintable {
@@ -414,14 +433,14 @@ func (w *Window) WindowActions() {
 					}
 				}
 			}
-		} else if focusedScrollBar != nil && focusedScrollBar.IsActive { // Handle ScrollBar input
+		} else if focusedContainer != nil && focusedContainer.IsActive { // Handle Container input
 			if n == 3 && key[0] == '\x1b' && key[1] == '[' { // ANSI Escape sequences (Arrows, etc.)
 				switch key[2] {
-				case 'A': // Up Arrow
-					focusedScrollBar.SetValue(focusedScrollBar.Value - 1)
+				case 'A': // Up Arrow - Select previous item
+					focusedContainer.SelectPrevious()
 					needsRender = true
-				case 'B': // Down Arrow
-					focusedScrollBar.SetValue(focusedScrollBar.Value + 1)
+				case 'B': // Down Arrow - Select next item
+					focusedContainer.SelectNext()
 					needsRender = true
 				case 'Z': // Shift+Tab
 					w.setFocus(w.focusedIndex - 1)
@@ -432,7 +451,48 @@ func (w *Window) WindowActions() {
 				case '\t': // Tab - Move focus to next element
 					w.setFocus(w.focusedIndex + 1)
 					needsRender = true
-				case '\r': // Enter - Treat like Tab for now (move focus)
+				case '\r': // Enter - Trigger item selection callback and move focus
+					// Call the OnItemSelected callback if it exists and selection is valid
+					if focusedContainer.OnItemSelected != nil && focusedContainer.SelectedIndex >= 0 {
+						focusedContainer.OnItemSelected(focusedContainer.SelectedIndex)
+						// Callback might have updated UI elements, so render is needed
+						needsRender = true
+					}
+					// Ensure render happens even if callback didn't exist (focus changed)
+					needsRender = true
+				case 3: // Ctrl+C - Quit
+					shouldQuit = true
+				case 'q', 'Q': // Quit key
+					shouldQuit = true
+				}
+			}
+			// Potentially add PageUp/PageDown handling here later
+		} else if focusedScrollBar != nil && focusedScrollBar.IsActive { // Handle ScrollBar input
+			if n == 3 && key[0] == '\x1b' && key[1] == '[' { // ANSI Escape sequences (Arrows, etc.)
+				// NEW: Only process scroll actions if the scrollbar is visible
+				if focusedScrollBar.Visible {
+					switch key[2] {
+					case 'A': // Up Arrow - Scroll up
+						focusedScrollBar.SetValue(focusedScrollBar.Value - 1)
+						needsRender = true
+					case 'B': // Down Arrow - Scroll down
+						focusedScrollBar.SetValue(focusedScrollBar.Value + 1)
+						needsRender = true
+					}
+				}
+				// Handle focus navigation regardless of visibility
+				switch key[2] {
+				case 'Z': // Shift+Tab
+					w.setFocus(w.focusedIndex - 1)
+					needsRender = true
+				}
+			} else if n == 1 {
+				// Handle focus navigation / quit regardless of visibility
+				switch key[0] {
+				case '\t': // Tab - Move focus to next element
+					w.setFocus(w.focusedIndex + 1)
+					needsRender = true
+				case '\r': // Enter - Treat like Tab for now (move focus away from scrollbar)
 					w.setFocus(w.focusedIndex + 1)
 					needsRender = true
 				case 3: // Ctrl+C - Quit
@@ -441,8 +501,9 @@ func (w *Window) WindowActions() {
 					shouldQuit = true
 				}
 			}
+			// Potentially add PageUp/PageDown handling here later (checking Visible)
 		} else {
-			// --- Input Handling when TextBox/ScrollBar is NOT active (or no focus) ---
+			// --- Input Handling when TextBox/Container/ScrollBar is NOT active (handles Buttons, CheckBoxes, RadioButtons, etc.) ---
 			if n == 1 {
 				switch key[0] {
 				case '\t': // Tab key
@@ -454,11 +515,23 @@ func (w *Window) WindowActions() {
 					// Activate focused button if it's a button
 					if btn, ok := focusedElement.(*Button); ok && btn.IsActive {
 						if btn.Action != nil {
-							if btn.Action() { // Execute action, check quit signal
-								shouldQuit = true
+							// Restore terminal before action if it prints outside the UI area
+							term.Restore(fd, oldState)
+							fmt.Print(ClearScreenAndBuffer()) // Clear UI before action output
+
+							quitAction := btn.Action() // Execute action
+
+							// If action didn't quit, re-setup terminal and UI
+							if !quitAction {
+								_, err = term.MakeRaw(fd) // Re-enter raw mode
+								if err != nil {
+									fmt.Printf("Error re-entering raw mode: %v\n", err)
+									shouldQuit = true // Quit if we can't restore raw mode
+								} else {
+									needsRender = true // Re-render the UI
+								}
 							} else {
-								// Action might have changed UI state
-								needsRender = true
+								shouldQuit = true // Action signaled quit
 							}
 						}
 					} else if focusedCheckBox != nil && focusedCheckBox.IsActive { // Check if it's an active CheckBox
@@ -481,7 +554,7 @@ func (w *Window) WindowActions() {
 						// w.setFocus(w.focusedIndex + 1)
 						// needsRender = true
 					} else {
-						// If Enter is pressed and not on an active button, checkbox, radio button, or scrollbar,
+						// If Enter is pressed and not on an active Button, CheckBox, RadioButton,
 						// move focus like Tab.
 						w.setFocus(w.focusedIndex + 1)
 						needsRender = true
@@ -491,7 +564,7 @@ func (w *Window) WindowActions() {
 				case 3: // Ctrl+C
 					shouldQuit = true
 				}
-			} else if n == 3 && key[0] == '\x1b' && key[1] == '[' { // Check for escape sequences
+			} else if n == 3 && key[0] == '\x1b' && key[1] == '[' { // Check for escape sequences (Shift+Tab)
 				switch key[2] {
 				case 'Z': // Shift+Tab (Common sequence, might vary)
 					if len(w.focusableElements) > 0 {
@@ -507,7 +580,10 @@ func (w *Window) WindowActions() {
 			break // Exit the interaction loop
 		}
 
+		// Re-render ONLY if necessary
 		if needsRender {
+			// Optimization: If only cursor moved in textbox, could potentially just move cursor
+			// But full render is safer for now.
 			w.Render() // Re-render the window state
 		}
 	}
@@ -515,4 +591,5 @@ func (w *Window) WindowActions() {
 	// Cleanup is handled by defers (Restore terminal state, Show cursor)
 	// Clear the screen after finishing interaction
 	fmt.Print(ClearScreenAndBuffer())
+	fmt.Print(ShowCursor()) // Explicitly show cursor after clearing
 }
