@@ -689,7 +689,7 @@ func NewContainer(x, y, width, height int, content []string) *Container {
 	}
 
 	// Determine scrollbar position relative to container
-	sbX := width - 2 // Scrollbar always occupies the last column conceptually
+	sbX := width - 1 // Scrollbar always occupies the last column conceptually
 	sbY := 0
 	sbHeight := height
 

@@ -134,8 +134,8 @@ func TestSegmentsApp() {
 	contentAreaWidth := winWidth - 2
 	contentAreaHeight := winHeight - 2
 	leftSegmentWidth := contentAreaWidth/3 - 1                   // Subtract 1 for divider
-	rightSegmentWidth := contentAreaWidth - leftSegmentWidth - 2 // Subtract 2: one for each segment margin and one for divider
-	rightSegmentX := leftSegmentWidth + 2                        // Leave space for divider
+	rightSegmentWidth := contentAreaWidth - leftSegmentWidth - 3 // Subtract 2: one for each segment margin and one for divider
+	rightSegmentX := leftSegmentWidth + 3                        // Leave space for divider
 
 	// Ensure widths are not negative if window is very small
 	if leftSegmentWidth < 0 {

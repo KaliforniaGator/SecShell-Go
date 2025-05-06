@@ -255,7 +255,7 @@ func TestWindowApp() {
 	if containerHeight < 5 {                    // Increase min height
 		containerHeight = 5
 	}
-	containerWidth := contentAreaWidth
+	containerWidth := contentAreaWidth - 1
 
 	taskListContainer = NewContainer(containerX, containerY, containerWidth, containerHeight, initialContent)
 	// Add the OnSelectionChange callback
