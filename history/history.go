@@ -15,13 +15,17 @@ import (
 
 // Define processCommand function
 type processCommand func(input string)
-type processCommandWithArgs func(string, []string)
 
 // displayHistory shows the command history
 func DisplayHistory(history []string) {
 	gui.TitleBox("Command History")
-	if len(history) > gui.GetTerminalHeight() {
-		core.More(history)
+	if len(history) > gui.GetTerminalHeight()-5 {
+		var numberedHistory []string
+
+		for i, cmd := range history {
+			numberedHistory = append(numberedHistory, fmt.Sprintf("%d: %s", i+1, cmd))
+		}
+		core.More(numberedHistory)
 	} else {
 		for i, cmd := range history {
 			fmt.Printf("%d: %s\n", i+1, cmd)
