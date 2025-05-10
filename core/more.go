@@ -91,8 +91,8 @@ func More(items []string) error {
 		// Restore terminal state
 		term.Restore(int(os.Stdin.Fd()), pager.oldState)
 
-		// Clear screen again after returning to main screen
-		fmt.Print("\x1b[2J\x1b[H")
+		// Clear screen and buffer again after returning to main screen
+		fmt.Print("\x1b[2J\x1b[H\x1b[3J")
 
 		// Ensure all output is flushed
 		os.Stdout.Sync()

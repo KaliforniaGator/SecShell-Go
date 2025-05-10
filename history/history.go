@@ -1,6 +1,7 @@
 package history
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"secshell/colors"
@@ -63,6 +64,7 @@ func RunHistoryCommand(history []string, number int, processCommand processComma
 }
 
 func InteractiveHistorySearch(history []string, processCommand processCommand) {
+	ui.ClearScreenAndBuffer()
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
 		logging.LogError(err)
@@ -77,6 +79,7 @@ func InteractiveHistorySearch(history []string, processCommand processCommand) {
 		fmt.Print("\x1b[?1049l") // Exit alternate screen buffer
 		term.Restore(int(os.Stdin.Fd()), oldState)
 		fmt.Print("\033[?25h") // Ensure cursor is shown
+		ui.ClearScreenAndBuffer()
 	}()
 
 	query := ""
@@ -259,6 +262,26 @@ func InteractiveHistorySearch(history []string, processCommand processCommand) {
 			}
 		}
 	}
+}
+
+func GetHistoryFromFile(filePath string) []string {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	var history []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		history = append(history, scanner.Text())
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil
+	}
+
+	return history
 }
 
 func highlightText(text, query string) string {
