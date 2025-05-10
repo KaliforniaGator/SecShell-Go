@@ -83,7 +83,8 @@ func NewSecShell(blacklistPath, whitelistPath string) *SecShell {
 
 	shell.blacklistedCommands = core.BlacklistedCommands
 	shell.allowedCommands = core.AllowedCommands
-	shell.history = core.History
+	shell.history = history.GetHistoryFromFile(globals.HistoryPath)
+	shell.historyIndex = len(shell.history)
 	commands.AllowedCommands = core.AllowedCommands
 	commands.BuiltInCommands = globals.BuiltInCommands
 	commands.AllowedDirs = globals.TrustedDirs
@@ -507,6 +508,7 @@ func (s *SecShell) processCommand(input string) {
 				case "-i":
 					history.InteractiveHistorySearch(s.history, s.processCommand) // Run interactive history search
 				case "clear":
+					s.history = []string{}
 					core.ClearHistory(s.historyFile)
 				default:
 					logging.LogAlert("Invalid history option. Use -s for search or -i for interactive mode.")
@@ -1429,22 +1431,6 @@ func isSignalKilled(err error) bool {
 		}
 	}
 	return false
-}
-
-// Helper min function
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// Helper max function
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 // main function to start the shell
