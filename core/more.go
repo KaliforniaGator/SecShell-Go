@@ -185,16 +185,6 @@ func (m *MorePager) handleNavigationInput(char byte) bool {
 		m.searchMatches = []int{}
 		m.currentMatch = -1
 
-	case 'n', 'N':
-		if m.currentPage < m.totalPages-1 {
-			m.currentPage++
-		}
-
-	case 'p', 'P':
-		if m.currentPage > 0 {
-			m.currentPage--
-		}
-
 	case 'h', 'H':
 		m.showHelp = !m.showHelp
 
@@ -447,7 +437,7 @@ func (m *MorePager) renderStatusLine() {
 	if m.searchMode {
 		fmt.Printf("\r/\033[36m%s\033[0m", m.searchQuery)
 	} else if m.showHelp {
-		fmt.Print("\r\033[33mCommands: q:quit, /:search, c:clear search, n:next, p:prev, ↑↓:navigate matches, w:toggle wrap, h:help\033[0m")
+		fmt.Print("\r\033[33mCommands: q:quit, /:search, c:clear search, ↑↓:navigate , w:toggle wrap, h:help\033[0m")
 	} else {
 		matchInfo := ""
 		if len(m.searchMatches) > 0 {
