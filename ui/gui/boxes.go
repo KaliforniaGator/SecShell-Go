@@ -171,6 +171,11 @@ func GetTerminalHeight() int {
 	return height
 }
 
+func newLine() {
+	// Print a new line
+	fmt.Print("\n")
+}
+
 // Estimate the width of a string based on average character width
 func EstimateStringWidth(s string) int {
 	// Assume an average width of 8 pixels per character
@@ -203,6 +208,7 @@ func TitleBox(text string) {
 	if height < 0 {
 		height = 3
 	}
+	newLine()
 	PrintBanner(text, "double", colors.BoldWhite, "", colors.BoldWhite, width, height, TextAlignment{
 		Horizontal: "center",
 		Vertical:   "center",
@@ -219,6 +225,7 @@ func ErrorBox(text string) {
 	if height < 0 {
 		height = 3
 	}
+	newLine()
 	PrintBanner(text, "single", colors.BoldRed, "", colors.BoldRed, width, height, TextAlignment{
 		Horizontal: "center",
 		Vertical:   "center",
@@ -234,6 +241,7 @@ func SuccessBox(text string) {
 	if height < 0 {
 		height = 3
 	}
+	newLine()
 	PrintBanner(text, "single", colors.BoldGreen, "", colors.BoldGreen, width, height, TextAlignment{
 		Horizontal: "center",
 		Vertical:   "center",
@@ -249,6 +257,7 @@ func WarningBox(text string) {
 	if height < 0 {
 		height = 3
 	}
+	newLine()
 	PrintBanner(text, "single", colors.BoldYellow, "", colors.BoldYellow, width, height, TextAlignment{
 		Horizontal: "center",
 		Vertical:   "center",
@@ -264,6 +273,7 @@ func InfoBox(text string) {
 	if height < 0 {
 		height = 3
 	}
+	newLine()
 	PrintBanner(text, "single", colors.BoldCyan, "", colors.BoldCyan, width, height, TextAlignment{
 		Horizontal: "center",
 		Vertical:   "center",
@@ -279,6 +289,7 @@ func DebugBox(text string) {
 	if height < 0 {
 		height = 3
 	}
+	newLine()
 	PrintBanner(text, "single", colors.BoldGray, "", colors.BoldGray, width, height, TextAlignment{
 		Horizontal: "center",
 		Vertical:   "center",
@@ -294,6 +305,7 @@ func AlertBox(text string) {
 	if height < 0 {
 		height = 3
 	}
+	newLine()
 	PrintBanner(text, "single", colors.BoldYellow, "", colors.BoldYellow, width, height, TextAlignment{
 		Horizontal: "center",
 		Vertical:   "center",
