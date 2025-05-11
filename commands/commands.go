@@ -86,6 +86,45 @@ func CompleteCommand(line string, pos int) (string, int) {
 		return newLine, len(newLine)
 	}
 
+	// Special handling for ./ script completion
+	if len(words) == 1 && strings.HasPrefix(lastWord, "./") {
+		scriptPrefix := lastWord[2:] // Remove "./" from the prefix
+		currentDir, err := os.Getwd()
+		if err == nil {
+			matches, _ := filepath.Glob(filepath.Join(currentDir, scriptPrefix+"*"))
+			var execMatches []string
+
+			// Filter for executable files
+			for _, match := range matches {
+				info, err := os.Stat(match)
+				if err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
+					// Keep the "./" prefix in the matches
+					execMatches = append(execMatches, "./"+filepath.Base(match))
+				}
+			}
+
+			if len(execMatches) > 0 {
+				words[len(words)-1] = execMatches[0]
+				newLine := strings.Join(words, " ")
+				ui.ClearLine()
+				ui.ClearLineAndPrintBottom()
+				fmt.Print(newLine)
+
+				if len(execMatches) > 1 {
+					fmt.Println()
+					for _, match := range execMatches {
+						fmt.Print(match + "  ")
+					}
+					fmt.Println()
+					ui.ClearLineAndPrintBottom()
+					fmt.Print(newLine)
+				}
+				return newLine, len(newLine)
+			}
+		}
+		return line, pos
+	}
+
 	// Command completion for first word
 	if len(words) == 1 {
 		// Command completion

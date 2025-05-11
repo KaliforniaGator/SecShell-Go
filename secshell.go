@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -909,6 +910,98 @@ func (s *SecShell) parseQuotedArgs(args []string) []string {
 
 // executePipedCommands executes a series of piped commands
 func (s *SecShell) executePipedCommands(commands []string) {
+	// Special handling for 'more' as the last command
+	if strings.TrimSpace(commands[len(commands)-1]) == "more" {
+		// Create a pipe for the output of all previous commands
+		pr, pw := io.Pipe()
+
+		// Execute all commands except 'more'
+		var cmds []*exec.Cmd
+		for i := 0; i < len(commands)-1; i++ {
+			args := strings.Fields(strings.TrimSpace(commands[i]))
+			if len(args) == 0 {
+				continue
+			}
+			cmd := exec.Command(args[0], args[1:]...)
+			// Set process group for each command
+			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+			cmds = append(cmds, cmd)
+		}
+
+		// Set up signal handling to kill all processes in pipeline
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT)
+		go func() {
+			<-sigChan
+			for _, cmd := range cmds {
+				if cmd.Process != nil {
+					// Kill entire process group
+					pgid, err := syscall.Getpgid(cmd.Process.Pid)
+					if err == nil {
+						syscall.Kill(-pgid, syscall.SIGKILL)
+					}
+				}
+			}
+			pw.Close()
+		}()
+		defer signal.Stop(sigChan)
+
+		// Set up the pipeline
+		for i := 0; i < len(cmds)-1; i++ {
+			stdout, err := cmds[i].StdoutPipe()
+			if err != nil {
+				logging.LogError(err)
+				gui.ErrorBox(fmt.Sprintf("Failed to set up pipeline: %s", err))
+				return
+			}
+			cmds[i+1].Stdin = stdout
+		}
+
+		// Set first command's stdin to os.Stdin and last command's stdout to our pipe
+		if len(cmds) > 0 {
+			cmds[0].Stdin = os.Stdin
+			cmds[len(cmds)-1].Stdout = pw
+			cmds[len(cmds)-1].Stderr = os.Stderr
+		}
+
+		// Start all commands
+		for _, cmd := range cmds {
+			if err := cmd.Start(); err != nil {
+				logging.LogError(err)
+				gui.ErrorBox(fmt.Sprintf("Failed to start command: %s", err))
+				return
+			}
+		}
+
+		// Read the output in a goroutine
+		var lines []string
+		go func() {
+			scanner := bufio.NewScanner(pr)
+			for scanner.Scan() {
+				lines = append(lines, scanner.Text())
+			}
+			pw.Close()
+		}()
+
+		// Wait for all commands to finish
+		for _, cmd := range cmds {
+			if err := cmd.Wait(); err != nil && !isSignalKilled(err) {
+				logging.LogError(err)
+			}
+		}
+
+		// Close the pipe writer to signal EOF
+		pw.Close()
+
+		// Now pass the collected lines to More
+		err := core.More(lines)
+		if err != nil {
+			logging.LogError(err)
+			gui.ErrorBox(fmt.Sprintf("More failed: %s", err))
+		}
+		return
+	}
+
 	var cmds []*exec.Cmd
 	files := make([]*os.File, 0)
 
