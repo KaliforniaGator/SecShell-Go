@@ -24,6 +24,10 @@ var (
 	White   = "\033[97m"
 	Black   = "\033[30m"
 
+	// Text Styles
+	Underline = "\033[4m"
+	Italic    = "\033[3m"
+
 	// Bold Gray Variants
 	BoldGray1 = "\033[1;38;5;232m"
 	BoldGray2 = "\033[1;38;5;235m"
@@ -96,6 +100,10 @@ var (
 		"white":  White,
 		"black":  Black,
 
+		// Text Styles
+		"underline": Underline,
+		"italic":    Italic,
+
 		// Bold colors
 		"bold_red":    BoldRed,
 		"bold_green":  BoldGreen,
@@ -154,6 +162,10 @@ func init() {
 		BoldCyan = ""
 		BoldGray = ""
 		BoldWhite = ""
+
+		Underline = "" // Disable Underline on Windows
+		Italic = ""    // Disable Italic on Windows
+
 		BgBlack = ""
 		BgRed = ""
 		BgGreen = ""

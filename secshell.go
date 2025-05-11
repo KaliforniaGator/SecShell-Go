@@ -869,6 +869,9 @@ func (s *SecShell) processCommand(input string) {
 
 		case "test":
 			tests.TestSegmentsApp()
+		case "changelog":
+			// Display changelog
+			update.DisplayChangelog()
 		default:
 			// Handle quoted arguments
 			args = s.parseQuotedArgs(args)
