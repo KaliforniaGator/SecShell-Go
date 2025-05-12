@@ -60,6 +60,7 @@ var HelpCommands = []string{
 	"more",
 	"edit",
 	"features",
+	"changelog", // Added changelog command
 }
 
 // HelpTopics contains detailed help information for each command
@@ -428,6 +429,13 @@ Options:
 		Description: "List all available features",
 		Usage:       "features",
 		Examples:    []string{"features"},
+		Category:    "System",
+	},
+	"changelog": { // Added help topic for changelog
+		Command:     "changelog",
+		Description: "Display the application changelog",
+		Usage:       "changelog",
+		Examples:    []string{"changelog"},
 		Category:    "System",
 	},
 }
