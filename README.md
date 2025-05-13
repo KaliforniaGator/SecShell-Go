@@ -39,8 +39,8 @@ ________________________________________________________________________________
 | `exit`                 | Exit the shell (admin only).                                                                        |
 | `services`             | Manage system services.<br>Usage: `services <start,stop,restart,status,list> <service_name>`        |
 | `jobs`                 | Manage background jobs.<br>Usage: `jobs <list,stop,start,status,clear-finished> [pid]`              |
-| `cd`                   | Change directory.<br>Usage: `cd [directory]`                                                        |
-| `history`              | Show command history.<br>Usage: `history`, `history -s <query>`, `history -i`, `history clear`      |
+| `cd`                   | Change directory.<br>Usage: `cd (--prev | -p) [directory]`                                                        |
+| `history`              | Show command history.<br>Usage: `history [-s <query> | -i | clear]<br>&nbsp;&nbsp;Supports: !<num>, !!`      |
 | `export`               | Set an environment variable.<br>Usage: `export VAR=value`                                           |
 | `env`                  | List all environment variables.                                                                     |
 | `unset`                | Unset an environment variable.<br>Usage: `unset VAR`                                                |
@@ -57,6 +57,8 @@ ________________________________________________________________________________
 | `date`                 | Show current date.                                                                                  |
 | `--version`            | Display current version.                                                                            |
 | `--update`             | Update SecShell to the latest version.                                                              |
+| `features`             | List all available features.<br>Usage: `features`                                                   |
+| `changelog`            | Display the application changelog.<br>Usage: `changelog`                                            |
 | **Pentesting Tools**   |                                                                                                     |
 | `portscan`             | Advanced port scanner.<br>Usage: `portscan [options] <target>`<br>                                 |
 |                        | Options:<br>                                                                                        |
@@ -82,7 +84,7 @@ ________________________________________________________________________________
 |                        | &nbsp;&nbsp;`-v, --verbose`<br>                                                                     |
 |                        | &nbsp;&nbsp;`--follow-redirects`<br>                                                                |
 |                        | &nbsp;&nbsp;`--cookie <cookie>`<br>                                                                 |
-|                        | &nbsp;&nbsp;`--auth <user:pass>`<br>                                                                |
+|                        | &nbsp;&nbsp;`--auth <token>`<br>                                                                |
 |                        | &nbsp;&nbsp;`-f, --format <text|json|html>`<br>                                                     |
 |                        | &nbsp;&nbsp;`-o, --output <file>`<br>                                                               |
 | `payload`              | Generate reverse shell payload.<br>Usage: `payload <ip-address> <port>`                             |
@@ -93,19 +95,23 @@ ________________________________________________________________________________
 |                        | &nbsp;&nbsp;`session -c <port>` (listen for new session)<br>                                        |
 |                        | &nbsp;&nbsp;`session -k <id>` (kill session)                                                        |
 | **Encoding/Decoding**  |                                                                                                     |
-| `base64`               | Encode/decode Base64.<br>Usage: `base64 [-e|-d] <string>` or `base64 [-e|-d] -f <file> [> output]`  |
-| `hex`                  | Encode/decode Hex.<br>Usage: `hex [-e|-d] <string>` or `hex [-e|-d] -f <file> [> output]`           |
-| `urlencode`, `url`     | Encode/decode URL.<br>Usage: `urlencode [-e|-d] <string> [> output]`                                |
-| `binary`               | Encode/decode binary.<br>Usage: `binary [-e|-d] <string>` or `binary [-e|-d] -f <file> [> output]`  |
+| `base64`               | Encode/decode Base64.<br>Usage: `base64 [-e|-d] <string> OR base64 [-e|-d] -f <file> [> output_file]`  |
+| `hex`                  | Encode/decode Hex.<br>Usage: `hex [-e|-d] <string> OR hex [-e|-d] -f <file> [> output_file]`           |
+| `urlencode`, `url`     | Encode/decode URL.<br>Usage: `urlencode [-e|-d] <string> [> output_file]`                                |
+| `binary`               | Encode/decode binary.<br>Usage: `binary [-e|-d] <string> OR binary [-e|-d] -f <file> [> output_file]`  |
 | **Hashing**            |                                                                                                     |
-| `hash`                 | Calculate or compare hashes.<br>Usage: `hash -s|-f <string|file> [md5|sha1|sha256|sha512|all] [-c <hash>] [-o <file>]` |
+| `hash`                 | Calculate or compare hashes.<br>Usage: `hash -s|-f <String|file> [algo] [-c <hash-to-compare>]<br>&nbsp;&nbsp;Algo: md5, sha1, sha256, sha512, all` |
 | **Analysis**           |                                                                                                     |
-| `extract-strings`      | Extract printable strings from binaries.<br>Usage: `extract-strings <file> [-n min-len]`            |
+| `extract-strings`      | Extract printable strings from binaries.<br>Usage: `extract-strings <file> [-n min-len] [-o output.json]<br>&nbsp;&nbsp;(or > output.json)`            |
 | **Scripting**          |                                                                                                     |
 | `./<script>`           | Execute scripts with automatic interpreter detection.                                               |
 | **UI/Display**         |                                                                                                     |
-| `more`                 | Display text files or command output with interactive paging and search.<br>Usage: `more <file>` or `command | more` |
+| `more`                 | Display text files or command output with interactive paging and search.<br>Usage: `more <file>` or `command | more` or `more < input_file` |
 | `edit`                 | Open a file in the built-in text editor.<br>Usage: `edit <filename>`                                |
+| `colors`               | Display all available colors and styles.<br>Usage: `colors`                                         |
+| `edit-prompt`          | Edit the command prompt.<br>Usage: `edit-prompt`                                                    |
+| `reload-prompt`        | Reload the command prompt configuration.<br>Usage: `reload-prompt`                                  |
+| `prompt`               | Display the current command prompt configuration and options.<br>Usage: `prompt`                    |
 --------------------------------------------------------------------------------------------------------------------------------
 
 ---

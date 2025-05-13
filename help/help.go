@@ -60,7 +60,11 @@ var HelpCommands = []string{
 	"more",
 	"edit",
 	"features",
-	"changelog", // Added changelog command
+	"changelog",
+	"colors",
+	"edit-prompt",
+	"reload-prompt",
+	"prompt",
 }
 
 // HelpTopics contains detailed help information for each command
@@ -436,6 +440,34 @@ Options:
 		Description: "Display the application changelog",
 		Usage:       "changelog",
 		Examples:    []string{"changelog"},
+		Category:    "System",
+	},
+	"colors": { // Added help topic for colors
+		Command:     "colors",
+		Description: "Display all available colors and styles",
+		Usage:       "colors",
+		Examples:    []string{"colors"},
+		Category:    "System",
+	},
+	"edit-prompt": { // Added help topic for edit-prompt
+		Command:     "edit-prompt",
+		Description: "Edit the command prompt",
+		Usage:       "edit-prompt",
+		Examples:    []string{"edit-prompt"},
+		Category:    "System",
+	},
+	"reload-prompt": { // Added help topic for reload-prompt
+		Command:     "reload-prompt",
+		Description: "Reload the command prompt configuration",
+		Usage:       "reload-prompt",
+		Examples:    []string{"reload-prompt"},
+		Category:    "System",
+	},
+	"prompt": { // Added help topic for prompt
+		Command:     "prompt",
+		Description: "Display the current command prompt configuration and options",
+		Usage:       "prompt",
+		Examples:    []string{"prompt"},
 		Category:    "System",
 	},
 }

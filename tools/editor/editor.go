@@ -32,6 +32,7 @@ const (
 	keyEscape          rune = 27   // ASCII Escape
 	keyShiftArrowLeft  rune = 1009 // Arbitrary
 	keyShiftArrowRight rune = 1010 // Arbitrary
+	tabWidth                = 4    // Visual width of a tab character
 )
 
 // Position represents a coordinate in the text buffer
@@ -233,12 +234,18 @@ func (e *Editor) scroll() {
 		e.offsetY = 0
 	}
 
-	// Horizontal scroll
-	if e.cursorX < e.offsetX {
-		e.offsetX = e.cursorX
+	// Horizontal scroll needs to consider visual position
+	currentLine := ""
+	if e.cursorY >= 0 && e.cursorY < len(e.lines) {
+		currentLine = e.lines[e.cursorY]
 	}
-	if e.cursorX >= e.offsetX+e.termWidth {
-		e.offsetX = e.cursorX - e.termWidth + 1
+	visualCursorX := calculateVisualX(currentLine, e.cursorX)
+
+	if visualCursorX < e.offsetX {
+		e.offsetX = visualCursorX
+	}
+	if visualCursorX >= e.offsetX+e.termWidth {
+		e.offsetX = visualCursorX - e.termWidth + 1
 	}
 }
 
@@ -255,15 +262,55 @@ func (e *Editor) refreshScreen() {
 	e.drawRows(&sb)
 	e.drawStatusBar(&sb)
 
-	// Position cursor after drawing everything else
-	cursorDrawX := e.cursorX - e.offsetX
+	// Calculate visual cursor position
+	currentLine := ""
+	if e.cursorY >= 0 && e.cursorY < len(e.lines) {
+		currentLine = e.lines[e.cursorY]
+	}
+	visualCursorX := calculateVisualX(currentLine, e.cursorX) - e.offsetX
 	cursorDrawY := e.cursorY - e.offsetY
-	sb.WriteString(gui.MoveCursorCmd(cursorDrawY, cursorDrawX)) // Note: row, col order for ANSI
+	sb.WriteString(gui.MoveCursorCmd(cursorDrawY, visualCursorX)) // Note: row, col order for ANSI
 
 	sb.WriteString(gui.ShowCursor()) // \x1b[?25h
 
 	// Write the buffer to the terminal at once
 	fmt.Print(sb.String())
+}
+
+// calculateVisualX is a helper function to calculate visual position of a rune index in a line
+func calculateVisualX(line string, runeIndex int) int {
+	visualX := 0
+	runes := []rune(line)
+	for i := 0; i < runeIndex && i < len(runes); i++ {
+		if runes[i] == '\t' {
+			// Round up to the next tab stop
+			visualX = ((visualX + tabWidth) / tabWidth) * tabWidth
+		} else {
+			visualX++
+		}
+	}
+	return visualX
+}
+
+// visualToRuneIndex is a helper function to convert visual position to rune index
+func visualToRuneIndex(line string, visualX int) int {
+	currentVisualX := 0
+	runes := []rune(line)
+	for i := 0; i < len(runes); i++ {
+		if currentVisualX >= visualX {
+			return i
+		}
+		if runes[i] == '\t' {
+			// Round up to the next tab stop
+			currentVisualX = ((currentVisualX + tabWidth) / tabWidth) * tabWidth
+		} else {
+			currentVisualX++
+		}
+		if currentVisualX > visualX {
+			return i
+		}
+	}
+	return len(runes)
 }
 
 // normalizeSelection ensures start is before end
@@ -319,24 +366,50 @@ func (e *Editor) drawRows(sb *strings.Builder) {
 		} else {
 			line := e.lines[fileRow]
 			runes := []rune(line) // Work with runes for correct indexing/slicing
-			lineLen := len(runes)
+			visualX := 0
+			runeIdx := 0
 
-			for x := 0; x < e.termWidth; x++ {
-				fileCol := x + e.offsetX // Actual column index in the file line
-				if fileCol < lineLen {
-					runeToDraw := runes[fileCol]
-					if e.isSelected(fileRow, fileCol) {
-						sb.WriteString(gui.ReverseVideo()) // Start highlight
-						sb.WriteRune(runeToDraw)
-						sb.WriteString(gui.ResetVideo()) // End highlight
-					} else {
-						sb.WriteRune(runeToDraw)
-					}
-				} else if fileCol == lineLen && e.isSelected(fileRow, fileCol) {
+			for visualX < e.offsetX && runeIdx < len(runes) {
+				if runes[runeIdx] == '\t' {
+					visualX = ((visualX + tabWidth) / tabWidth) * tabWidth
+				} else {
+					visualX++
+				}
+				runeIdx++
+			}
+
+			screenX := 0
+			for screenX < e.termWidth && runeIdx < len(runes) {
+				if e.isSelected(fileRow, runeIdx) {
 					sb.WriteString(gui.ReverseVideo())
-					sb.WriteString(" ") // Represent selected newline/end-of-line
+				}
+
+				if runes[runeIdx] == '\t' {
+					// Draw spaces for tab
+					tabStop := ((visualX + tabWidth) / tabWidth) * tabWidth
+					for visualX < tabStop && screenX < e.termWidth {
+						sb.WriteRune(' ')
+						visualX++
+						screenX++
+					}
+				} else {
+					sb.WriteRune(runes[runeIdx])
+					visualX++
+					screenX++
+				}
+
+				if e.isSelected(fileRow, runeIdx) {
 					sb.WriteString(gui.ResetVideo())
 				}
+				runeIdx++
+			}
+
+			// Handle selection at end of line
+			if e.isSelected(fileRow, len(runes)) && screenX < e.termWidth {
+				sb.WriteString(gui.ReverseVideo())
+				sb.WriteString(" ")
+				sb.WriteString(gui.ResetVideo())
+				screenX++
 			}
 		}
 		sb.WriteString(gui.ClearLineSuffix()) // Clear rest of the terminal line

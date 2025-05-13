@@ -11,11 +11,12 @@ var WhitelistPath = filepath.Join(ConfigDir, ".whitelist")
 var VersionPath = filepath.Join(ConfigDir, ".ver")
 var HistoryPath = filepath.Join(ConfigDir, ".history")
 var LogFilePath = filepath.Join(ConfigDir, ".secshell_audit.log")
+var PromptConfigFile = filepath.Join(ConfigDir, "secshell_prompt.conf")
 
 // Define a list of built-in commands
 var BuiltInCommands = []string{
 	//Regular commands
-	"allowed", "help", "features", "exit", "edit", "logs", "more", "services", "jobs", "cd", "history", "export", "env", "unset",
+	"allowed", "help", "changelog", "features", "exit", "edit", "edit-prompt", "reload-prompt", "logs", "more", "services", "jobs", "cd", "history", "export", "env", "unset",
 	"reload-blacklist", "blacklist", "edit-blacklist", "whitelist", "edit-whitelist",
 	"reload-whitelist", "download", "time", "date", "--version", "--update",
 	// Add pentesting commands
