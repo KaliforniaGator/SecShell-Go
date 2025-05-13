@@ -5,8 +5,13 @@ import (
 	"os"
 	"secshell/colors"
 	"secshell/drawbox"
+	"secshell/ui/chars"
 	"secshell/ui/gui"
+	"strings"
 )
+
+// Var for Prompt Options
+var PromptOptions = promptOptions{}
 
 func DisplayWelcomeScreen(version string, needsUpdate bool) {
 	// Check for Update
@@ -51,9 +56,63 @@ func DisplayWelcomeScreen(version string, needsUpdate bool) {
 	}
 
 	fmt.Printf("\n%sType 'help' for available commands%s\n\n", colors.BoldCyan, colors.Reset)
+	InitPrompt()
 }
 
-func DisplayPrompt() {
+type promptOptions struct {
+	PromptType        string
+	PromptEndCaps     string
+	PromptEndCapColor string
+	PromptBackground  string
+	PromptText        string
+	PromptDivider     string
+	PromptLogoColor   string
+	PromptUserColor   string
+	PromptHostColor   string
+	PromptDirColor    string
+}
+
+func NewPrompt(opts promptOptions) {
+
+	var CornerColor = colors.BoldGreen
+	var TopLeftCorner = chars.RoundedCornerLeftTop
+	var BottomLeftCorner = chars.RoundedCornerLeftBottom
+	var CornerSpacer = "─"
+	var LeftEndCap = chars.LeftCircleHalfFilled
+	var RightEndCap = chars.RightCircleHalfFilled
+	var EndCapColor = colors.Gray2
+	var Divider = chars.RightArrow
+	var DividerColor = colors.BoldGreen
+	var Logo = "[SecShell]"
+	var LogoColor = colors.BoldGreen
+	var UserColor = colors.BoldCyan
+	var HostColor = colors.BoldCyan
+	var DirColor = colors.BoldYellow
+	var PromptBackground = colors.BgGray2
+
+	if opts.PromptBackground != "" {
+		PromptBackground = colors.ColorMap[opts.PromptBackground]
+	}
+	if opts.PromptEndCapColor != "" {
+		EndCapColor = colors.ColorMap[opts.PromptEndCapColor]
+	}
+	if opts.PromptText != "" {
+		Logo = opts.PromptText
+	}
+	if opts.PromptLogoColor != "" {
+		LogoColor = colors.ColorMap[opts.PromptLogoColor]
+	}
+	if opts.PromptUserColor != "" {
+		UserColor = colors.ColorMap[opts.PromptUserColor]
+	}
+	if opts.PromptHostColor != "" {
+		HostColor = colors.ColorMap[opts.PromptHostColor]
+	}
+	if opts.PromptDirColor != "" {
+		DirColor = colors.ColorMap[opts.PromptDirColor]
+	}
+	// Get the current user and host
+
 	user := os.Getenv("USER")
 	if user == "" {
 		user = "unknown"
@@ -62,25 +121,259 @@ func DisplayPrompt() {
 	cwd, err := os.Getwd()
 	if err != nil {
 		gui.ErrorBox("Failed to get current working directory")
-		return
 	}
 
-	// Background color for the bar
-	textReset := colors.Reset
-	bgReset := colors.BgReset
-	frameColor := colors.BoldGreen
-	bgColor := colors.BgGray2
-	endCapColor := colors.Gray2   // End caps should match the background
-	logoColor := colors.BoldGreen // Text should contrast with the background
-	userColor := colors.BoldCyan  // User/host should have a different color
-	dirColor := colors.BoldYellow // Directory should have a different color
+	switch opts.PromptDivider {
+	case "arrow":
+		Divider = chars.RightArrow
+	case "thin":
+		Divider = chars.ThinRightArrow
+	case "round":
+		Divider = chars.RightCircleHalf
+	case "glitch":
+		Divider = chars.GlitchDivider
+	case "dashed":
+		Divider = chars.ThreeDashedVertical
+	case "simple":
+		Divider = chars.SimpleLine
+	default:
+		Divider = chars.RightArrow
+	}
 
-	// Print top bar with seamless end caps and proper alignment
-	fmt.Printf("\n%s╭─%s%s%s [SecShell] %s %s@%s %s%s %s %s%s%s\n",
-		frameColor, endCapColor, bgColor, logoColor, userColor, user, host, frameColor, dirColor, cwd, bgReset, endCapColor, textReset)
+	switch opts.PromptEndCaps {
+	case "rounded":
+		LeftEndCap = chars.LeftCircleHalfFilled
+		RightEndCap = chars.RightCircleHalfFilled
+	case "arrow":
+		LeftEndCap = chars.LeftArrowFilled
+		RightEndCap = chars.RightArrowFilled
+	case "flame":
+		LeftEndCap = chars.LeftFlameFilled
+		RightEndCap = chars.RightFlameFilled
+	case "glitch":
+		LeftEndCap = chars.LeftGlitchFilled
+		RightEndCap = chars.RightGlitchFilled
+	default:
+		LeftEndCap = chars.LeftCircleHalfFilled
+		RightEndCap = chars.RightCircleHalfFilled
+	}
 
-	// Print bottom input line
-	fmt.Printf("%s╰─%s$ %s", frameColor, colors.BoldWhite, textReset)
+	switch opts.PromptType {
+	case "rounded":
+		TopLeftCorner = chars.RoundedCornerLeftTop
+		BottomLeftCorner = chars.RoundedCornerLeftBottom
+	case "square":
+		TopLeftCorner = chars.SquareCornerLeftTop
+		BottomLeftCorner = chars.SquareCornerLeftBottom
+	case "double":
+		TopLeftCorner = chars.DoubleCornerLeftTop
+		BottomLeftCorner = chars.DoubleCornerLeftBottom
+		CornerSpacer = "═"
+	default:
+		TopLeftCorner = chars.RoundedCornerLeftTop
+		BottomLeftCorner = chars.RoundedCornerLeftBottom
+	}
+
+	// PromptOrder (
+	// CornerColor,
+	// TopLeftCorner,
+	// EndCapColor,
+	// EndCapLeft,
+	// Space,
+	// BackgroundColor,
+	// LogoColor,
+	// Logo,
+	// Space,
+	// DividerColor,
+	// Divider,
+	// Space,
+	// UserColor,
+	// User,
+	// @,
+	// HostColor,
+	// Host,
+	// Space,
+	// DividerColor,
+	// Divider,
+	// Space,
+	// DirColor,
+	// Dir,
+	// Space,
+	// EndCapColor,
+	// EndCapRight,)
+
+	fmt.Printf("\n%s%s%s%s%s%s %s%s %s%s %s%s@%s%s %s%s %s%s %s%s%s", CornerColor, TopLeftCorner, CornerSpacer, EndCapColor, LeftEndCap, PromptBackground, LogoColor, Logo, DividerColor, Divider, UserColor, user, HostColor, host, DividerColor, Divider, DirColor, cwd, colors.Reset, EndCapColor, RightEndCap)
+	fmt.Printf("\n%s%s%s%s$ %s", CornerColor, BottomLeftCorner, CornerSpacer, colors.BoldWhite, colors.Reset)
+
+}
+
+func ParsePromptOptions(configFile string) promptOptions {
+	// Default options
+	opts := promptOptions{
+		PromptType:        "rounded",
+		PromptEndCaps:     "rounded",
+		PromptEndCapColor: "gray2",
+		PromptBackground:  "bg_gray2",
+		PromptText:        "[SecShell]",
+		PromptDivider:     "arrow",
+	}
+
+	// If no config file is provided, return defaults
+	if configFile == "" {
+		return opts
+	}
+
+	// Read the config file
+	data, err := os.ReadFile(configFile)
+	if err != nil {
+		fmt.Printf("%sWarning: Could not read prompt config file: %v%s\n", colors.Yellow, err, colors.Reset)
+		return opts
+	}
+
+	// Parse the config file content
+	lines := strings.Split(string(data), "\n")
+	inConfigSection := false
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// Check for config section start/end
+		if line == "CONFIG {" {
+			inConfigSection = true
+			continue
+		}
+		if line == "}" {
+			inConfigSection = false
+			continue
+		}
+
+		// Skip if not in config section or empty line
+		if !inConfigSection || line == "" {
+			continue
+		}
+
+		// Parse key-value pairs
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key := strings.TrimSpace(parts[0])
+		// Remove quotes from value if present
+		value := strings.Trim(strings.TrimSpace(parts[1]), "\"")
+
+		// Apply configuration based on key
+		switch key {
+		case "PROMPT_TYPE":
+			opts.PromptType = value
+		case "PROMPT_ENDCAPS":
+			opts.PromptEndCaps = value
+		case "PROMPT_ENDCAPCOLOR":
+			opts.PromptEndCapColor = value
+		case "PROMPT_BACKGROUND":
+			opts.PromptBackground = value
+		case "PROMPT_TEXT":
+			opts.PromptText = value
+		case "PROMPT_DIVIDER":
+			opts.PromptDivider = value
+		case "PROMPT_LOGOCOLOR":
+			opts.PromptLogoColor = value
+		case "PROMPT_USERCOLOR":
+			opts.PromptUserColor = value
+		case "PROMPT_HOSTCOLOR":
+			opts.PromptHostColor = value
+		case "PROMPT_DIRCOLOR":
+			opts.PromptDirColor = value
+		}
+	}
+
+	return opts
+}
+
+func GetPromptConfigFile() string {
+	// Check if the config file exists
+	configFile := os.Getenv("HOME") + "/.secshell/secshell_prompt.conf"
+	if _, err := os.Stat(configFile); os.IsNotExist(err) {
+		// If it doesn't exist, create a default one
+		defaultConfig := `CONFIG {
+	PROMPT_TYPE = "rounded"
+	PROMPT_ENDCAPS = "rounded"
+	PROMPT_ENDCAPCOLOR = "gray2"
+	PROMPT_BACKGROUND = "bg_gray2"
+	PROMPT_TEXT = "[SecShell]"
+	PROMPT_DIVIDER = "arrow"
+	PROMPT_LOGOCOLOR = "bold_green"
+	PROMPT_USERCOLOR = "bold_cyan"
+	PROMPT_HOSTCOLOR = "bold_cyan"
+	PROMPT_DIRCOLOR = "bold_yellow"
+}`
+		os.WriteFile(configFile, []byte(defaultConfig), 0644)
+		return configFile
+	} else {
+		// If it exists, return the path
+		return configFile
+	}
+}
+
+func InitPrompt() {
+	chars.InitFont()
+
+	// Get the prompt config file
+	configFile := GetPromptConfigFile()
+	// Parse the prompt options from the config file
+	opts := ParsePromptOptions(configFile)
+	if (opts == promptOptions{}) {
+		if (PromptOptions == promptOptions{}) {
+			if (opts == promptOptions{}) {
+				// Set the prompt options
+				opts = promptOptions{
+					PromptType:        "rounded",
+					PromptEndCaps:     "rounded",
+					PromptEndCapColor: "gray2",
+					PromptBackground:  "bg_gray2",
+					PromptText:        "[SecShell]",
+					PromptDivider:     "arrow",
+				}
+			}
+			PromptOptions = opts
+		}
+	} else {
+
+		// Set the prompt options
+		PromptOptions = opts
+
+	}
+}
+
+func DisplayPrompt() {
+
+	NewPrompt(PromptOptions)
+
+}
+
+// DisplayPromptOptions showcases all the Prompt Options and their corresponding values that the user can configure.
+func DisplayPromptOptions() {
+	fmt.Printf("\n%sCurrent Prompt Configuration:%s\n", colors.BoldWhite, colors.Reset)
+	fmt.Printf("  %sPROMPT_TYPE:%s %s%s%s\n", colors.BoldCyan, colors.Reset, colors.Yellow, PromptOptions.PromptType, colors.Reset)
+	fmt.Printf("  %sPROMPT_ENDCAPS:%s %s%s%s\n", colors.BoldCyan, colors.Reset, colors.Yellow, PromptOptions.PromptEndCaps, colors.Reset)
+	fmt.Printf("  %sPROMPT_ENDCAPCOLOR:%s %s%s%s\n", colors.BoldCyan, colors.Reset, colors.Yellow, PromptOptions.PromptEndCapColor, colors.Reset)
+	fmt.Printf("  %sPROMPT_BACKGROUND:%s %s%s%s\n", colors.BoldCyan, colors.Reset, colors.Yellow, PromptOptions.PromptBackground, colors.Reset)
+	fmt.Printf("  %sPROMPT_TEXT:%s %s%s%s\n", colors.BoldCyan, colors.Reset, colors.Yellow, PromptOptions.PromptText, colors.Reset)
+	fmt.Printf("  %sPROMPT_DIVIDER:%s %s%s%s\n", colors.BoldCyan, colors.Reset, colors.Yellow, PromptOptions.PromptDivider, colors.Reset)
+	fmt.Printf("  %sPROMPT_LOGOCOLOR:%s %s%s%s\n", colors.BoldCyan, colors.Reset, colors.Yellow, PromptOptions.PromptLogoColor, colors.Reset)
+	fmt.Printf("  %sPROMPT_USERCOLOR:%s %s%s%s\n", colors.BoldCyan, colors.Reset, colors.Yellow, PromptOptions.PromptUserColor, colors.Reset)
+	fmt.Printf("  %sPROMPT_HOSTCOLOR:%s %s%s%s\n", colors.BoldCyan, colors.Reset, colors.Yellow, PromptOptions.PromptHostColor, colors.Reset)
+	fmt.Printf("  %sPROMPT_DIRCOLOR:%s %s%s%s\n", colors.BoldCyan, colors.Reset, colors.Yellow, PromptOptions.PromptDirColor, colors.Reset)
+
+	fmt.Printf("\n%sAvailable options for PROMPT_DIVIDER:%s %sarrow, thin, round, glitch, dashed, simple%s\n", colors.BoldWhite, colors.Reset, colors.Green, colors.Reset)
+	fmt.Printf("%sAvailable options for PROMPT_ENDCAPS:%s %srounded, arrow, flame, glitch%s\n", colors.BoldWhite, colors.Reset, colors.Green, colors.Reset)
+	fmt.Printf("%sAvailable options for PROMPT_TYPE:%s %srounded, square, double%s\n", colors.BoldWhite, colors.Reset, colors.Green, colors.Reset)
+	fmt.Printf("\n%sYou can configure these options by typing: %sedit-prompt%s\n", colors.Gray, colors.Italic, colors.Reset)
+}
+
+func ReloadPrompt(version string, needsUpdate bool) {
+	// Display the welcome screen
+	DisplayWelcomeScreen(version, needsUpdate)
+	// Display the prompt
 }
 
 func ClearLine() {

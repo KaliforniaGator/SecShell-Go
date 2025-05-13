@@ -1,6 +1,10 @@
 package colors
 
-import "runtime"
+import (
+	"fmt"
+	"runtime"
+	"sort"
+)
 
 var (
 
@@ -208,5 +212,78 @@ func init() {
 		BgBoldGray3 = ""
 		BgBoldGray4 = ""
 		BgBoldGray5 = ""
+	}
+}
+
+// DisplayColors showcases all the colors and their corresponding colormap name.
+func DisplayColors() {
+	fmt.Println("Available colors and styles:")
+
+	categories := map[string][]string{
+		"Regular Colors":           {},
+		"Text Styles":              {},
+		"Bold Colors":              {},
+		"Background Colors":        {},
+		"Gray Variants":            {},
+		"Background Gray Variants": {},
+	}
+
+	// Temporary slices to hold keys for sorting
+	regularColors := []string{}
+	textStyles := []string{}
+	boldColors := []string{}
+	backgroundColors := []string{}
+	grayVariants := []string{}
+	bgGrayVariants := []string{}
+
+	for name := range ColorMap {
+		switch {
+		case name == "underline" || name == "italic":
+			textStyles = append(textStyles, name)
+		case name == "gray1" || name == "gray2" || name == "gray3" || name == "gray4" || name == "gray5":
+			grayVariants = append(grayVariants, name)
+		case name == "bg_gray1" || name == "bg_gray2" || name == "bg_gray3" || name == "bg_gray4" || name == "bg_gray5":
+			bgGrayVariants = append(bgGrayVariants, name)
+		case len(name) > 3 && name[:3] == "bg_":
+			backgroundColors = append(backgroundColors, name)
+		case len(name) > 5 && name[:5] == "bold_":
+			boldColors = append(boldColors, name)
+		default:
+			regularColors = append(regularColors, name)
+		}
+	}
+
+	sort.Strings(regularColors)
+	sort.Strings(textStyles)
+	sort.Strings(boldColors)
+	sort.Strings(backgroundColors)
+	sort.Strings(grayVariants)
+	sort.Strings(bgGrayVariants)
+
+	categories["Regular Colors"] = regularColors
+	categories["Text Styles"] = textStyles
+	categories["Bold Colors"] = boldColors
+	categories["Background Colors"] = backgroundColors
+	categories["Gray Variants"] = grayVariants
+	categories["Background Gray Variants"] = bgGrayVariants
+
+	categoryOrder := []string{
+		"Regular Colors",
+		"Text Styles",
+		"Bold Colors",
+		"Background Colors",
+		"Gray Variants",
+		"Background Gray Variants",
+	}
+
+	for _, categoryName := range categoryOrder {
+		names := categories[categoryName]
+		if len(names) > 0 {
+			fmt.Printf("\n%s%s%s:\n", BoldWhite, categoryName, Reset)
+			for _, name := range names {
+				code := ColorMap[name]
+				fmt.Printf("%s%s%s - %s\n", code, "Sample Text", Reset, name)
+			}
+		}
 	}
 }

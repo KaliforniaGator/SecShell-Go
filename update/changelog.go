@@ -16,6 +16,29 @@ type ChangelogItem struct {
 // changelogData stores all changelog entries, newest first.
 var changelogData = []ChangelogItem{
 	{
+		Version: "1.3.0",
+		Date:    "2025-05-12",
+		Sections: map[string][]string{
+			"🚀 New Features": {
+				"Fully configurable prompt with Colors, Endcaps, Logo, and More.",
+				"Fully Integrated NerdFont support.",
+				"New commands: edit-prompt, reload-prompt, colors, prompt.",
+			},
+			"🐛 Bug Fixes": {
+				"Fixes issue with built-in editor not accounting for Tab characters.",
+			},
+			"⚙️ Under the Hood": {
+				"New prompt system with full customization.",
+				"New NerdFont system for better font rendering.",
+			},
+			"⚠️ Known Issues": {
+				"Interactive history and More utility having visual scrollback buffer issues.",
+				"Some GUI elements may not render correctly on certain terminals.",
+				"Some ANSI codes may not be supported on all terminals.",
+			},
+		},
+	},
+	{
 		Version: "1.2.9",
 		Date:    "2025-05-10",
 		Sections: map[string][]string{

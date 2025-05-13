@@ -864,6 +864,20 @@ func (s *SecShell) processCommand(input string) {
 			editor.EditCommand(args[1:])
 			return
 
+		case "prompt":
+			ui.DisplayPromptOptions()
+		case "edit-prompt":
+			// Open the prompt file in the default editor
+			editor.EditCommand([]string{globals.PromptConfigFile})
+		case "reload-prompt":
+			version := update.GetCurrentVersion(s.versionFile)
+			latestVersion := update.GetLatestVersion()
+			needsUpdate := IsUpdateNeeded(version, latestVersion)
+			// Reload the prompt
+			ui.ReloadPrompt(version, needsUpdate)
+		case "colors":
+			colors.DisplayColors()
+
 		case "testwindow": // Add this case
 			gui.TestWindowApp() // Call the test function from the gui package
 
