@@ -16,25 +16,80 @@ type ChangelogItem struct {
 // changelogData stores all changelog entries, newest first.
 var changelogData = []ChangelogItem{
 	{
-		Version: "1.3.0",
-		Date:    "2025-05-12",
+		Version: "1.0.0",
+		Date:    "2025-03-09",
 		Sections: map[string][]string{
 			"🚀 New Features": {
-				"Fully configurable prompt with Colors, Endcaps, Logo, and More.",
-				"Fully Integrated NerdFont support.",
-				"New commands: edit-prompt, reload-prompt, colors, prompt.",
+				"Initial release of SecShell.",
+				"Core features: command whitelisting, input sanitization, process isolation.",
+				"Basic functionality: command execution and error handling.",
+			},
+			"✨ Improvements": {
+				"Optimized startup sequence.",
+			},
+		},
+	},
+	{
+		Version: "1.1.0",
+		Date:    "2025-04-12",
+		Sections: map[string][]string{
+			"🚀 New Features": {
+				"Added Auto-completion for commands and files.",
+				"Implemented command history with search functionality.",
+				"Introduced a new help command with categorized sections.",
+			},
+			"✨ Improvements": {
+				"Updated UI elements for better readability.",
+				"Improved error handling for command execution.",
+				"Enhanced input sanitization to prevent command injection.",
 			},
 			"🐛 Bug Fixes": {
-				"Fixes issue with built-in editor not accounting for Tab characters.",
-			},
-			"⚙️ Under the Hood": {
-				"New prompt system with full customization.",
-				"New NerdFont system for better font rendering.",
+				"Fixed minor bugs",
 			},
 			"⚠️ Known Issues": {
 				"Interactive history and More utility having visual scrollback buffer issues.",
-				"Some GUI elements may not render correctly on certain terminals.",
-				"Some ANSI codes may not be supported on all terminals.",
+			},
+		},
+	},
+	{
+		Version: "1.2.0",
+		Date:    "2025-04-15",
+		Sections: map[string][]string{
+			"🚀 New Features": {
+				"Added new Penetration Testing tools: Portscan, Webscan, Hostscan, Payload generator.",
+				"Added better history tracking.",
+				"Added several UI components throughout the application.",
+				"Added new help commands.",
+			},
+			"✨ Improvements": {
+				"Improved command execution. Piping, redirection, and background execution.",
+				"Improved error handling and logging.",
+			},
+			"🐛 Bug Fixes": {
+				"Fixed visual bugs with the payload generator.",
+			},
+			"⚠️ Known Issues": {
+				"Interactive history and More utility having visual scrollback buffer issues.",
+			},
+		},
+	},
+	{
+		Version: "1.2.4",
+		Date:    "2025-04-22",
+		Sections: map[string][]string{
+			"🚀 New Features": {
+				"Complete UI overhaul for better user experience.",
+				"Less reliance on Drawbox for better performance.",
+				"Windows now possible in SecShell.",
+			},
+			"✨ Improvements": {
+				"Improved command execution and error handling.",
+				"Improved UI elements for better readability.",
+				"Improved utilities like More, Built-In Editor, History, Help, and others.",
+			},
+			"🐛 Bug Fixes": {
+				"Fixed endless loops in certain commands.",
+				"Minor bug fixes in the UI.",
 			},
 		},
 	},
@@ -70,84 +125,28 @@ var changelogData = []ChangelogItem{
 		},
 	},
 	{
-		Version: "1.2.4",
-		Date:    "2025-04-22",
+		Version: "1.3.0",
+		Date:    "2025-05-12",
 		Sections: map[string][]string{
 			"🚀 New Features": {
-				"Complete UI overhaul for better user experience.",
-				"Less reliance on Drawbox for better performance.",
-				"Windows now possible in SecShell.",
-			},
-			"✨ Improvements": {
-				"Improved command execution and error handling.",
-				"Improved UI elements for better readability.",
-				"Improved utilities like More, Built-In Editor, History, Help, and others.",
+				"Fully configurable prompt with Colors, Endcaps, Logo, and More.",
+				"Fully Integrated NerdFont support.",
+				"New commands: edit-prompt, reload-prompt, colors, prompt.",
 			},
 			"🐛 Bug Fixes": {
-				"Fixed endless loops in certain commands.",
-				"Minor bug fixes in the UI.",
+				"Fixes issue with built-in editor not accounting for Tab characters.",
 			},
-		},
-	},
-	{
-		Version: "1.2.0",
-		Date:    "2025-04-15",
-		Sections: map[string][]string{
-			"🚀 New Features": {
-				"Added new Penetration Testing tools: Portscan, Webscan, Hostscan, Payload generator.",
-				"Added better history tracking.",
-				"Added several UI components throughout the application.",
-				"Added new help commands.",
-			},
-			"✨ Improvements": {
-				"Improved command execution. Piping, redirection, and background execution.",
-				"Improved error handling and logging.",
-			},
-			"🐛 Bug Fixes": {
-				"Fixed visual bugs with the payload generator.",
+			"⚙️ Under the Hood": {
+				"New prompt system with full customization.",
+				"New NerdFont system for better font rendering.",
 			},
 			"⚠️ Known Issues": {
 				"Interactive history and More utility having visual scrollback buffer issues.",
+				"Some GUI elements may not render correctly on certain terminals.",
+				"Some ANSI codes may not be supported on all terminals.",
 			},
 		},
 	},
-	{
-		Version: "1.1.0",
-		Date:    "2025-04-12",
-		Sections: map[string][]string{
-			"🚀 New Features": {
-				"Added Auto-completion for commands and files.",
-				"Implemented command history with search functionality.",
-				"Introduced a new help command with categorized sections.",
-			},
-			"✨ Improvements": {
-				"Updated UI elements for better readability.",
-				"Improved error handling for command execution.",
-				"Enhanced input sanitization to prevent command injection.",
-			},
-			"🐛 Bug Fixes": {
-				"Fixed minor bugs",
-			},
-			"⚠️ Known Issues": {
-				"Interactive history and More utility having visual scrollback buffer issues.",
-			},
-		},
-	},
-	{
-		Version: "1.0.0",
-		Date:    "2025-03-09",
-		Sections: map[string][]string{
-			"🚀 New Features": {
-				"Initial release of SecShell.",
-				"Core features: command whitelisting, input sanitization, process isolation.",
-				"Basic functionality: command execution and error handling.",
-			},
-			"✨ Improvements": {
-				"Optimized startup sequence.",
-			},
-		},
-	},
-	// Add more changelog entries here as new versions are released
 }
 
 // sectionOrder defines the display order for changelog sections.
