@@ -89,6 +89,7 @@ func NewPrompt(opts promptOptions) {
 	var HostColor = colors.BoldCyan
 	var DirColor = colors.BoldYellow
 	var PromptBackground = colors.BgGray2
+	var FlameSpacer = ""
 
 	if opts.PromptBackground != "" {
 		PromptBackground = colors.ColorMap[opts.PromptBackground]
@@ -150,6 +151,7 @@ func NewPrompt(opts promptOptions) {
 	case "flame":
 		LeftEndCap = chars.LeftFlameFilled
 		RightEndCap = chars.RightFlameFilled
+		FlameSpacer = " "
 	case "glitch":
 		LeftEndCap = chars.LeftGlitchFilled
 		RightEndCap = chars.RightGlitchFilled
@@ -202,7 +204,7 @@ func NewPrompt(opts promptOptions) {
 	// EndCapColor,
 	// EndCapRight,)
 
-	fmt.Printf("\n%s%s%s%s%s%s %s%s %s%s %s%s@%s%s %s%s %s%s %s%s%s", CornerColor, TopLeftCorner, CornerSpacer, EndCapColor, LeftEndCap, PromptBackground, LogoColor, Logo, DividerColor, Divider, UserColor, user, HostColor, host, DividerColor, Divider, DirColor, cwd, colors.Reset, EndCapColor, RightEndCap)
+	fmt.Printf("\n%s%s%s%s%s%s%s%s %s%s %s%s %s%s@%s%s %s%s %s%s %s%s%s", CornerColor, TopLeftCorner, CornerSpacer, colors.BgReset, EndCapColor, LeftEndCap, FlameSpacer, PromptBackground, LogoColor, Logo, DividerColor, Divider, UserColor, user, HostColor, host, DividerColor, Divider, DirColor, cwd, colors.Reset, EndCapColor, RightEndCap)
 	fmt.Printf("\n%s%s%s%s$ %s", CornerColor, BottomLeftCorner, CornerSpacer, colors.BoldWhite, colors.Reset)
 
 }
