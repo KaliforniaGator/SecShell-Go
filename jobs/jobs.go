@@ -136,6 +136,35 @@ func StopJob(jobs map[int]*Job, pid int) {
 	gui.AlertBox(fmt.Sprintf("Job [%d] stopped", pid))
 }
 
+func StopJobClean(jobs map[int]*Job, pid int) string {
+	job, ok := jobs[pid]
+	if !ok {
+		logging.LogAlert(fmt.Sprintf("No such job: %d", pid))
+		return fmt.Sprintf("No such job: %d", pid)
+
+	}
+
+	job.Lock()
+	defer job.Unlock()
+
+	if job.Status != "running" {
+		logging.LogAlert(fmt.Sprintf("Job [%d] is not running", pid))
+		return fmt.Sprintf("Job [%d] is not running", pid)
+
+	}
+
+	// Send interrupt signal to the process
+	if err := job.Process.Signal(os.Interrupt); err != nil {
+		logging.LogError(err)
+		return fmt.Sprintf("Failed to stop job [%d]: %s", pid, err)
+
+	}
+
+	job.Status = "stopped"
+	logging.LogAlert(fmt.Sprintf("Job [%d] stopped", pid))
+	return fmt.Sprintf("Job [%d] stopped", pid)
+}
+
 func GetJobStatus(jobs map[int]*Job, pid int) {
 	job, ok := jobs[pid]
 	if !ok {
@@ -185,6 +214,33 @@ func StartJob(jobs map[int]*Job, pid int) {
 	job.Status = "running"
 	logging.LogAlert(fmt.Sprintf("Job [%d] started", pid))
 	gui.AlertBox(fmt.Sprintf("Job [%d] started", pid))
+}
+
+func StartJobClean(jobs map[int]*Job, pid int) string {
+	job, ok := jobs[pid]
+	if !ok {
+		logging.LogAlert(fmt.Sprintf("No such job: %d", pid))
+		return fmt.Sprintf("No such job: %d", pid)
+	}
+
+	job.Lock()
+	defer job.Unlock()
+
+	if job.Status == "running" {
+		logging.LogAlert(fmt.Sprintf("Job [%d] is already running", pid))
+		return fmt.Sprintf("Job [%d] is already running", pid)
+	}
+
+	// Start the process
+	err := job.Process.Signal(syscall.SIGCONT)
+	if err != nil {
+		logging.LogError(err)
+		return fmt.Sprintf("Failed to start job [%d]: %s", pid, err)
+	}
+
+	job.Status = "running"
+	logging.LogAlert(fmt.Sprintf("Job [%d] started", pid))
+	return fmt.Sprintf("Job [%d] started", pid)
 }
 
 func ClearFinishedJobs(jobs map[int]*Job) {

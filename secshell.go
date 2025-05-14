@@ -456,10 +456,20 @@ func (s *SecShell) processCommand(input string) {
 		case "services":
 			s.manageServices(args)
 		case "jobs":
-			s.manageJobs(args)
+			if len(args) > 1 {
+				if args[1] == "-i" || args[1] == "--interactive" {
+					jobs.InteractiveJobManager(s.jobs)
+				}
+			} else {
+				s.manageJobs(args)
+			}
 		case "help":
 			if len(args) > 1 {
-				help.DisplayHelp(args[1])
+				if args[1] == "-i" || args[1] == "--interactive" {
+					help.InteractiveHelpApp()
+				} else {
+					help.DisplayHelp(args[1])
+				}
 			} else {
 				help.DisplayHelp()
 			}

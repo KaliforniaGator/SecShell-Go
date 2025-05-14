@@ -152,7 +152,8 @@ var changelogData = []ChangelogItem{
 		Date:    "2025-05-13",
 		Sections: map[string][]string{
 			"🚀 New Features": {
-				"No New Features.",
+				"Interactive Help App.",
+				"Interactive Job Manager.",
 			},
 			"✨ Improvements": {
 				"Improved interactive History for better usability.",

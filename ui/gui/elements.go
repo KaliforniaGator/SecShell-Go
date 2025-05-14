@@ -1258,92 +1258,104 @@ func (ta *TextArea) clampCursorCol() {
 
 // InsertChar inserts a rune at the cursor position.
 func (ta *TextArea) InsertChar(r rune) {
-	if ta.maxChars > 0 && ta.charCount >= ta.maxChars && r != '\n' {
-		return
-	}
-	if ta.cursorLine < 0 || ta.cursorLine >= len(ta.Lines) {
+	if ta.IsActive {
+		if ta.maxChars > 0 && ta.charCount >= ta.maxChars && r != '\n' {
+			return
+		}
+		if ta.cursorLine < 0 || ta.cursorLine >= len(ta.Lines) {
+			ta.clampCursorCol()
+		}
+
+		currentLineRunes := []rune(ta.Lines[ta.cursorLine])
+
+		if r == '\n' {
+			textAfterCursor := string(currentLineRunes[ta.cursorCol:])
+			ta.Lines[ta.cursorLine] = string(currentLineRunes[:ta.cursorCol])
+			nextLineIndex := ta.cursorLine + 1
+			ta.Lines = append(ta.Lines[:nextLineIndex], append([]string{textAfterCursor}, ta.Lines[nextLineIndex:]...)...)
+			ta.cursorLine = nextLineIndex
+			ta.cursorCol = 0
+		} else {
+			newLine := string(currentLineRunes[:ta.cursorCol]) + string(r) + string(currentLineRunes[ta.cursorCol:])
+			ta.Lines[ta.cursorLine] = newLine
+			ta.cursorCol++
+		}
+
 		ta.clampCursorCol()
-	}
-
-	currentLineRunes := []rune(ta.Lines[ta.cursorLine])
-
-	if r == '\n' {
-		textAfterCursor := string(currentLineRunes[ta.cursorCol:])
-		ta.Lines[ta.cursorLine] = string(currentLineRunes[:ta.cursorCol])
-		nextLineIndex := ta.cursorLine + 1
-		ta.Lines = append(ta.Lines[:nextLineIndex], append([]string{textAfterCursor}, ta.Lines[nextLineIndex:]...)...)
-		ta.cursorLine = nextLineIndex
-		ta.cursorCol = 0
+		ta.calculateCounts()
+		ta.updateScrollState()
+		ta.ensureCursorVisible()
 	} else {
-		newLine := string(currentLineRunes[:ta.cursorCol]) + string(r) + string(currentLineRunes[ta.cursorCol:])
-		ta.Lines[ta.cursorLine] = newLine
-		ta.cursorCol++
+		return // Ignore input if not active
 	}
-
-	ta.clampCursorCol()
-	ta.calculateCounts()
-	ta.updateScrollState()
-	ta.ensureCursorVisible()
 }
 
 // DeleteChar deletes the character before the cursor (Backspace).
 func (ta *TextArea) DeleteChar() {
-	if ta.cursorLine == 0 && ta.cursorCol == 0 {
+	if ta.IsActive {
+		if ta.cursorLine == 0 && ta.cursorCol == 0 {
+			return
+		}
+		if ta.cursorLine < 0 || ta.cursorLine >= len(ta.Lines) {
+			ta.clampCursorCol()
+		}
+
+		if ta.cursorCol > 0 {
+			currentLineRunes := []rune(ta.Lines[ta.cursorLine])
+			newLine := string(currentLineRunes[:ta.cursorCol-1]) + string(currentLineRunes[ta.cursorCol:])
+			ta.Lines[ta.cursorLine] = newLine
+			ta.cursorCol--
+		} else {
+			prevLineIndex := ta.cursorLine - 1
+			prevLineRunes := []rune(ta.Lines[prevLineIndex])
+			currentLineRunes := []rune(ta.Lines[ta.cursorLine])
+			newCursorCol := len(prevLineRunes)
+			ta.Lines[prevLineIndex] = string(prevLineRunes) + string(currentLineRunes)
+			ta.Lines = append(ta.Lines[:ta.cursorLine], ta.Lines[ta.cursorLine+1:]...)
+			ta.cursorLine = prevLineIndex
+			ta.cursorCol = newCursorCol
+		}
+
+		ta.clampCursorCol()
+		ta.calculateCounts()
+		ta.updateScrollState()
+		ta.ensureCursorVisible()
+	} else {
 		return
 	}
-	if ta.cursorLine < 0 || ta.cursorLine >= len(ta.Lines) {
-		ta.clampCursorCol()
-	}
-
-	if ta.cursorCol > 0 {
-		currentLineRunes := []rune(ta.Lines[ta.cursorLine])
-		newLine := string(currentLineRunes[:ta.cursorCol-1]) + string(currentLineRunes[ta.cursorCol:])
-		ta.Lines[ta.cursorLine] = newLine
-		ta.cursorCol--
-	} else {
-		prevLineIndex := ta.cursorLine - 1
-		prevLineRunes := []rune(ta.Lines[prevLineIndex])
-		currentLineRunes := []rune(ta.Lines[ta.cursorLine])
-		newCursorCol := len(prevLineRunes)
-		ta.Lines[prevLineIndex] = string(prevLineRunes) + string(currentLineRunes)
-		ta.Lines = append(ta.Lines[:ta.cursorLine], ta.Lines[ta.cursorLine+1:]...)
-		ta.cursorLine = prevLineIndex
-		ta.cursorCol = newCursorCol
-	}
-
-	ta.clampCursorCol()
-	ta.calculateCounts()
-	ta.updateScrollState()
-	ta.ensureCursorVisible()
 }
 
 // DeleteForward deletes the character after the cursor (Delete).
 func (ta *TextArea) DeleteForward() {
-	if ta.cursorLine < 0 || ta.cursorLine >= len(ta.Lines) {
+	if ta.IsActive {
+		if ta.cursorLine < 0 || ta.cursorLine >= len(ta.Lines) {
+			ta.clampCursorCol()
+		}
+		if ta.cursorLine < 0 || ta.cursorLine >= len(ta.Lines) {
+			return
+		}
+
+		currentLineRunes := []rune(ta.Lines[ta.cursorLine])
+
+		if ta.cursorCol < len(currentLineRunes) {
+			newLine := string(currentLineRunes[:ta.cursorCol]) + string(currentLineRunes[ta.cursorCol+1:])
+			ta.Lines[ta.cursorLine] = newLine
+		} else if ta.cursorLine < len(ta.Lines)-1 {
+			nextLineIndex := ta.cursorLine + 1
+			nextLineRunes := []rune(ta.Lines[nextLineIndex])
+			ta.Lines[ta.cursorLine] = string(currentLineRunes) + string(nextLineRunes)
+			ta.Lines = append(ta.Lines[:nextLineIndex], ta.Lines[nextLineIndex+1:]...)
+		} else {
+			return
+		}
+
 		ta.clampCursorCol()
-	}
-	if ta.cursorLine < 0 || ta.cursorLine >= len(ta.Lines) {
-		return
-	}
-
-	currentLineRunes := []rune(ta.Lines[ta.cursorLine])
-
-	if ta.cursorCol < len(currentLineRunes) {
-		newLine := string(currentLineRunes[:ta.cursorCol]) + string(currentLineRunes[ta.cursorCol+1:])
-		ta.Lines[ta.cursorLine] = newLine
-	} else if ta.cursorLine < len(ta.Lines)-1 {
-		nextLineIndex := ta.cursorLine + 1
-		nextLineRunes := []rune(ta.Lines[nextLineIndex])
-		ta.Lines[ta.cursorLine] = string(currentLineRunes) + string(nextLineRunes)
-		ta.Lines = append(ta.Lines[:nextLineIndex], ta.Lines[nextLineIndex+1:]...)
+		ta.calculateCounts()
+		ta.updateScrollState()
+		ta.ensureCursorVisible()
 	} else {
-		return
+		return // Ignore input if not active
 	}
-
-	ta.clampCursorCol()
-	ta.calculateCounts()
-	ta.updateScrollState()
-	ta.ensureCursorVisible()
 }
 
 // MoveCursorLeft moves the cursor one position left.
