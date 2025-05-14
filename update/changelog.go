@@ -159,6 +159,8 @@ var changelogData = []ChangelogItem{
 			},
 			"🐛 Bug Fixes": {
 				"Fixed issue interactive history not running commands correctly.",
+				"Fixed More utility and Interactive history scrollback issue.",
+				"Fixed small visual bug with the new prompt system.",
 			},
 		},
 	},
