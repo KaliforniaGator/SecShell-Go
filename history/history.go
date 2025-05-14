@@ -79,7 +79,8 @@ func InteractiveHistorySearch(history []string, processCommand processCommand) {
 	exitFunc := func(cmd string, runCommand bool) {
 		fmt.Print("\033[H\033[2J") // Clear screen
 		fmt.Print("\x1b[?1049l")   // Exit alternate screen buffer
-		fmt.Print("\033[?25h")     // Show cursor
+		ui.ClearScreenAndBuffer()
+		fmt.Print("\033[?25h") // Show cursor
 		term.Restore(int(os.Stdin.Fd()), oldState)
 
 		if runCommand && cmd != "" {

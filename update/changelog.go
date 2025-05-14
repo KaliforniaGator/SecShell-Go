@@ -147,6 +147,21 @@ var changelogData = []ChangelogItem{
 			},
 		},
 	},
+	{
+		Version: "1.3.1",
+		Date:    "2025-05-13",
+		Sections: map[string][]string{
+			"🚀 New Features": {
+				"No New Features.",
+			},
+			"✨ Improvements": {
+				"Improved interactive History for better usability.",
+			},
+			"🐛 Bug Fixes": {
+				"Fixed issue interactive history not running commands correctly.",
+			},
+		},
+	},
 }
 
 // sectionOrder defines the display order for changelog sections.
