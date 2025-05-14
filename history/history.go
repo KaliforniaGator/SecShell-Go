@@ -64,24 +64,32 @@ func RunHistoryCommand(history []string, number int, processCommand processComma
 }
 
 func InteractiveHistorySearch(history []string, processCommand processCommand) {
-	ui.ClearScreenAndBuffer()
+
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
 		logging.LogError(err)
 		gui.ErrorBox(fmt.Sprintf("Failed to set terminal to raw mode: %s", err))
 		return
 	}
-	// Enter alternate screen buffer
-	fmt.Print("\x1b[?1049h")
-	// Ensure terminal state and alternate buffer are restored on exit
-	defer func() {
-		ui.ClearScreen()
-		fmt.Print("\x1b[?1049l") // Exit alternate screen buffer
-		term.Restore(int(os.Stdin.Fd()), oldState)
-		fmt.Print("\033[?25h") // Ensure cursor is shown
-		ui.ClearScreenAndBuffer()
-	}()
 
+	// Clear screen and enter alternate screen buffer
+	fmt.Print("\033[H\033[2J\x1b[?1049h")
+
+	// Create exit function to handle cleanup
+	exitFunc := func(cmd string, runCommand bool) {
+		fmt.Print("\033[H\033[2J") // Clear screen
+		fmt.Print("\x1b[?1049l")   // Exit alternate screen buffer
+		ui.ClearScreenAndBuffer()
+		fmt.Print("\033[?25h") // Show cursor
+		term.Restore(int(os.Stdin.Fd()), oldState)
+
+		if runCommand && cmd != "" {
+			gui.AlertBox("Running: " + cmd)
+			processCommand(cmd)
+		}
+	}
+
+	// Initialize variables
 	query := ""
 	selectedIndex := 0 // Index within the filteredHistory
 	filteredHistory := []string{}
@@ -91,7 +99,6 @@ func InteractiveHistorySearch(history []string, processCommand processCommand) {
 	// Hide cursor while navigating
 	fmt.Print("\033[?25l")
 	// Defer for showing cursor is handled above
-
 	// Helper function to refresh display
 	refreshDisplay := func() {
 		// Get terminal height
@@ -131,19 +138,18 @@ func InteractiveHistorySearch(history []string, processCommand processCommand) {
 			selectedIndex = len(filteredHistory) - 1
 		}
 
-		// Clear screen and move cursor to home position
-		fmt.Print("\033[H\033[2J") // Move cursor home and clear screen
+		var sb strings.Builder
+
 		// Display header with drawbox
-		fmt.Print("\n")
-		ui.ClearLine()
-		fmt.Print(colors.BoldGreen + "┌─[Interactive History Search]" + colors.Reset + "\n")
-		ui.ClearLine()
-		fmt.Printf(colors.BoldGreen+"└─"+colors.Reset+"$ %s", query)
+		sb.WriteString("\n\033[2K\r") // Equivalent of fmt.Print("\n"); ui.ClearLine();
+		sb.WriteString(colors.BoldGreen + "┌─[Interactive History Search]" + colors.Reset + "\n")
+
+		sb.WriteString("\033[2K\r") // Equivalent of ui.ClearLine();
+		sb.WriteString(fmt.Sprintf(colors.BoldGreen+"└─"+colors.Reset+"$ %s", query))
 
 		// Print instructions
-		fmt.Print("\n")
-		ui.ClearLine()
-		fmt.Println("Type to search, Up/Down arrows to navigate, Enter to select, Esc to cancel")
+		sb.WriteString("\n\033[2K\r") // Equivalent of fmt.Print("\n"); ui.ClearLine();
+		sb.WriteString("Up/Down to select, Left/Right for pages, Enter to run, Esc to cancel\n")
 
 		// Calculate display range for current page
 		start := currentPage * pageSize
@@ -152,110 +158,166 @@ func InteractiveHistorySearch(history []string, processCommand processCommand) {
 		// Display results with selection highlight
 		for i := start; i < end; i++ {
 			cmd := filteredHistory[i]
-			ui.ClearLine() // Clear previous line content
+			sb.WriteString("\033[2K\r") // Equivalent of ui.ClearLine();
 			if i == selectedIndex {
-				fmt.Printf("%s→ %d: %s%s\r\n", colors.BoldGreen, i+1, cmd, colors.Reset)
+				sb.WriteString(fmt.Sprintf("%s→ %d: %s%s\n", colors.BoldGreen, i+1, highlightText(cmd, query), colors.Reset))
 			} else {
-				fmt.Printf("  %d: %s\r\n", i+1, cmd)
+				sb.WriteString(fmt.Sprintf("  %d: %s\n", i+1, cmd))
 			}
 		}
 
 		// Fill remaining lines on the page if necessary
 		for i := end - start; i < pageSize; i++ {
-			ui.ClearLine()
-			fmt.Print("\r\n")
+			sb.WriteString("\033[2K\r") // Equivalent of ui.ClearLine();
+			sb.WriteString("\n")        // Was fmt.Print("\r\n")
 		}
 
 		// Print status line
-		ui.ClearLine()
+		sb.WriteString("\033[2K\r") // Equivalent of ui.ClearLine();
 		if len(filteredHistory) == 0 {
-			fmt.Print("  No matching commands found.")
+			sb.WriteString("  No matching commands found.")
 		} else {
-			fmt.Printf("-- Page %d/%d (%d results) --", currentPage+1, totalPages, len(filteredHistory))
+			sb.WriteString(fmt.Sprintf("-- Page %d/%d (%d results) --", currentPage+1, totalPages, len(filteredHistory)))
 		}
+
+		// Actual printing:
+		fmt.Print("\033[H\033[2J") // Clear screen and move cursor home (as before)
+		fmt.Print(sb.String())     // Print the composed buffer
 	}
 
 	// Initial display
 	refreshDisplay()
 
 	// Input loop
+
 	buf := make([]byte, 3)
+
 	for {
+
 		n, err := os.Stdin.Read(buf)
+
 		if err != nil {
+
 			logging.LogError(err)
+
 			gui.ErrorBox(fmt.Sprintf("Failed to read input: %s", err))
+
 			return // Defer will handle cleanup
+
 		}
 
 		if n == 1 {
+
 			switch buf[0] {
+
 			case 27: // ESC
-				// Cleanup is handled by defer
+				exitFunc("", false)
 				return
 
 			case 13: // Enter
 				if len(filteredHistory) > 0 && selectedIndex >= 0 && selectedIndex < len(filteredHistory) {
 					selectedCmd := filteredHistory[selectedIndex]
-					// Exit alternate buffer and restore terminal state via defer
-					// Need to print the alert *after* restoring
-					ui.ClearScreen()
-					fmt.Print("\x1b[?1049l") // Exit alternate screen buffer manually here
-					term.Restore(int(os.Stdin.Fd()), oldState)
-					fmt.Print("\033[?25h") // Show cursor manually here
-					gui.AlertBox("Running: " + selectedCmd)
-					processCommand(selectedCmd)
-					return // Exit function
+					exitFunc(selectedCmd, true)
+					return
 				}
 
 			case 127, 8: // Backspace/Delete
+
 				if len(query) > 0 {
+
 					query = query[:len(query)-1]
+
 					selectedIndex = 0 // Reset selection
-					currentPage = 0   // Reset page
+
+					currentPage = 0 // Reset page
+
 					refreshDisplay()
+
 				}
 
 			default:
+
 				// Add printable characters to query
+
 				if buf[0] >= 32 && buf[0] <= 126 {
+
 					query += string(buf[0])
+
 					selectedIndex = 0 // Reset selection
-					currentPage = 0   // Reset page
+
+					currentPage = 0 // Reset page
+
 					refreshDisplay()
+
 				}
+
 			}
+
 		} else if n == 3 && buf[0] == 27 && buf[1] == 91 {
+
 			// Handle arrow keys
+
 			if len(filteredHistory) > 0 { // Only navigate if there are results
+				pageStartIndex := currentPage * pageSize
+				// Ensure pageEndIndex is correctly calculated, even for partially filled last page
+				var pageEndIndex int
+				if len(filteredHistory) == 0 { // Should be caught by outer if, but defensive
+					pageEndIndex = -1 // No items
+				} else {
+					pageEndIndex = min((currentPage+1)*pageSize, len(filteredHistory)) - 1
+				}
+
 				switch buf[2] {
+
 				case 65: // Up arrow
-					if selectedIndex > 0 {
+					if selectedIndex > pageStartIndex {
 						selectedIndex--
-						// Check if we need to change page
-						if selectedIndex < currentPage*pageSize {
-							currentPage--
-						}
-						refreshDisplay()
-					} else {
-						// Wrap around to the end
-						selectedIndex = len(filteredHistory) - 1
-						currentPage = (len(filteredHistory) - 1) / pageSize
 						refreshDisplay()
 					}
 
 				case 66: // Down arrow
-					if selectedIndex < len(filteredHistory)-1 {
+					if selectedIndex < pageEndIndex {
 						selectedIndex++
-						// Check if we need to change page
-						if selectedIndex >= (currentPage+1)*pageSize {
-							currentPage++
+						refreshDisplay()
+					}
+
+				case 68: // Left arrow (D)
+					currentTotalPages := 1
+					if len(filteredHistory) > 0 {
+						currentTotalPages = (len(filteredHistory) + pageSize - 1) / pageSize
+					}
+
+					if currentTotalPages > 1 { // Only page if there's more than one page
+						currentPage--
+						if currentPage < 0 {
+							currentPage = currentTotalPages - 1
+						}
+						selectedIndex = currentPage * pageSize
+						// Ensure selectedIndex is not out of bounds if the new page is the last and not full
+						if selectedIndex >= len(filteredHistory) {
+							selectedIndex = len(filteredHistory) - 1
 						}
 						refreshDisplay()
-					} else {
-						// Wrap around to the beginning
-						selectedIndex = 0
-						currentPage = 0
+					}
+
+				case 67: // Right arrow (C)
+					currentTotalPages := 1
+					if len(filteredHistory) > 0 {
+						currentTotalPages = (len(filteredHistory) + pageSize - 1) / pageSize
+					}
+
+					if currentTotalPages > 1 { // Only page if there's more than one page
+						currentPage++
+						if currentPage >= currentTotalPages {
+							currentPage = 0
+						}
+						selectedIndex = currentPage * pageSize
+						// Ensure selectedIndex is not out of bounds if the new page is the last and not full
+						// This typically shouldn't happen if totalPages and currentPage are correct,
+						// but good for safety.
+						if selectedIndex >= len(filteredHistory) {
+							selectedIndex = len(filteredHistory) - 1
+						}
 						refreshDisplay()
 					}
 				}

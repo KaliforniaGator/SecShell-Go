@@ -47,7 +47,6 @@ func DisplayWelcomeScreen(version string, needsUpdate bool) {
 		"✓ Service and Job management",
 		"✓ Logging and auditing",
 		"✓ Interactive Command history",
-		"✓ Tab Command / Patch completions",
 		"✓ Built-In Penetration testing tools",
 	}
 
@@ -155,6 +154,7 @@ func NewPrompt(opts promptOptions) {
 	case "glitch":
 		LeftEndCap = chars.LeftGlitchFilled
 		RightEndCap = chars.RightGlitchFilled
+		FlameSpacer = " "
 	default:
 		LeftEndCap = chars.LeftCircleHalfFilled
 		RightEndCap = chars.RightCircleHalfFilled
@@ -204,7 +204,7 @@ func NewPrompt(opts promptOptions) {
 	// EndCapColor,
 	// EndCapRight,)
 
-	fmt.Printf("\n%s%s%s%s%s%s%s%s %s%s %s%s %s%s@%s%s %s%s %s%s %s%s%s", CornerColor, TopLeftCorner, CornerSpacer, colors.BgReset, EndCapColor, LeftEndCap, FlameSpacer, PromptBackground, LogoColor, Logo, DividerColor, Divider, UserColor, user, HostColor, host, DividerColor, Divider, DirColor, cwd, colors.Reset, EndCapColor, RightEndCap)
+	fmt.Printf("\n%s%s%s%s%s%s%s%s %s%s %s%s %s%s@%s%s %s%s %s%s %s%s%s", CornerColor, TopLeftCorner, CornerSpacer, colors.BgReset+colors.Reset, EndCapColor, LeftEndCap, FlameSpacer, PromptBackground, LogoColor, Logo, DividerColor, Divider, UserColor, user, HostColor, host, DividerColor, Divider, DirColor, cwd, colors.Reset, EndCapColor, RightEndCap)
 	fmt.Printf("\n%s%s%s%s$ %s", CornerColor, BottomLeftCorner, CornerSpacer, colors.BoldWhite, colors.Reset)
 
 }

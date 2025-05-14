@@ -147,6 +147,24 @@ var changelogData = []ChangelogItem{
 			},
 		},
 	},
+	{
+		Version: "1.3.1",
+		Date:    "2025-05-13",
+		Sections: map[string][]string{
+			"🚀 New Features": {
+				"Interactive Help App.",
+				"Interactive Job Manager.",
+			},
+			"✨ Improvements": {
+				"Improved interactive History for better usability.",
+			},
+			"🐛 Bug Fixes": {
+				"Fixed issue interactive history not running commands correctly.",
+				"Fixed More utility and Interactive history scrollback issue.",
+				"Fixed small visual bug with the new prompt system.",
+			},
+		},
+	},
 }
 
 // sectionOrder defines the display order for changelog sections.

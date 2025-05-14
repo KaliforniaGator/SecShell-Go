@@ -80,7 +80,7 @@ var HelpTopics = map[string]HelpTopic{
 		Command:     "help",
 		Description: "Show help message or specific command help",
 		Usage:       "help [command]",
-		Examples:    []string{"help", "help cd", "help services"},
+		Examples:    []string{"help", "help cd", "help services", "help -i [--interactive]"},
 		Category:    "System",
 	},
 	"exit": {

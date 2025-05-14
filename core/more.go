@@ -170,6 +170,7 @@ func (m *MorePager) handleSearchInput(char byte) {
 // Returns true if the pager should exit
 func (m *MorePager) handleNavigationInput(char byte) bool {
 	prevPage := m.currentPage
+	pageChanged := false
 
 	switch char {
 	case 'q', 'Q':
@@ -194,33 +195,46 @@ func (m *MorePager) handleNavigationInput(char byte) bool {
 	case '\x1b': // Escape sequence
 		// Read the rest of escape sequence immediately
 		sequence := make([]byte, 2)
-		m.reader.Read(sequence)
+		_, err := m.reader.Read(sequence)
+		if err != nil {
+			// Handle error, perhaps log it or return true to exit
+			return true
+		}
+
 		if sequence[0] == '[' {
 			switch sequence[1] {
 			case 'A': // Up arrow - navigate to previous match
 				if len(m.searchMatches) > 0 {
 					m.navigateToPreviousMatch()
-				} else {
-					// Default page navigation if no search matches
-					if m.currentPage > 0 {
-						m.currentPage--
+					if prevPage != m.currentPage {
+						pageChanged = true
 					}
 				}
+				// No page scroll if not in search
 			case 'B': // Down arrow - navigate to next match
 				if len(m.searchMatches) > 0 {
 					m.navigateToNextMatch()
-				} else {
-					// Default page navigation if no search matches
-					if m.currentPage < m.totalPages-1 {
-						m.currentPage++
+					if prevPage != m.currentPage {
+						pageChanged = true
 					}
+				}
+				// No page scroll if not in search
+			case 'D': // Left arrow - previous page
+				if m.currentPage > 0 {
+					m.currentPage--
+					pageChanged = true
+				}
+			case 'C': // Right arrow - next page
+				if m.currentPage < m.totalPages-1 {
+					m.currentPage++
+					pageChanged = true
 				}
 			}
 		}
 	}
 
 	// If page changed, do a full clear to prevent ghosting
-	if prevPage != m.currentPage {
+	if pageChanged {
 		m.fullClearScreen()
 	}
 
@@ -437,7 +451,7 @@ func (m *MorePager) renderStatusLine() {
 	if m.searchMode {
 		fmt.Printf("\r/\033[36m%s\033[0m", m.searchQuery)
 	} else if m.showHelp {
-		fmt.Print("\r\033[33mCommands: q:quit, /:search, c:clear search, ↑↓:navigate , w:toggle wrap, h:help\033[0m")
+		fmt.Print("\r\033[33mCommands: q:quit, /:search, c:clear, ↑↓:matches, ←→:pages, w:wrap, h:help\033[0m")
 	} else {
 		matchInfo := ""
 		if len(m.searchMatches) > 0 {
