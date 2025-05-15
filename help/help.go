@@ -468,7 +468,7 @@ Options:
 		Command:     "prompt",
 		Description: "Display the current command prompt configuration and options",
 		Usage:       "prompt",
-		Examples:    []string{"prompt"},
+		Examples:    []string{"prompt", "prompt -r [--reset]"},
 		Category:    "System",
 	},
 	"files": { // Added help topic for files

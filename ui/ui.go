@@ -352,6 +352,37 @@ func DisplayPrompt() {
 
 }
 
+func ResetPrompt() {
+	// Reset the prompt options to default
+	PromptOptions = promptOptions{
+		PromptType:        "rounded",
+		PromptEndCaps:     "rounded",
+		PromptEndCapColor: "gray2",
+		PromptBackground:  "bg_gray2",
+		PromptText:        "[SecShell]",
+		PromptDivider:     "arrow",
+	}
+	// Reset config file
+	configFile := GetPromptConfigFile()
+	defaultConfig := `CONFIG {
+	PROMPT_TYPE = "rounded"
+	PROMPT_ENDCAPS = "rounded"
+	PROMPT_ENDCAPCOLOR = "gray2"
+	PROMPT_BACKGROUND = "bg_gray2"
+	PROMPT_TEXT = "[SecShell]"
+	PROMPT_DIVIDER = "arrow"
+	PROMPT_LOGOCOLOR = "bold_green"
+	PROMPT_USERCOLOR = "bold_cyan"
+	PROMPT_HOSTCOLOR = "bold_cyan"
+	PROMPT_DIRCOLOR = "bold_yellow"
+
+}`
+	os.WriteFile(configFile, []byte(defaultConfig), 0644)
+	// Display the prompt
+	ClearScreenAndBuffer()
+	DisplayPrompt()
+}
+
 // DisplayPromptOptions showcases all the Prompt Options and their corresponding values that the user can configure.
 func DisplayPromptOptions() {
 	fmt.Printf("\n%sCurrent Prompt Configuration:%s\n", colors.BoldWhite, colors.Reset)

@@ -876,7 +876,15 @@ func (s *SecShell) processCommand(input string) {
 			return
 
 		case "prompt":
+			if len(args) > 1 {
+				if args[1] == "-r" || args[1] == "--reset" {
+					// Reset the prompt to default
+					ui.ResetPrompt()
+					return
+				}
+			}
 			ui.DisplayPromptOptions()
+
 		case "edit-prompt":
 			// Open the prompt file in the default editor
 			editor.EditCommand([]string{globals.PromptConfigFile})
