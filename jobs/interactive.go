@@ -222,7 +222,7 @@ func InteractiveJobManager(jobsMap map[int]*Job) {
 
 	// Clear Finished Button
 	clearButtonX := startButtonX + buttonWidth + buttonSpacing
-	clearButton := gui.NewButton("Clear Finished", clearButtonX, actionButtonY, buttonWidth, colors.BoldYellow, colors.BgYellow+colors.BoldBlack, func() bool {
+	clearButton := gui.NewButton("Clear Finished", clearButtonX, actionButtonY, buttonWidth, colors.BoldYellow, colors.BgYellow+colors.BoldWhite, func() bool {
 		ClearFinishedJobs(jobsMap) // This function shows its own title box and alerts
 		updateJobListInContainer(jobsMap, jobListContainer, infoLabel)
 		infoLabel.Text = "Cleared finished jobs."
@@ -233,7 +233,7 @@ func InteractiveJobManager(jobsMap map[int]*Job) {
 
 	// Quit Button
 	quitButtonX := clearButtonX + buttonWidth + buttonSpacing
-	quitButton := gui.NewButton("Quit Manager", quitButtonX, actionButtonY, buttonWidth, colors.BoldRed, colors.BgGray+colors.BoldBlack, func() bool {
+	quitButton := gui.NewButton("Quit Manager", quitButtonX, actionButtonY, buttonWidth, colors.BoldRed, colors.BgRed+colors.BoldWhite, func() bool {
 		infoLabel.Text = "Exiting Job Manager..."
 		infoLabel.Color = colors.BoldWhite
 		jobWin.Render() // Render final message
@@ -245,6 +245,4 @@ func InteractiveJobManager(jobsMap map[int]*Job) {
 	// Initial population and start
 	updateJobListInContainer(jobsMap, jobListContainer, infoLabel)
 	jobWin.WindowActions()
-
-	fmt.Println("Job Manager closed.")
 }

@@ -252,5 +252,4 @@ func InteractiveHelpApp() {
 	allHelpTopics = nil
 	currentTopics = nil
 
-	fmt.Println("Interactive help closed.")
 }

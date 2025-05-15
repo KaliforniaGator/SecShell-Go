@@ -65,6 +65,7 @@ var HelpCommands = []string{
 	"edit-prompt",
 	"reload-prompt",
 	"prompt",
+	"files",
 }
 
 // HelpTopics contains detailed help information for each command
@@ -101,7 +102,7 @@ var HelpTopics = map[string]HelpTopic{
 		Command:     "jobs",
 		Description: "List active background jobs",
 		Usage:       "jobs <list|stop|status|start|clear-finished> [PID]",
-		Examples:    []string{"jobs", "jobs list", "jobs status 1234", "jobs stop 1234"},
+		Examples:    []string{"jobs", "jobs list", "jobs status 1234", "jobs stop 1234", "jobs -i [--interactive]"},
 		Category:    "Process",
 	},
 	"cd": {
@@ -469,6 +470,13 @@ Options:
 		Usage:       "prompt",
 		Examples:    []string{"prompt"},
 		Category:    "System",
+	},
+	"files": { // Added help topic for files
+		Command:     "files",
+		Description: "Opens interactive file manager",
+		Usage:       "files",
+		Examples:    []string{"files"},
+		Category:    "FileSystem",
 	},
 }
 

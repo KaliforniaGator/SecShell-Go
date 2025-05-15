@@ -63,6 +63,7 @@ func TestWindowApp() {
 	var priorityGroup *RadioGroup
 	var indexInput *TextBox
 	var completionProgress *ProgressBar
+	var progressGradient *GradientProgressBar
 
 	// --- Helper Functions ---
 
@@ -111,6 +112,10 @@ func TestWindowApp() {
 				completionProgress.MaxValue = float64(scrollbar.MaxValue)
 				// Update Value based on current scrollbar state
 				completionProgress.SetValue(float64(scrollbar.Value))
+				// Update MaxValue of the gradient progress bar
+				progressGradient.MaxValue = float64(scrollbar.MaxValue)
+				// Update Value of the gradient progress bar
+				progressGradient.SetValue(float64(scrollbar.Value))
 
 				// Ensure the OnScroll callback is attached ONCE to update progress bar DURING scrolling
 				if scrollbar.OnScroll == nil {
@@ -122,6 +127,12 @@ func TestWindowApp() {
 							// NOTE: We rely on the WindowActions loop to trigger a Render after scroll input.
 							// If we needed immediate render on scroll *callback*, we'd need a way to signal it.
 						}
+						if progressGradient != nil {
+							// Directly update gradient progress bar value when scrollbar value changes
+							progressGradient.SetValue(float64(newValue))
+							// NOTE: We rely on the WindowActions loop to trigger a Render after scroll input.
+							// If we needed immediate render on scroll *callback*, we'd need a way to signal it.
+						}
 					}
 				}
 			} else {
@@ -130,6 +141,9 @@ func TestWindowApp() {
 				completionProgress.SetValue(0)
 				// Detach callback? Not strictly necessary, but good practice if scrollbar could be destroyed/recreated.
 				// scrollbar.OnScroll = nil // Optional cleanup
+				// Set gradient progress bar to 0 as well
+				progressGradient.MaxValue = 0
+				progressGradient.SetValue(0)
 			}
 		}
 	}
@@ -284,6 +298,12 @@ func TestWindowApp() {
 	completionProgress = NewProgressBar(1, progressY, progressWidth, 0, 0, colors.BgCyan+colors.Cyan, colors.Gray2, false)
 	testWin.AddElement(completionProgress)
 	currentY++ // Move past progress bar row
+
+	// Gradient Progress Bar - Adjusted colors (e.g., Magenta to Cyan gradient)
+	progressGradientY := currentY
+	progressGradient = NewGradientProgressBar(1, progressGradientY, progressWidth, 0, 0, "#FF00FF", "#00FFFF", colors.Gray2, false)
+	testWin.AddElement(progressGradient)
+	currentY++ // Move past gradient progress bar row
 
 	// Spacer
 	testWin.AddElement(NewSpacer(1, currentY, 1))

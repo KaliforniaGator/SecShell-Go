@@ -20,6 +20,7 @@ var (
 	Red     = "\033[31m"
 	Green   = "\033[32m"
 	Yellow  = "\033[33m"
+	Orange  = "\033[38;5;214m"
 	Blue    = "\033[34m"
 	Purple  = "\033[35m"
 	Magenta = "\033[35m"
@@ -43,6 +44,7 @@ var (
 	BoldRed     = "\033[1;31m"
 	BoldGreen   = "\033[1;32m"
 	BoldYellow  = "\033[1;33m"
+	BoldOrange  = "\033[1;38;5;214m"
 	BoldBlue    = "\033[1;34m"
 	BoldPurple  = "\033[1;35m"
 	BoldMagenta = "\033[1;35m"
@@ -63,6 +65,7 @@ var (
 	BgRed     = "\033[41m"
 	BgGreen   = "\033[42m"
 	BgYellow  = "\033[43m"
+	BgOrange  = "\033[48;5;214m"
 	BgBlue    = "\033[44m"
 	BgPurple  = "\033[45m"
 	BgMagenta = "\033[45m"
@@ -145,6 +148,67 @@ var (
 		"bg_gray5": BgGray5,
 	}
 )
+
+// GenerateGradient generates a gradient of colors between two hex colors.
+func GenerateGradient(startHex, endHex string, steps int) []string {
+	gradient := make([]string, steps)
+	startR, startG, startB := hexToRGB(startHex)
+	endR, endG, endB := hexToRGB(endHex)
+
+	for i := 0; i < steps; i++ {
+		r := startR + (endR-startR)*i/steps
+		g := startG + (endG-startG)*i/steps
+		b := startB + (endB-startB)*i/steps
+		gradient[i] = fmt.Sprintf("\033[38;2;%d;%d;%dm", r, g, b)
+	}
+	return gradient
+}
+
+// GenerateGradientBackground generates a gradient of background colors between two hex colors.
+func GenerateGradientBackground(startHex, endHex string, steps int) []string {
+	gradient := make([]string, steps)
+	startR, startG, startB := hexToRGB(startHex)
+	endR, endG, endB := hexToRGB(endHex)
+
+	for i := 0; i < steps; i++ {
+		r := startR + (endR-startR)*i/steps
+		g := startG + (endG-startG)*i/steps
+		b := startB + (endB-startB)*i/steps
+		gradient[i] = fmt.Sprintf("\033[48;2;%d;%d;%dm", r, g, b)
+	}
+	return gradient
+}
+
+// Colorize applies the specified color to the given text.
+func Colorize(text, color string) string {
+	if code, exists := ColorMap[color]; exists {
+		return fmt.Sprintf("%s%s%s", code, text, Reset)
+	}
+	return text // Return uncolored text if color not found
+}
+
+// ColorizeBackground applies the specified background color to the given text.
+func ColorizeBackground(text, color string) string {
+	if code, exists := ColorMap[color]; exists {
+		return fmt.Sprintf("%s%s%s", code, text, BgReset)
+	}
+	return text // Return uncolored text if color not found
+}
+
+// ColorizeBold applies the specified bold color to the given text.
+func ColorizeBold(text, color string) string {
+	if code, exists := ColorMap[color]; exists {
+		return fmt.Sprintf("%s%s%s", code, text, Reset)
+	}
+	return text // Return uncolored text if color not found
+}
+
+// hexToRGB converts a hex color string to RGB format.
+func hexToRGB(hex string) (int, int, int) {
+	var r, g, b int
+	fmt.Sscanf(hex, "#%02x%02x%02x", &r, &g, &b)
+	return r, g, b
+}
 
 // Disable colors on Windows if necessary
 func init() {

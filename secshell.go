@@ -30,6 +30,7 @@ import (
 	"secshell/services"
 	"secshell/tools"
 	"secshell/tools/editor"
+	filemanager "secshell/tools/file-manager"
 	"secshell/ui"
 	"secshell/ui/gui"
 	"secshell/ui/gui/tests"
@@ -896,6 +897,8 @@ func (s *SecShell) processCommand(input string) {
 		case "changelog":
 			// Display changelog
 			update.DisplayChangelog()
+		case "files":
+			filemanager.FileManagerApp()
 		default:
 			// Handle quoted arguments
 			args = s.parseQuotedArgs(args)
@@ -1326,24 +1329,47 @@ func (s *SecShell) executeSystemCommand(args []string, background bool) {
 
 		// Goroutine to wait for the command to finish and update its status
 		go func(pid int) {
-			err := cmd.Wait()
+			waitErr := cmd.Wait() // Capture the error from cmd.Wait()
 			exitCode := 0
-			if err != nil {
-				logging.LogError(err)
-				if exitError, ok := err.(*exec.ExitError); ok {
+
+			job, jobExists := s.jobs[pid]
+			suppressErrorLoggingAndDisplay := false
+
+			if jobExists {
+				job.Lock()
+				// If waitErr is a signal interrupt and the job was already marked as "stopped"
+				// (by StopJobClean or similar mechanism), then suppress the generic error display and logging.
+				if waitErr != nil && isSignalKilled(waitErr) && job.Status == "stopped" {
+					suppressErrorLoggingAndDisplay = true
+				}
+				job.Unlock()
+			}
+
+			if waitErr != nil {
+				if exitError, ok := waitErr.(*exec.ExitError); ok {
 					exitCode = exitError.ExitCode()
 				}
-				gui.ErrorBox(fmt.Sprintf("Command execution failed: %s", err))
+
+				if !suppressErrorLoggingAndDisplay {
+					// Log the error only if it's not a user-initiated stop that's already handled/logged.
+					logging.LogError(waitErr)
+				}
 			}
 
 			// Update job status
-			if job, ok := s.jobs[pid]; ok {
+			if jobExists {
 				job.Lock()
 				job.EndTime = time.Now()
-				job.ExitCode = exitCode
-				if err != nil {
-					logging.LogError(err)
-					job.Status = fmt.Sprintf("failed with code %d", exitCode)
+				job.ExitCode = exitCode // Store exit code
+
+				if waitErr != nil {
+					// If the job status is already "stopped" (set by StopJobClean, for instance),
+					// and the error is a signal interrupt, keep status as "stopped".
+					// Otherwise, mark as failed.
+					if !(job.Status == "stopped" && isSignalKilled(waitErr)) {
+						job.Status = fmt.Sprintf("failed with code %d", exitCode)
+					}
+					// If job.Status was "stopped" and it was a SIGINT, it remains "stopped".
 				} else {
 					job.Status = "completed"
 				}
