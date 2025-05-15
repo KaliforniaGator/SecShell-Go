@@ -7,9 +7,11 @@ import (
 	"secshell/colors"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	// Added for potential brief pauses if needed
 	"golang.org/x/term" // Import the term package
+	"golang.org/x/text/width"
 )
 
 // KeyStrokeHandler defines an interface for custom keyboard input handling.
@@ -168,6 +170,27 @@ func (w *Window) RemoveElement(element UIElement) {
 	}
 }
 
+// getStringDisplayWidth returns the display width of a string, handling emoji and wide characters
+func getStringDisplayWidth(s string) int {
+	displayWidth := 0
+	for _, r := range s {
+		p := width.LookupRune(r)
+		switch p.Kind() {
+		case width.EastAsianWide, width.EastAsianFullwidth:
+			displayWidth += 2
+		case width.Neutral:
+			if utf8.RuneLen(r) >= 4 { // Most emoji are 4 bytes
+				displayWidth += 2
+			} else {
+				displayWidth++
+			}
+		default:
+			displayWidth++
+		}
+	}
+	return displayWidth
+}
+
 // Render draws the window and its elements to the terminal.
 func (w *Window) Render() {
 	w.buffer.Reset()                   // Clear previous rendering commands
@@ -176,13 +199,15 @@ func (w *Window) Render() {
 	box := BoxTypes[w.BoxStyle]
 	fullTitle := w.Icon + " " + w.Title
 
+	// Calculate actual display width of the title
+	titleDisplayWidth := getStringDisplayWidth(fullTitle)
+
 	// --- Draw Border and Background ---
 	w.buffer.WriteString(w.BorderColor)
 	w.buffer.WriteString(w.BgColor) // Set background for the whole area initially
 
 	// Top border with Title
 	contentWidth := w.Width // Available space between corners
-	titleLen := len(fullTitle)
 	leftPadding := 0
 	rightPadding := 0
 
@@ -190,20 +215,86 @@ func (w *Window) Render() {
 		contentWidth = 0 // Avoid negative width
 	}
 
-	if titleLen > contentWidth {
+	if titleDisplayWidth > contentWidth {
 		// Title is too long, truncate it with ellipsis if possible
 		if contentWidth > 3 {
-			fullTitle = fullTitle[:contentWidth-3] + "..."
+			// Smart truncation that respects display width
+			truncated := ""
+			currentWidth := 0
+			for _, r := range fullTitle {
+				charWidth := getStringDisplayWidth(string(r))
+				if currentWidth+charWidth+3 <= contentWidth {
+					truncated += string(r)
+					currentWidth += charWidth
+				} else {
+					break
+				}
+			}
+			fullTitle = truncated + "..."
+			titleDisplayWidth = getStringDisplayWidth(fullTitle) // Recalculate after truncation
 		} else {
-			fullTitle = fullTitle[:contentWidth] // Truncate without ellipsis if space is tiny
+			// If we have very little space, do a hard truncate
+			fullTitle = string([]rune(fullTitle)[:contentWidth])
+			titleDisplayWidth = contentWidth
 		}
-		leftPadding = 0
-		rightPadding = 0
-	} else {
-		// Title fits, calculate padding
-		totalPadding := contentWidth - titleLen
-		leftPadding = totalPadding / 2
-		rightPadding = totalPadding - leftPadding // Ensures correct total padding for odd/even
+	}
+
+	// Calculate padding based on actual display width
+	totalPadding := contentWidth - titleDisplayWidth
+	leftPadding = totalPadding / 2
+	rightPadding = totalPadding - leftPadding - 2
+
+	// Wider emojis
+	wideEmojis := []string{
+		"🗂️", // Folder
+		"📁",  // File Folder
+		"📂",  // Open File Folder
+		"📊",  // Bar Chart
+		"📈",  // Chart Increasing
+		"📉",  // Chart Decreasing
+		"📅",  // Calendar
+		"📆",  // Tear-Off Calendar
+		"📇",  // Card Index
+		"📋",  // Clipboard
+		"📌",  // Pushpin
+		"📍",  // Round Pushpin
+		"📎",  // Paperclip
+		"📏",  // Straight Ruler
+		"📐",  // Triangular Ruler
+		"📓",  // Notebook
+		"📔",  // Notebook with Decorative Cover
+		"📒",  // Ledger
+		"📚",  // Books
+		"📖",  // Open Book
+		"📜",  // Scroll
+	}
+
+	// Smaller width emojis
+	smallEmojis := []string{
+		"😀",  // Grinning Face
+		"😊",  // Smiling Face with Smiling Eyes
+		"👍",  // Thumbs Up
+		"❤️", // Red Heart
+		"✨",  // Sparkles
+		"🌟",  // Glowing Star
+		"🔥",  // Fire
+		"🎉",  // Party Popper
+		"🎈",  // Balloon
+		"🌈",  // Rainbow
+	}
+
+	// Check for wide emojis and adjust padding
+	for _, emoji := range wideEmojis {
+		if strings.Contains(fullTitle, emoji) {
+			rightPadding += 1 // Adjust for wider emoji visual width
+		}
+	}
+
+	// Check for small emojis and adjust padding
+	for _, emoji := range smallEmojis {
+		if strings.Contains(fullTitle, emoji) {
+			rightPadding -= 1 // Adjust for smaller emoji visual width
+		}
 	}
 
 	w.buffer.WriteString(MoveCursorCmd(w.Y, w.X))

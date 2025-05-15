@@ -14,6 +14,45 @@ type Task struct {
 	Priority string // "Low", "Medium", "High"
 }
 
+// --- Custom KeyStrokeHandler for Task Management ---
+type TaskAppKeyHandler struct {
+	taskListContainer *Container
+	tasks             *[]Task
+	indexInput        *TextBox
+	infoLabel         *Label
+}
+
+// HandleKeyStroke processes keyboard input for the task app
+func (h *TaskAppKeyHandler) HandleKeyStroke(key []byte, w *Window) (handled bool, needsRender bool, shouldQuit bool) {
+	// Check if we have Enter key pressed when the task list container is focused
+	if len(key) == 1 && (key[0] == '\r' || key[0] == '\n') && h.taskListContainer.IsActive {
+		highlightedIdx := h.taskListContainer.GetHighlightedIndex()
+		if highlightedIdx >= 0 && highlightedIdx < len(*h.tasks) {
+			// Update the selection
+			h.taskListContainer.SelectedIndex = highlightedIdx
+
+			// Load the task for editing immediately
+			if h.indexInput != nil {
+				idxStr := strconv.Itoa(highlightedIdx)
+				h.indexInput.Text = idxStr
+				h.indexInput.cursorPos = len(idxStr)
+				h.indexInput.isPristine = false
+			}
+
+			// Update info label
+			if h.infoLabel != nil {
+				h.infoLabel.Text = fmt.Sprintf("Selected task index: %d", highlightedIdx)
+				h.infoLabel.Color = colors.Cyan
+			}
+
+			return true, true, false
+		}
+	}
+
+	// For other keys, let the default handler process them
+	return false, false, false
+}
+
 // --- Main Application Function ---
 func TestWindowApp() {
 	// --- Application State ---
@@ -182,6 +221,10 @@ func TestWindowApp() {
 			indexInput.isPristine = false
 			infoLabel.Text = fmt.Sprintf("Loaded task %d for editing.", index)
 			infoLabel.Color = colors.Cyan
+
+			// Ensure visual consistency by updating container selection
+			taskListContainer.SelectedIndex = index
+			taskListContainer.HighlightedIndex = index
 		} else {
 			infoLabel.Text = fmt.Sprintf("Error: Invalid index %d.", index)
 			infoLabel.Color = colors.Red
@@ -272,7 +315,7 @@ func TestWindowApp() {
 	containerWidth := contentAreaWidth - 1
 
 	taskListContainer = NewContainer(containerX, containerY, containerWidth, containerHeight, initialContent)
-	// Add the OnSelectionChange callback
+	// Add the OnItemSelected callback
 	taskListContainer.OnItemSelected = func(newIndex int) {
 		if indexInput != nil { // Ensure indexInput exists
 			idxStr := strconv.Itoa(newIndex)
@@ -281,7 +324,7 @@ func TestWindowApp() {
 			indexInput.isPristine = false // Mark as edited since it reflects selection
 			// Optionally update info label
 			infoLabel.Text = fmt.Sprintf("Selected task index: %d", newIndex)
-			infoLabel.Color = colors.Gray
+			infoLabel.Color = colors.Cyan
 		}
 	}
 	testWin.AddElement(taskListContainer)
@@ -426,14 +469,17 @@ func TestWindowApp() {
 	})
 	testWin.AddElement(quitButton)
 
+	// --- Create and set the custom key handler ---
+	keyHandler := &TaskAppKeyHandler{
+		taskListContainer: taskListContainer,
+		tasks:             &tasks,
+		indexInput:        indexInput,
+		infoLabel:         infoLabel,
+	}
+	testWin.SetKeyStrokeHandler(keyHandler)
+
 	// --- Initial Display & Interaction ---
-	// updateTaskListDisplay() // No longer needed here, container created with content
-	// Need to update progress bar initially though
 	updateTaskListDisplay() // Call once to set initial progress bar state based on initial tasks
 	testWin.WindowActions() // Start the interaction loop
 
-	// --- After Interaction ---
-	fmt.Println("Application finished.")
-	fmt.Printf("Final task list contained %d tasks.\n", len(tasks))
-	// You could print the final tasks here if desired
 }

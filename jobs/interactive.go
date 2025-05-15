@@ -15,7 +15,9 @@ func updateJobListInContainer(jobsMap map[int]*Job, container *gui.Container, in
 	if len(jobsMap) == 0 {
 		content = append(content, colors.Gray+"<No jobs running or defined>"+colors.Reset)
 	} else {
-		for _, job := range jobsMap { // Iterate in a consistent order if possible, though map iteration order isn't guaranteed
+		// Skip adding header line - it's now a separate UI element so it doesn't get duplicated
+
+		for _, job := range jobsMap {
 			job.Lock()
 			updateJobStats(job) // Ensure stats are fresh
 			status := job.Status
@@ -25,7 +27,45 @@ func updateJobListInContainer(jobsMap map[int]*Job, container *gui.Container, in
 			if len(command) > maxCmdLen {
 				command = command[:maxCmdLen-3] + "..."
 			}
-			cpu := fmt.Sprintf("%.1f%%", job.CPU)
+
+			// Format CPU as percentage for text display
+			cpuPercent := job.CPU
+			cpuText := fmt.Sprintf("%.1f%%", cpuPercent)
+
+			// Create CPU progress bar representation
+			// Calculate color gradient based on CPU usage
+			var cpuBar string
+			maxBarWidth := 15 // Width of progress bar in characters
+
+			if cpuPercent <= 0.1 {
+				// Show minimal activity for near-zero CPU
+				cpuBar = colors.Gray + "▏" + strings.Repeat("░", maxBarWidth-1) + colors.Reset
+			} else {
+				// Calculate filled portion of bar
+				filledWidth := int((cpuPercent / 100.0) * float64(maxBarWidth))
+				if filledWidth > maxBarWidth {
+					filledWidth = maxBarWidth // Cap at maximum
+				}
+				if filledWidth < 1 {
+					filledWidth = 1 // At least show minimal activity
+				}
+
+				// Color gradient from green to yellow to red based on usage
+				var barColor string
+				if cpuPercent < 30 {
+					barColor = colors.Green
+				} else if cpuPercent < 70 {
+					barColor = colors.Yellow
+				} else {
+					barColor = colors.Red
+				}
+
+				// Create the bar
+				cpuBar = barColor + strings.Repeat("█", filledWidth) +
+					colors.Gray + strings.Repeat("░", maxBarWidth-filledWidth) +
+					colors.Reset + " " + cpuText
+			}
+
 			mem := fmt.Sprintf("%.1fMB", job.Memory)
 			threads := strconv.Itoa(job.ThreadCount)
 			job.Unlock()
@@ -37,13 +77,12 @@ func updateJobListInContainer(jobsMap map[int]*Job, container *gui.Container, in
 				statusColor = colors.Yellow
 			}
 
-			// Format: PID | Command | Status | CPU | Mem | Threads
-			// Using a fixed-width like approach for better alignment (simple version)
-			entry := fmt.Sprintf("%s%-5d%s | %s%-30s%s | %s%-10s%s | %s%-7s%s | %s%-9s%s | %s%s%s",
+			// Format: PID | Command | Status | CPU (progress bar) | Mem | Threads
+			entry := fmt.Sprintf("%s%-5d%s | %s%-30s%s | %s%-10s%s | %s | %s%-9s%s | %s%s%s",
 				colors.Cyan, job.ID, colors.Reset, // PID
 				colors.White, command, colors.Reset, // Command
 				statusColor, status, colors.Reset, // Status
-				colors.Magenta, cpu, colors.Reset, // CPU
+				cpuBar,                         // CPU with progress bar
 				colors.Blue, mem, colors.Reset, // Memory
 				colors.Gray, threads, colors.Reset) // Threads
 			content = append(content, entry)
@@ -78,7 +117,11 @@ func stripAnsi(str string) string {
 func getSelectedPIDFromContainer(container *gui.Container) (int, error) {
 	selectedIndex := container.GetSelectedIndex()
 	if selectedIndex < 0 || selectedIndex >= len(container.Content) {
-		return -1, fmt.Errorf("no job selected or selection is invalid")
+		// If there's no selected item, try using the highlighted item instead
+		selectedIndex = container.GetHighlightedIndex()
+		if selectedIndex < 0 || selectedIndex >= len(container.Content) {
+			return -1, fmt.Errorf("no job selected or selection is invalid")
+		}
 	}
 	selectedLine := container.Content[selectedIndex]
 
@@ -147,11 +190,11 @@ func InteractiveJobManager(jobsMap map[int]*Job) {
 	currentY += 2
 
 	// Header for the job list
-	headerText := fmt.Sprintf("%s%-5s%s | %s%-30s%s | %s%-10s%s | %s%-7s%s | %s%-9s%s | %s%s%s",
+	headerText := fmt.Sprintf("%s%-5s%s | %s%-30s%s | %s%-10s%s | %s%-20s%s | %s%-9s%s | %s%s%s",
 		colors.BoldYellow, "PID", colors.Reset,
 		colors.BoldYellow, "COMMAND", colors.Reset,
 		colors.BoldYellow, "STATUS", colors.Reset,
-		colors.BoldYellow, "CPU", colors.Reset,
+		colors.BoldYellow, "CPU", colors.Reset, // Wider column for progress bar
 		colors.BoldYellow, "MEMORY", colors.Reset,
 		colors.BoldYellow, "THREADS", colors.Reset)
 	headerLabel := gui.NewLabel(headerText, 1, currentY, colors.BoldYellow)
@@ -242,7 +285,37 @@ func InteractiveJobManager(jobsMap map[int]*Job) {
 	})
 	jobWin.AddElement(quitButton)
 
-	// Initial population and start
+	// Create a channel to coordinate closing the refresh goroutine
+	refreshDone := make(chan struct{})
+
+	// Setup a ticker for auto-refresh with shorter interval for more responsive updates
+	refreshTicker := time.NewTicker(500 * time.Millisecond)
+
+	// Start a goroutine to periodically update job stats
+	go func() {
+		defer refreshTicker.Stop()
+
+		for {
+			select {
+			case <-refreshTicker.C:
+				// Update the container content without re-rendering header
+				updateJobListInContainer(jobsMap, jobListContainer, infoLabel)
+
+				// Force re-render of the entire window
+				jobWin.Render()
+
+			case <-refreshDone:
+				return // Exit goroutine when done signal received
+			}
+		}
+	}()
+
+	// Initial population before entering event loop
 	updateJobListInContainer(jobsMap, jobListContainer, infoLabel)
+
+	// Start the window event loop (this will block until window is closed)
 	jobWin.WindowActions()
+
+	// Once WindowActions returns, the window is closed, so we can clean up
+	close(refreshDone) // Signal the refresh goroutine to exit
 }

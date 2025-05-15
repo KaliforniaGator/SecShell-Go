@@ -765,20 +765,23 @@ func (sb *ScrollBar) GetCursorPosition() (int, int, bool) {
 
 // Container represents a scrollable area for content.
 type Container struct {
-	X, Y               int
-	Width, Height      int
-	Content            []string // Initially support only string content
-	scrollBar          *ScrollBar
-	needsScroll        bool
-	totalContentHeight int
-	IsActive           bool                    // Tracks if the container itself has focus
-	SelectedIndex      int                     // Index of the selected line in Content
-	Color              string                  // Default background/text color (use window's if empty)
-	ActiveColor        string                  // Border/indicator color when active (unused for now, but good practice)
-	SelectionColor     string                  // Background/text color for the selected line
-	OnItemSelected     func(selectedIndex int) // Callback when an item is selected via Enter
-	cursorAbsX         int                     // Used for cursor position tracking
-	cursorAbsY         int                     // Used for cursor position tracking
+	X, Y                  int
+	Width, Height         int
+	Content               []string // Initially support only string content
+	scrollBar             *ScrollBar
+	needsScroll           bool
+	totalContentHeight    int
+	IsActive              bool                    // Tracks if the container itself has focus
+	HighlightedIndex      int                     // Index of the currently highlighted line in Content
+	SelectedIndex         int                     // Index of the actually selected item (via Enter)
+	Color                 string                  // Default background/text color (use window's if empty)
+	ActiveColor           string                  // Border/indicator color when active (unused for now, but good practice)
+	SelectionColor        string                  // Background/text color for the highlighted line
+	OnItemSelected        func(selectedIndex int) // Callback when an item is selected via Enter
+	cursorAbsX            int                     // Used for cursor position tracking
+	cursorAbsY            int                     // Used for cursor position tracking
+	lastConfirmedIndex    int                     // Index of the last item confirmed with Enter
+	hasConfirmedSelection bool                    // Whether any item has been confirmed with Enter
 	// TODO: Add BgColor, ContentColor properties if needed explicitly for container
 }
 
@@ -804,33 +807,81 @@ func NewContainer(x, y, width, height int, content []string) *Container {
 	scrollBar.Visible = false // Start hidden
 
 	c := &Container{
-		X:              x,
-		Y:              y,
-		Width:          width,
-		Height:         height,
-		Content:        content,
-		scrollBar:      scrollBar, // Assign the created scrollbar
-		needsScroll:    false,     // Will be set by updateScrollState
-		IsActive:       false,
-		SelectedIndex:  0,
-		Color:          "",
-		ActiveColor:    colors.BoldWhite,
-		SelectionColor: colors.BgBlue + colors.BoldWhite,
-		OnItemSelected: nil, // Initialize new callback to nil
+		X:                     x,
+		Y:                     y,
+		Width:                 width,
+		Height:                height,
+		Content:               content,
+		scrollBar:             scrollBar, // Assign the created scrollbar
+		needsScroll:           false,     // Will be set by updateScrollState
+		IsActive:              false,
+		HighlightedIndex:      0,
+		SelectedIndex:         -1, // No actual selection initially, only highlighting
+		Color:                 "",
+		ActiveColor:           colors.BoldWhite,
+		SelectionColor:        colors.BgBlue + colors.BoldWhite,
+		OnItemSelected:        nil, // Initialize new callback to nil
+		lastConfirmedIndex:    -1,  // No confirmed selection initially
+		hasConfirmedSelection: false,
 	}
 
 	c.updateScrollState() // Calculate initial scroll state and visibility
 
-	// Ensure initial selection is valid
-	if c.SelectedIndex >= len(c.Content) && len(c.Content) > 0 {
-		c.SelectedIndex = len(c.Content) - 1
+	// Ensure initial highlight is valid
+	if c.HighlightedIndex >= len(c.Content) && len(c.Content) > 0 {
+		c.HighlightedIndex = len(c.Content) - 1
 	} else if len(c.Content) == 0 {
-		c.SelectedIndex = -1 // No selection possible
+		c.HighlightedIndex = -1 // No highlight possible
 	}
-	// Ensure initial selection is visible after state update
-	c.ensureSelectionVisible()
+	// Ensure initial highlight is visible after state update
+	c.ensureHighlightVisible()
 
 	return c
+}
+
+// SelectHighlightedItem selects the currently highlighted item.
+// This should be called when the user presses Enter on a highlighted item.
+func (c *Container) SelectHighlightedItem() {
+	if c.HighlightedIndex >= 0 && c.HighlightedIndex < len(c.Content) {
+		c.SelectedIndex = c.HighlightedIndex
+		c.lastConfirmedIndex = c.HighlightedIndex
+		c.hasConfirmedSelection = true
+
+		// Call the existing OnItemSelected callback if available
+		if c.OnItemSelected != nil {
+			c.OnItemSelected(c.SelectedIndex)
+		}
+	}
+}
+
+// ConfirmSelection marks the currently highlighted item as a confirmed selection.
+// This should be called when the user presses Enter on an item.
+// Keeping for backward compatibility, now just delegates to SelectHighlightedItem
+func (c *Container) ConfirmSelection() {
+	c.SelectHighlightedItem()
+}
+
+// GetLastConfirmedItem returns the index and content of the last confirmed selection.
+// Returns the index, content string, and a boolean indicating whether any selection was made.
+func (c *Container) GetLastConfirmedItem() (int, string, bool) {
+	if !c.hasConfirmedSelection {
+		return -1, "", false
+	}
+
+	if c.lastConfirmedIndex >= 0 && c.lastConfirmedIndex < len(c.Content) {
+		return c.lastConfirmedIndex, c.Content[c.lastConfirmedIndex], true
+	}
+
+	// The content has changed and the last selection is no longer valid
+	return -1, "", false
+}
+
+// ClearConfirmedSelection resets the confirmed selection state.
+// Useful when the container content changes or when starting a new selection process.
+func (c *Container) ClearConfirmedSelection() {
+	c.SelectedIndex = -1
+	c.lastConfirmedIndex = -1
+	c.hasConfirmedSelection = false
 }
 
 // updateScrollState calculates content height and determines if scrolling is needed.
@@ -839,12 +890,12 @@ func (c *Container) updateScrollState() {
 	c.totalContentHeight = len(c.Content)
 	c.needsScroll = c.totalContentHeight > c.Height
 
-	// Adjust SelectedIndex if it's now out of bounds
-	if c.SelectedIndex >= c.totalContentHeight {
+	// Adjust HighlightedIndex if it's now out of bounds
+	if c.HighlightedIndex >= c.totalContentHeight {
 		if c.totalContentHeight > 0 {
-			c.SelectedIndex = c.totalContentHeight - 1
+			c.HighlightedIndex = c.totalContentHeight - 1
 		} else {
-			c.SelectedIndex = -1 // No items left
+			c.HighlightedIndex = -1 // No items left
 		}
 	}
 
@@ -863,14 +914,20 @@ func (c *Container) updateScrollState() {
 		c.scrollBar.SetValue(0) // Reset scroll value if not needed
 	}
 
-	// Ensure selection is visible after potential scrollbar update
-	c.ensureSelectionVisible()
+	// Ensure highlight is visible after potential scrollbar update
+	c.ensureHighlightVisible()
 }
 
 // SetContent updates the container's content and recalculates scrolling state.
 func (c *Container) SetContent(content []string) {
+	// Check if the last confirmed selection is still valid with the new content
+	if c.hasConfirmedSelection && (c.lastConfirmedIndex < 0 || c.lastConfirmedIndex >= len(content)) {
+		c.hasConfirmedSelection = false // The selection is no longer valid
+		c.SelectedIndex = -1
+	}
+
 	c.Content = content
-	c.updateScrollState() // This will also adjust SelectedIndex if needed
+	c.updateScrollState() // This will also adjust HighlightedIndex if needed
 }
 
 // GetScrollOffset returns the current vertical scroll offset (top visible line index).
@@ -882,47 +939,66 @@ func (c *Container) GetScrollOffset() int {
 	return 0 // No scrollbar means no offset
 }
 
-// ensureSelectionVisible adjusts the scroll offset if the selected item is out of view.
-func (c *Container) ensureSelectionVisible() {
-	// Only adjust if scrollbar is currently needed/visible and selection is valid
-	if !c.scrollBar.Visible || c.SelectedIndex < 0 {
+// ensureHighlightVisible adjusts the scroll offset if the highlighted item is out of view.
+func (c *Container) ensureHighlightVisible() {
+	// Only adjust if scrollbar is currently needed/visible and highlight is valid
+	if !c.scrollBar.Visible || c.HighlightedIndex < 0 {
 		return
 	}
 
 	scrollOffset := c.scrollBar.Value
 	bottomVisibleIndex := scrollOffset + c.Height - 1
 
-	if c.SelectedIndex < scrollOffset {
-		// Selection is above the view, scroll up
-		c.scrollBar.SetValue(c.SelectedIndex)
-	} else if c.SelectedIndex > bottomVisibleIndex {
-		// Selection is below the view, scroll down
-		c.scrollBar.SetValue(c.SelectedIndex - c.Height + 1)
+	if c.HighlightedIndex < scrollOffset {
+		// Highlight is above the view, scroll up
+		c.scrollBar.SetValue(c.HighlightedIndex)
+	} else if c.HighlightedIndex > bottomVisibleIndex {
+		// Highlight is below the view, scroll down
+		c.scrollBar.SetValue(c.HighlightedIndex - c.Height + 1)
 	}
 }
 
-// SelectNext selects the next item in the container.
+// ensureSelectionVisible kept for backward compatibility, now delegates to ensureHighlightVisible
+func (c *Container) ensureSelectionVisible() {
+	c.ensureHighlightVisible()
+}
+
+// HighlightNext highlights the next item in the container (doesn't select it).
+func (c *Container) HighlightNext() {
+	if c.HighlightedIndex < c.totalContentHeight-1 {
+		c.HighlightedIndex++
+		c.ensureHighlightVisible()
+	}
+}
+
+// HighlightPrevious highlights the previous item in the container (doesn't select it).
+func (c *Container) HighlightPrevious() {
+	if c.HighlightedIndex > 0 {
+		c.HighlightedIndex--
+		c.ensureHighlightVisible()
+	}
+}
+
+// SelectNext kept for backward compatibility, now delegates to HighlightNext
 func (c *Container) SelectNext() {
-	if c.SelectedIndex < c.totalContentHeight-1 {
-		c.SelectedIndex++
-		c.ensureSelectionVisible()
-		// No callback call here anymore
-	}
+	c.HighlightNext()
 }
 
-// SelectPrevious selects the previous item in the container.
+// SelectPrevious kept for backward compatibility, now delegates to HighlightPrevious
 func (c *Container) SelectPrevious() {
-	if c.SelectedIndex > 0 {
-		c.SelectedIndex--
-		c.ensureSelectionVisible()
-		// No callback call here anymore
-	}
+	c.HighlightPrevious()
 }
 
-// GetSelectedIndex returns the index of the currently selected item.
-// Returns -1 if no item is selected (e.g., empty container).
+// GetSelectedIndex returns the index of the actually selected item (via Enter).
+// Returns -1 if no item is selected.
 func (c *Container) GetSelectedIndex() int {
 	return c.SelectedIndex
+}
+
+// GetHighlightedIndex returns the index of the currently highlighted item.
+// Returns -1 if no item is highlighted (e.g., empty container).
+func (c *Container) GetHighlightedIndex() int {
+	return c.HighlightedIndex
 }
 
 // NeedsCursor implements CursorManager interface
@@ -966,9 +1042,11 @@ func (c *Container) Render(buffer *strings.Builder, winX, winY int, _ int) {
 		buffer.WriteString(MoveCursorCmd(lineY, absX))
 
 		// Determine line color
-		lineColor := c.Color                                                                // Use container's default or inherit window's
-		if c.IsActive && contentIndex == c.SelectedIndex && contentIndex < len(c.Content) { // Check contentIndex bounds
-			lineColor = c.SelectionColor // Use selection color if active and selected
+		lineColor := c.Color // Use container's default or inherit window's
+
+		// Only highlight the currently highlighted item (modified)
+		if c.IsActive && contentIndex == c.HighlightedIndex && contentIndex < len(c.Content) {
+			lineColor = c.SelectionColor // Use selection color if active and highlighted
 		}
 		buffer.WriteString(lineColor) // Apply line color
 
@@ -1581,12 +1659,13 @@ type MenuItem struct {
 
 // NewMenuItem creates a new menu item with the given text and action
 func NewMenuItem(text string, color, activeColor string, action func() bool) *MenuItem {
+	displayWidth := getStringDisplayWidth(text)
 	return &MenuItem{
 		Text:        text,
 		Color:       color,
 		ActiveColor: activeColor,
 		Action:      action,
-		Width:       len(text) + 2, // Add padding
+		Width:       displayWidth + 2, // Add padding to actual display width
 		IsActive:    false,
 	}
 }
@@ -1654,7 +1733,7 @@ func (m *Menu) AddItem(item *MenuItem) {
 // recalculateSize updates the width and height of the menu based on its items
 func (m *Menu) recalculateSize() {
 	if m.IsTopLevel {
-		// Top-level menu width is sum of all item widths
+		// Top-level menu width is sum of all item widths (already includes padding)
 		width := 0
 		for _, item := range m.Items {
 			width += item.Width
@@ -1665,8 +1744,9 @@ func (m *Menu) recalculateSize() {
 		// Submenu width is based on the widest item plus borders
 		width := 0
 		for _, item := range m.Items {
-			if item.Width > width {
-				width = item.Width
+			displayWidth := getStringDisplayWidth(item.Text)
+			if displayWidth+2 > width { // +2 for padding
+				width = displayWidth + 2
 			}
 		}
 		m.Width = width + 4         // Add padding and borders
@@ -1726,11 +1806,14 @@ func (m *Menu) SelectPrevious() {
 
 // ActivateSelected activates the currently selected item
 func (m *Menu) ActivateSelected() bool {
-	if m.SelectedIdx < 0 || m.SelectedIdx >= len(m.Items) {
+	if m == nil || m.SelectedIdx < 0 || m.SelectedIdx >= len(m.Items) {
 		return false
 	}
 
 	item := m.Items[m.SelectedIdx]
+	if item == nil {
+		return false
+	}
 
 	// If item has submenu, open it
 	if item.SubMenu != nil {
@@ -1750,7 +1833,7 @@ func (m *Menu) ActivateSelected() bool {
 		if len(item.SubMenu.Items) > 0 {
 			item.SubMenu.Items[0].IsActive = true
 		}
-		return true
+		return false // Opening a submenu doesn't close menus
 	}
 
 	// Otherwise, execute the action if defined
@@ -1796,9 +1879,8 @@ func (m *Menu) Render(buffer *strings.Builder, winX, winY int, _ int) {
 				buffer.WriteString(item.Color)
 			}
 
-			// Draw menu item with padding
+			// Draw menu item with padding, using proper display width
 			buffer.WriteString(" " + item.Text + " ")
-
 			buffer.WriteString(colors.Reset)
 
 			// Render submenu if active
@@ -1830,9 +1912,10 @@ func (m *Menu) Render(buffer *strings.Builder, winX, winY int, _ int) {
 				buffer.WriteString(item.Color)
 			}
 
-			// Pad item text to fill menu width
+			// Pad item text to fill menu width, using proper display width
+			displayWidth := getStringDisplayWidth(item.Text)
 			paddedText := " " + item.Text
-			padding := m.Width - 3 - len(item.Text)
+			padding := m.Width - 3 - displayWidth
 			if padding > 0 {
 				paddedText += strings.Repeat(" ", padding)
 			}
@@ -1852,7 +1935,6 @@ func (m *Menu) Render(buffer *strings.Builder, winX, winY int, _ int) {
 		// Bottom border
 		buffer.WriteString(MoveCursorCmd(absY+m.Height-1, absX))
 		buffer.WriteString("└" + strings.Repeat("─", m.Width-2) + "┘")
-
 		buffer.WriteString(colors.Reset)
 
 		// Render any open submenu
@@ -1943,6 +2025,7 @@ func (mb *MenuBar) GetZIndex() int {
 // SelectNext selects the next menu item or delegates to active submenu
 func (mb *MenuBar) SelectNext() {
 	if !mb.IsActive {
+
 		return
 	}
 
@@ -1997,8 +2080,13 @@ func (mb *MenuBar) MoveDown() {
 
 	// Check if current item has submenu
 	if mb.Menu.SelectedIdx >= 0 && mb.Menu.SelectedIdx < len(mb.Menu.Items) {
+
 		item := mb.Menu.Items[mb.Menu.SelectedIdx]
 		if item.SubMenu != nil {
+			// Position submenu directly below the menu item
+			item.SubMenu.X = mb.X + item.X
+			item.SubMenu.Y = mb.Y + 1 // Below top-level menu
+
 			item.SubMenu.IsOpen = true
 			item.SubMenu.SelectedIdx = 0
 			if len(item.SubMenu.Items) > 0 {
@@ -2033,37 +2121,50 @@ func (mb *MenuBar) ActivateSelected() bool {
 		return false
 	}
 
-	var result bool
+	// Initialize result to false
+	result := false
 
 	if mb.ActiveMenu != nil {
-		// Try to activate item in submenu
-		result = mb.ActiveMenu.ActivateSelected()
+		// Get the current active menu before potential changes
+		currentMenu := mb.ActiveMenu
 
-		// If a submenu was opened, update active menu
-		if mb.ActiveMenu.SelectedIdx >= 0 &&
-			mb.ActiveMenu.SelectedIdx < len(mb.ActiveMenu.Items) {
-			item := mb.ActiveMenu.Items[mb.ActiveMenu.SelectedIdx]
-			if item.SubMenu != nil && item.SubMenu.IsOpen {
-				mb.ActiveMenu = item.SubMenu
+		// Try to activate item in submenu
+		result = currentMenu.ActivateSelected()
+
+		// If an action was executed and returned true, close all menus
+		if result {
+			mb.Deactivate()
+			return true
+		}
+
+		// If we still have the same active menu (it wasn't closed)
+		if mb.ActiveMenu == currentMenu {
+			// Check if a submenu was opened
+			if currentMenu.SelectedIdx >= 0 && currentMenu.SelectedIdx < len(currentMenu.Items) {
+				selectedItem := currentMenu.Items[currentMenu.SelectedIdx]
+				if selectedItem != nil && selectedItem.SubMenu != nil && selectedItem.SubMenu.IsOpen {
+					mb.ActiveMenu = selectedItem.SubMenu
+				}
 			}
 		}
-	} else {
+	} else if mb.Menu != nil { // Add nil check for top-level menu
 		// Try to activate item in top-level menu
+
 		result = mb.Menu.ActivateSelected()
 
-		// If a submenu was opened, update active menu
-		if mb.Menu.SelectedIdx >= 0 &&
-			mb.Menu.SelectedIdx < len(mb.Menu.Items) {
-			item := mb.Menu.Items[mb.Menu.SelectedIdx]
-			if item.SubMenu != nil && item.SubMenu.IsOpen {
-				mb.ActiveMenu = item.SubMenu
+		// If an action was executed and returned true, close the menu
+		if result {
+			mb.Deactivate()
+			return true
+		}
+
+		// Check if a submenu was opened
+		if mb.Menu.SelectedIdx >= 0 && mb.Menu.SelectedIdx < len(mb.Menu.Items) {
+			selectedItem := mb.Menu.Items[mb.Menu.SelectedIdx]
+			if selectedItem != nil && selectedItem.SubMenu != nil && selectedItem.SubMenu.IsOpen {
+				mb.ActiveMenu = selectedItem.SubMenu
 			}
 		}
-	}
-
-	// If an action was executed and returned true, close the menu
-	if result {
-		mb.Deactivate()
 	}
 
 	return result

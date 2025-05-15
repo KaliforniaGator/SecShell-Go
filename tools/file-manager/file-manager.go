@@ -34,6 +34,9 @@ var (
 	clipboardPath  string // Full path of the item to be copied/moved
 	clipboardIsDir bool   // True if the clipboard item is a directory
 	clipboardName  string // Name of the item on the clipboard
+
+	// Track last highlighted index across focus changes
+	lastHighlightedIndex int = 0
 )
 
 const (
@@ -57,37 +60,20 @@ func (h *FileManagerKeyHandler) HandleKeyStroke(key []byte, w *gui.Window) (hand
 		return false, false, false
 	}
 
-	// Check for Alt+F to activate File menu (Alt sends ESC then the key)
-	if len(key) == 2 && key[0] == 27 && key[1] == 102 { // ESC followed by 'f'
-		menuBar.Activate()
-		// Activate File menu (first item)
-		if len(menuBar.Menu.Items) > 0 {
-			menuBar.Menu.SelectedIdx = 0
-			menuBar.Menu.Items[0].IsActive = true
+	// Handle Enter key when the container is focused
+	if len(key) == 1 && key[0] == 13 { // Enter key
+		if fileListContainer != nil && fileListContainer.IsActive {
+			// Get the highlighted index and call handleItemActivation directly
+			idx := fileListContainer.HighlightedIndex
+			if idx >= 0 && idx < len(currentEntries) {
+				// First ensure we update the selection state
+				fileListContainer.SelectHighlightedItem()
+				// Then handle the activation
+				handleItemActivation(idx)
+				return true, true, false // We handled it, need render, don't quit
+			}
 		}
-		return true, true, false
-	}
-
-	// Check for Alt+E to activate Edit menu
-	if len(key) == 2 && key[0] == 27 && key[1] == 101 { // ESC followed by 'e'
-		menuBar.Activate()
-		// Activate Edit menu (second item)
-		if len(menuBar.Menu.Items) > 1 {
-			menuBar.Menu.SelectedIdx = 1
-			menuBar.Menu.Items[1].IsActive = true
-		}
-		return true, true, false
-	}
-
-	// Check for Alt+N to activate Nav menu
-	if len(key) == 2 && key[0] == 27 && key[1] == 110 { // ESC followed by 'n'
-		menuBar.Activate()
-		// Activate Nav menu (third item)
-		if len(menuBar.Menu.Items) > 2 {
-			menuBar.Menu.SelectedIdx = 2
-			menuBar.Menu.Items[2].IsActive = true
-		}
-		return true, true, false
+		return false, false, false
 	}
 
 	// Check for single key commands
@@ -103,7 +89,9 @@ func (h *FileManagerKeyHandler) HandleKeyStroke(key []byte, w *gui.Window) (hand
 			if parentPath != currentPath { // Avoid getting stuck at root "/" whose parent is "/"
 				currentPath = parentPath
 				listDirectoryContents()
-				fileListContainer.SelectedIndex = 0
+				// Use HighlightedIndex instead of SelectedIndex for navigation
+				fileListContainer.HighlightedIndex = 0
+				fileListContainer.ClearConfirmedSelection() // Clear confirmed selection in parent directory
 				fileListContainer.GetScrollbar().SetValue(0)
 			} else {
 				infoLabel.Text = "Already at root."
@@ -190,13 +178,18 @@ func listDirectoryContents() {
 	if len(currentEntries) == 0 {
 		displayContent = append(displayContent, colors.Gray+"<Empty directory>"+colors.Reset)
 	} else {
-		for _, entry := range currentEntries {
+		for i, entry := range currentEntries {
 			name := entry.Name()
 			prefix := filePrefix
 			color := colors.White
 			if entry.IsDir() {
 				prefix = dirPrefix
 				color = colors.BoldCyan
+			}
+
+			// Add highlight for the currently highlighted item (not the selected one)
+			if i == fileListContainer.HighlightedIndex {
+				color = colors.BgBlue + colors.BoldWhite // Override color for highlighted item
 			}
 
 			// Highlight if this item is on the clipboard
@@ -209,8 +202,6 @@ func listDirectoryContents() {
 				}
 			}
 
-			// Ensure the selected item in the list container is also visually distinct if needed by GUI package
-			// For now, just prepending prefix and color
 			displayContent = append(displayContent, fmt.Sprintf("%s%s%s%s", color, prefix, name, colors.Reset))
 		}
 	}
@@ -218,6 +209,8 @@ func listDirectoryContents() {
 	fileListContainer.SetContent(displayContent)
 	infoLabel.Text = fmt.Sprintf("Listed %d items.", len(currentEntries))
 	infoLabel.Color = colors.Gray
+
+	// Container maintains its own highlight/selection state
 }
 
 // handleItemActivation is called when an item in the fileListContainer is "activated" (e.g., Enter pressed).
@@ -228,18 +221,26 @@ func handleItemActivation(index int) {
 		return
 	}
 
+	// The selection has already been tracked by SelectHighlightedItem in HandleKeyStroke
+	// so we don't need to call fileListContainer.SelectHighlightedItem() here
+
 	selectedEntry := currentEntries[index]
 	newPath := filepath.Join(currentPath, selectedEntry.Name())
 
 	if selectedEntry.IsDir() {
 		currentPath = filepath.Clean(newPath)
 		listDirectoryContents()
-		fileListContainer.SelectedIndex = 0          // Reset selection to top
-		fileListContainer.GetScrollbar().SetValue(0) // Reset scroll
+		fileListContainer.GetScrollbar().SetValue(0)
+		fileListContainer.IsActive = true
+		// Reset highlighting for new directory
+		fileListContainer.HighlightedIndex = 0
+		fileListContainer.ClearConfirmedSelection() // Clear confirmed selection in new directory
+		listDirectoryContents()
 	} else {
-		// For files, just show info for now
+		// For files, just show info and maintain current selection
 		infoLabel.Text = fmt.Sprintf("Selected file: %s", selectedEntry.Name())
 		infoLabel.Color = colors.Cyan
+		listDirectoryContents()
 	}
 }
 
@@ -342,11 +343,19 @@ func showCreateFilePrompt() {
 
 // showDeleteConfirmation displays a confirmation dialog for deleting items
 func showDeleteConfirmation() {
+	// Use SelectedIndex for deletion operations instead of HighlightedIndex
 	selectedIndex := fileListContainer.SelectedIndex
 	if selectedIndex < 0 || selectedIndex >= len(currentEntries) {
-		infoLabel.Text = "No item selected to delete."
-		infoLabel.Color = colors.Yellow
-		return
+		// If nothing is selected, try to use the highlighted item as fallback
+		selectedIndex = fileListContainer.HighlightedIndex
+		// Select it first so we're working with a proper selection
+		if selectedIndex >= 0 && selectedIndex < len(currentEntries) {
+			fileListContainer.SelectHighlightedItem()
+		} else {
+			infoLabel.Text = "No item selected to delete."
+			infoLabel.Color = colors.Yellow
+			return
+		}
 	}
 
 	selectedEntry := currentEntries[selectedIndex]
@@ -369,13 +378,13 @@ func showDeleteConfirmation() {
 			infoLabel.Text = "'" + itemName + "' deleted."
 			infoLabel.Color = colors.Green
 			listDirectoryContents()
-			// Adjust selection if possible
+			// Adjust highlighting if possible
 			if len(currentEntries) > 0 {
 				if selectedIndex >= len(currentEntries) {
-					fileListContainer.SelectedIndex = len(currentEntries) - 1
+					fileListContainer.HighlightedIndex = len(currentEntries) - 1
 				}
 			} else {
-				fileListContainer.SelectedIndex = -1
+				fileListContainer.HighlightedIndex = -1
 			}
 		}
 		fmWindow.RemoveElement(activePrompt)
@@ -514,11 +523,19 @@ func showPastePrompt() {
 }
 
 func handleCopyItem() {
+	// Use SelectedIndex for copy operation instead of HighlightedIndex
 	selectedIndex := fileListContainer.SelectedIndex
 	if selectedIndex < 0 || selectedIndex >= len(currentEntries) {
-		infoLabel.Text = "No item selected to copy."
-		infoLabel.Color = colors.Yellow
-		return
+		// If nothing is selected, try to use the highlighted item as fallback
+		selectedIndex = fileListContainer.HighlightedIndex
+		// Select it first so we're working with a proper selection
+		if selectedIndex >= 0 && selectedIndex < len(currentEntries) {
+			fileListContainer.SelectHighlightedItem()
+		} else {
+			infoLabel.Text = "No item selected to copy."
+			infoLabel.Color = colors.Yellow
+			return
+		}
 	}
 	selectedEntry := currentEntries[selectedIndex]
 	clipboardName = selectedEntry.Name()
@@ -531,11 +548,19 @@ func handleCopyItem() {
 }
 
 func handleMoveItem() {
+	// Use SelectedIndex for move operation instead of HighlightedIndex
 	selectedIndex := fileListContainer.SelectedIndex
 	if selectedIndex < 0 || selectedIndex >= len(currentEntries) {
-		infoLabel.Text = "No item selected to move."
-		infoLabel.Color = colors.Yellow
-		return
+		// If nothing is selected, try to use the highlighted item as fallback
+		selectedIndex = fileListContainer.HighlightedIndex
+		// Select it first so we're working with a proper selection
+		if selectedIndex >= 0 && selectedIndex < len(currentEntries) {
+			fileListContainer.SelectHighlightedItem()
+		} else {
+			infoLabel.Text = "No item selected to move."
+			infoLabel.Color = colors.Yellow
+			return
+		}
 	}
 	selectedEntry := currentEntries[selectedIndex]
 	clipboardName = selectedEntry.Name()
@@ -559,10 +584,10 @@ func CreateEmptyFile(path string) error {
 // setupMenuBar creates the application menu bar
 func setupMenuBar(contentWidth int) *gui.MenuBar {
 	// Reduce width by 2 to account for window borders
-	mb := gui.NewMenuBar(1, 0, contentWidth-2, colors.White, colors.Cyan, colors.BgBlue)
+	mb := gui.NewMenuBar(1, 0, contentWidth-2, colors.White, colors.Cyan, colors.BgBlack)
 
 	// File menu
-	fileMenu := mb.AddSubMenu("File (Alt+F)", colors.White, colors.BgBlue+colors.White)
+	fileMenu := mb.AddSubMenu("File", colors.White, colors.BgBlue+colors.White)
 	fileMenu.AddItem(gui.NewMenuItem("New Folder (F1/F)", colors.White, colors.BgBlue+colors.White, func() bool {
 		showCreateFolderPrompt()
 		menuBar.Deactivate() // Manually deactivate menu instead of returning true
@@ -583,7 +608,7 @@ func setupMenuBar(contentWidth int) *gui.MenuBar {
 	}))
 
 	// Edit menu
-	editMenu := mb.AddSubMenu("Edit (Alt+E)", colors.White, colors.BgBlue+colors.White)
+	editMenu := mb.AddSubMenu("Edit", colors.White, colors.BgBlue+colors.White)
 	editMenu.AddItem(gui.NewMenuItem("Copy (C)", colors.White, colors.BgBlue+colors.White, func() bool {
 		handleCopyItem()
 		menuBar.Deactivate()
@@ -606,13 +631,15 @@ func setupMenuBar(contentWidth int) *gui.MenuBar {
 	}))
 
 	// Navigation menu
-	navMenu := mb.AddSubMenu("Nav (Alt+N)", colors.White, colors.BgBlue+colors.White)
+	navMenu := mb.AddSubMenu("Navigation", colors.White, colors.BgBlue+colors.White)
 	navMenu.AddItem(gui.NewMenuItem("Up Directory (U)", colors.White, colors.BgBlue+colors.White, func() bool {
 		parentPath := filepath.Dir(currentPath)
 		if parentPath != currentPath {
 			currentPath = parentPath
 			listDirectoryContents()
-			fileListContainer.SelectedIndex = 0
+			// Use HighlightedIndex for navigation
+			lastHighlightedIndex = 0
+			fileListContainer.HighlightedIndex = lastHighlightedIndex
 			fileListContainer.GetScrollbar().SetValue(0)
 		} else {
 			infoLabel.Text = "Already at root."
@@ -642,7 +669,7 @@ func FileManagerApp() {
 	winX := (termWidth - winWidth) / 2
 	winY := (termHeight - winHeight) / 2
 
-	fmWindow = gui.NewWindow(" 🗂️", " File Manager ", winX, winY, winWidth, winHeight,
+	fmWindow = gui.NewWindow("🗂️", "File Manager", winX, winY, winWidth, winHeight,
 		"double", colors.BoldYellow, colors.Yellow, colors.BgBlack, colors.White)
 
 	contentAreaWidth := winWidth - 2
@@ -667,19 +694,23 @@ func FileManagerApp() {
 		containerHeight = 5
 	}
 
+	// Modify the file list container initialization
 	fileListContainer = gui.NewContainer(1, currentY, contentAreaWidth-1, containerHeight, []string{})
 	fileListContainer.Color = colors.BgBlack + colors.White
 	fileListContainer.SelectionColor = colors.BgBlue + colors.BoldWhite
 	fileListContainer.OnItemSelected = handleItemActivation
+	fileListContainer.IsActive = true
+	fileListContainer.HighlightedIndex = lastHighlightedIndex // Restore last highlighted item
 	fmWindow.AddElement(fileListContainer)
+
 	currentY += containerHeight + 1
 
-	infoLabel = gui.NewLabel("Welcome to File Manager! Press Alt+F, Alt+E or Alt+N to activate menus, Tab to navigate.", 1, currentY, colors.Gray)
+	infoLabel = gui.NewLabel("Welcome to File Manager! Press Tab to open menus.", 1, currentY, colors.Gray)
 	fmWindow.AddElement(infoLabel)
 	currentY += 2 // Space after info label
 
 	// Status bar at the bottom with key shortcuts and menu instructions
-	statusBar := gui.NewLabel("Alt+F/E/N: Menus | F1: New Folder | F2: New File | C: Copy | M: Move | P: Paste | D: Delete | U: Up | Q: Quit", 1, winHeight-4, colors.Gray)
+	statusBar := gui.NewLabel("Tab: Menus | F1: New Folder | F2: New File | C: Copy | M: Move | P: Paste | D: Delete | U: Up | Q: Quit", 1, winHeight-4, colors.Gray)
 	fmWindow.AddElement(statusBar)
 
 	// Initial load
@@ -697,6 +728,9 @@ func FileManagerApp() {
 	}
 	currentPath = filepath.Clean(initialPath)
 	listDirectoryContents() // Initial population
+
+	// Clear any initial selection state
+	fileListContainer.ClearConfirmedSelection()
 
 	// Start interaction loop
 	fmWindow.WindowActions()
