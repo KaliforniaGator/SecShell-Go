@@ -14,6 +14,45 @@ type Task struct {
 	Priority string // "Low", "Medium", "High"
 }
 
+// --- Custom KeyStrokeHandler for Task Management ---
+type TaskAppKeyHandler struct {
+	taskListContainer *Container
+	tasks             *[]Task
+	indexInput        *TextBox
+	infoLabel         *Label
+}
+
+// HandleKeyStroke processes keyboard input for the task app
+func (h *TaskAppKeyHandler) HandleKeyStroke(key []byte, w *Window) (handled bool, needsRender bool, shouldQuit bool) {
+	// Check if we have Enter key pressed when the task list container is focused
+	if len(key) == 1 && (key[0] == '\r' || key[0] == '\n') && h.taskListContainer.IsActive {
+		highlightedIdx := h.taskListContainer.GetHighlightedIndex()
+		if highlightedIdx >= 0 && highlightedIdx < len(*h.tasks) {
+			// Update the selection
+			h.taskListContainer.SelectedIndex = highlightedIdx
+
+			// Load the task for editing immediately
+			if h.indexInput != nil {
+				idxStr := strconv.Itoa(highlightedIdx)
+				h.indexInput.Text = idxStr
+				h.indexInput.cursorPos = len(idxStr)
+				h.indexInput.isPristine = false
+			}
+
+			// Update info label
+			if h.infoLabel != nil {
+				h.infoLabel.Text = fmt.Sprintf("Selected task index: %d", highlightedIdx)
+				h.infoLabel.Color = colors.Cyan
+			}
+
+			return true, true, false
+		}
+	}
+
+	// For other keys, let the default handler process them
+	return false, false, false
+}
+
 // --- Main Application Function ---
 func TestWindowApp() {
 	// --- Application State ---
@@ -63,6 +102,7 @@ func TestWindowApp() {
 	var priorityGroup *RadioGroup
 	var indexInput *TextBox
 	var completionProgress *ProgressBar
+	var progressGradient *GradientProgressBar
 
 	// --- Helper Functions ---
 
@@ -111,6 +151,10 @@ func TestWindowApp() {
 				completionProgress.MaxValue = float64(scrollbar.MaxValue)
 				// Update Value based on current scrollbar state
 				completionProgress.SetValue(float64(scrollbar.Value))
+				// Update MaxValue of the gradient progress bar
+				progressGradient.MaxValue = float64(scrollbar.MaxValue)
+				// Update Value of the gradient progress bar
+				progressGradient.SetValue(float64(scrollbar.Value))
 
 				// Ensure the OnScroll callback is attached ONCE to update progress bar DURING scrolling
 				if scrollbar.OnScroll == nil {
@@ -122,6 +166,12 @@ func TestWindowApp() {
 							// NOTE: We rely on the WindowActions loop to trigger a Render after scroll input.
 							// If we needed immediate render on scroll *callback*, we'd need a way to signal it.
 						}
+						if progressGradient != nil {
+							// Directly update gradient progress bar value when scrollbar value changes
+							progressGradient.SetValue(float64(newValue))
+							// NOTE: We rely on the WindowActions loop to trigger a Render after scroll input.
+							// If we needed immediate render on scroll *callback*, we'd need a way to signal it.
+						}
 					}
 				}
 			} else {
@@ -130,6 +180,9 @@ func TestWindowApp() {
 				completionProgress.SetValue(0)
 				// Detach callback? Not strictly necessary, but good practice if scrollbar could be destroyed/recreated.
 				// scrollbar.OnScroll = nil // Optional cleanup
+				// Set gradient progress bar to 0 as well
+				progressGradient.MaxValue = 0
+				progressGradient.SetValue(0)
 			}
 		}
 	}
@@ -168,6 +221,10 @@ func TestWindowApp() {
 			indexInput.isPristine = false
 			infoLabel.Text = fmt.Sprintf("Loaded task %d for editing.", index)
 			infoLabel.Color = colors.Cyan
+
+			// Ensure visual consistency by updating container selection
+			taskListContainer.SelectedIndex = index
+			taskListContainer.HighlightedIndex = index
 		} else {
 			infoLabel.Text = fmt.Sprintf("Error: Invalid index %d.", index)
 			infoLabel.Color = colors.Red
@@ -258,7 +315,7 @@ func TestWindowApp() {
 	containerWidth := contentAreaWidth - 1
 
 	taskListContainer = NewContainer(containerX, containerY, containerWidth, containerHeight, initialContent)
-	// Add the OnSelectionChange callback
+	// Add the OnItemSelected callback
 	taskListContainer.OnItemSelected = func(newIndex int) {
 		if indexInput != nil { // Ensure indexInput exists
 			idxStr := strconv.Itoa(newIndex)
@@ -267,7 +324,7 @@ func TestWindowApp() {
 			indexInput.isPristine = false // Mark as edited since it reflects selection
 			// Optionally update info label
 			infoLabel.Text = fmt.Sprintf("Selected task index: %d", newIndex)
-			infoLabel.Color = colors.Gray
+			infoLabel.Color = colors.Cyan
 		}
 	}
 	testWin.AddElement(taskListContainer)
@@ -284,6 +341,12 @@ func TestWindowApp() {
 	completionProgress = NewProgressBar(1, progressY, progressWidth, 0, 0, colors.BgCyan+colors.Cyan, colors.Gray2, false)
 	testWin.AddElement(completionProgress)
 	currentY++ // Move past progress bar row
+
+	// Gradient Progress Bar - Adjusted colors (e.g., Magenta to Cyan gradient)
+	progressGradientY := currentY
+	progressGradient = NewGradientProgressBar(1, progressGradientY, progressWidth, 0, 0, "#FF00FF", "#00FFFF", colors.Gray2, false)
+	testWin.AddElement(progressGradient)
+	currentY++ // Move past gradient progress bar row
 
 	// Spacer
 	testWin.AddElement(NewSpacer(1, currentY, 1))
@@ -406,14 +469,17 @@ func TestWindowApp() {
 	})
 	testWin.AddElement(quitButton)
 
+	// --- Create and set the custom key handler ---
+	keyHandler := &TaskAppKeyHandler{
+		taskListContainer: taskListContainer,
+		tasks:             &tasks,
+		indexInput:        indexInput,
+		infoLabel:         infoLabel,
+	}
+	testWin.SetKeyStrokeHandler(keyHandler)
+
 	// --- Initial Display & Interaction ---
-	// updateTaskListDisplay() // No longer needed here, container created with content
-	// Need to update progress bar initially though
 	updateTaskListDisplay() // Call once to set initial progress bar state based on initial tasks
 	testWin.WindowActions() // Start the interaction loop
 
-	// --- After Interaction ---
-	fmt.Println("Application finished.")
-	fmt.Printf("Final task list contained %d tasks.\n", len(tasks))
-	// You could print the final tasks here if desired
 }

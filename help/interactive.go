@@ -41,10 +41,10 @@ func updateCommandListDisplay() {
 	commandList.SetContent(content)
 
 	if len(currentTopics) > 0 {
-		commandList.SelectedIndex = 0 // Select the first item
+		commandList.HighlightedIndex = 0 // Highlight the first item
 		updateDetailsView(currentTopics[0])
 	} else {
-		commandList.SelectedIndex = -1
+		commandList.HighlightedIndex = -1
 		if detailsArea != nil {
 			detailsArea.SetContent([]string{colors.Gray + "Select a command to see details." + colors.Reset})
 		}
@@ -110,6 +110,37 @@ func performSearchAndSort() {
 	updateCommandListDisplay()
 }
 
+// CustomKeyHandler implements the KeyStrokeHandler interface for the interactive help window
+type CustomKeyHandler struct{}
+
+// HandleKeyStroke processes key strokes for the help application
+func (h *CustomKeyHandler) HandleKeyStroke(key []byte, w *gui.Window) (handled bool, needsRender bool, shouldQuit bool) {
+	// Check for Enter key when commandList has focus and is active
+	if len(key) == 1 && key[0] == '\r' {
+		// First check if any text boxes or other input elements have focus
+		for _, elem := range w.Elements {
+			if textBox, ok := elem.(*gui.TextBox); ok && textBox.IsActive {
+				return false, false, false // Let the normal handler process Enter in textbox
+			}
+			if button, ok := elem.(*gui.Button); ok && button.IsActive {
+				return false, false, false // Let the normal handler process Enter for buttons
+			}
+		}
+
+		// Now check if the commandList should handle this Enter press
+		for _, elem := range w.Elements {
+			if container, ok := elem.(*gui.Container); ok && container == commandList && container.IsActive {
+				highlightedIdx := commandList.GetHighlightedIndex()
+				if highlightedIdx >= 0 && highlightedIdx < len(currentTopics) {
+					commandList.SelectHighlightedItem() // This calls the OnItemSelected callback
+					return true, true, false            // Key handled, needs render, don't quit
+				}
+			}
+		}
+	}
+	return false, false, false // Not handled by this handler
+}
+
 // InteractiveHelpApp launches the interactive help UI.
 func InteractiveHelpApp() {
 	// Initialize allHelpTopics from the global HelpTopics map
@@ -147,6 +178,9 @@ func InteractiveHelpApp() {
 
 	win = gui.NewWindow("💡", "Interactive Help ", winX, winY, winWidth, winHeight,
 		"double", colors.BoldYellow, colors.BoldGreen, colors.BgBlack, colors.White)
+
+	// Set custom key handler for the window
+	win.SetKeyStrokeHandler(&CustomKeyHandler{})
 
 	contentAreaWidth := winWidth - 2
 	contentAreaHeight := winHeight - 2
@@ -252,5 +286,4 @@ func InteractiveHelpApp() {
 	allHelpTopics = nil
 	currentTopics = nil
 
-	fmt.Println("Interactive help closed.")
 }

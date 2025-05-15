@@ -13,6 +13,37 @@ type Note struct {
 	Content string
 }
 
+// --- Custom KeyStrokeHandler ---
+type NotesAppKeyHandler struct {
+	notesListContainer *gui.Container
+	notes              *[]Note
+	selectedNoteIndex  *int
+	loadNoteForEditing func(int)
+}
+
+// HandleKeyStroke processes keyboard input for the notes app
+func (h *NotesAppKeyHandler) HandleKeyStroke(key []byte, w *gui.Window) (handled bool, needsRender bool, shouldQuit bool) {
+	// Check if we have Enter key press when the notes list container is focused
+	if len(key) == 1 && (key[0] == '\r' || key[0] == '\n') && h.notesListContainer.IsActive {
+		highlightedIdx := h.notesListContainer.GetHighlightedIndex()
+		if highlightedIdx >= 0 && highlightedIdx < len(*h.notes) {
+			// Update the actual selection
+			*h.selectedNoteIndex = highlightedIdx
+			h.notesListContainer.SelectedIndex = highlightedIdx
+
+			// Load the selected note for editing
+			if h.loadNoteForEditing != nil {
+				h.loadNoteForEditing(highlightedIdx)
+			}
+
+			return true, true, false
+		}
+	}
+
+	// For other keys, let the default handler process them
+	return false, false, false
+}
+
 // --- Main Application Function ---
 func TestSegmentsApp() {
 	// --- Application State ---
@@ -51,13 +82,8 @@ func TestSegmentsApp() {
 				selectedNoteIndex = -1 // Reset if index is now invalid
 			}
 
-			// Reselect the item in the container if an index is active
-			if selectedNoteIndex >= 0 {
-				notesListContainer.SelectedIndex = selectedNoteIndex // Set the index
-				// notesListContainer.EnsureSelectionVisible() // TODO: Method is unexported in gui.Container
-			} else {
-				notesListContainer.SelectedIndex = -1 // Ensure no selection highlight if index is -1
-			}
+			// Update the SelectedIndex property to match our application's selectedNoteIndex
+			notesListContainer.SelectedIndex = selectedNoteIndex
 		}
 	}
 
@@ -72,7 +98,7 @@ func TestSegmentsApp() {
 		}
 		selectedNoteIndex = -1 // Indicate no specific note is being edited
 		if notesListContainer != nil {
-			notesListContainer.SelectedIndex = -1 // Deselect in list
+			notesListContainer.SelectedIndex = -1 // Clear selection in list
 		}
 		if infoLabel != nil {
 			infoLabel.Text = "Editor cleared. Ready for new note."
@@ -96,10 +122,11 @@ func TestSegmentsApp() {
 				infoLabel.Text = fmt.Sprintf("Editing note %d: %s", index, note.Title)
 				infoLabel.Color = colors.Cyan
 			}
-			// Ensure the container visually selects the item
+
+			// Update both the SelectedIndex and HighlightedIndex for visual consistency
 			if notesListContainer != nil {
 				notesListContainer.SelectedIndex = index
-				// notesListContainer.EnsureSelectionVisible() // TODO: Method is unexported in gui.Container
+				notesListContainer.HighlightedIndex = index
 			}
 		} else {
 			if infoLabel != nil {
@@ -145,7 +172,7 @@ func TestSegmentsApp() {
 		rightSegmentWidth = 0
 	}
 
-	currentY := 1 // Relative Y within window content area
+	currentY := 1 // Relative Y within window content
 
 	// --- Info Label (Top) ---
 	infoLabel = gui.NewLabel("Welcome! Select a note or create one.", 1, currentY, colors.Gray)
@@ -167,7 +194,6 @@ func TestSegmentsApp() {
 	notesListContainer.OnItemSelected = func(index int) {
 		// This callback is triggered by Enter key when the container is focused
 		loadNoteForEditing(index)
-		// Optionally move focus to the title input after selection? Requires focus API extension.
 	}
 	notesWin.AddElement(notesListContainer)
 
@@ -293,24 +319,17 @@ func TestSegmentsApp() {
 		clearEditor() // Start with a clear editor if no notes exist
 	}
 
-	// Start the interaction loop.
-	// NOTE: The gui.WindowActions() function (defined in the gui package)
-	// is responsible for:
-	// 1. Reading keyboard input.
-	// 2. Determining the currently active/focused element (e.g., titleInput, contentInput).
-	// 3. If contentInput (TextArea) is active, calling its methods based on the key pressed:
-	//    - Printable characters: contentInput.InsertChar(rune)
-	//    - Backspace:          contentInput.DeleteChar()
-	//    - Delete:             contentInput.DeleteForward()
-	//    - Arrow keys:         contentInput.MoveCursorUp/Down/Left/Right() or MoveCursor()
-	//    - Enter:              contentInput.InsertChar('\n')
-	// 4. Handling focus changes (e.g., Tab key).
-	// 5. Handling button actions.
-	// 6. Redrawing the window after changes.
-	notesWin.WindowActions()
+	// Create and set the custom key handler
+	keyHandler := &NotesAppKeyHandler{
+		notesListContainer: notesListContainer,
+		notes:              &notes,
+		selectedNoteIndex:  &selectedNoteIndex,
+		loadNoteForEditing: loadNoteForEditing,
+	}
+	notesWin.SetKeyStrokeHandler(keyHandler)
 
-	// --- After Interaction ---
-	fmt.Println("Notes application finished.")
+	// Start the interaction loop
+	notesWin.WindowActions()
 }
 
 // Removed unused helper functions: ColorizeText, getTextWidth, wrapTextSimple

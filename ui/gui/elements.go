@@ -12,6 +12,11 @@ type CursorManager interface {
 	GetCursorPosition() (int, int, bool) // Returns absolute cursor x, y position and whether it's valid
 }
 
+// ZIndexer defines an interface for elements that support z-index ordering
+type ZIndexer interface {
+	GetZIndex() int // Returns the z-index value of the element
+}
+
 // --- Basic UI Elements ---
 
 // Label represents a simple text element.
@@ -525,6 +530,105 @@ func (pb *ProgressBar) Render(buffer *strings.Builder, winX, winY int, _ int) {
 	buffer.WriteString(colors.Reset) // Ensure color is reset at the end
 }
 
+// --- Gradient Progress Bar ---
+
+// GradientProgressBar represents a visual progress indicator with a gradient fill.
+type GradientProgressBar struct {
+	Value          float64 // Current value
+	MaxValue       float64 // Maximum value (represents 100%)
+	StartColorHex  string  // Hex string for the start of the gradient (e.g., "#FF0000")
+	EndColorHex    string  // Hex string for the end of the gradient (e.g., "#00FF00")
+	UnfilledColor  string  // Color of the unfilled portion
+	ShowPercentage bool    // Whether to display the percentage text
+	X, Y           int     // Position relative to window content area
+	Width          int     // Total width of the bar in characters
+}
+
+// NewGradientProgressBar creates a new GradientProgressBar instance.
+func NewGradientProgressBar(x, y, width int, initialValue, maxValue float64, startColorHex, endColorHex, unfilledColor string, showPercentage bool) *GradientProgressBar {
+	if maxValue <= 0 {
+		maxValue = 100 // Default max value if invalid
+	}
+	if initialValue < 0 {
+		initialValue = 0
+	}
+	if initialValue > maxValue {
+		initialValue = maxValue
+	}
+	if unfilledColor == "" {
+		unfilledColor = colors.Gray2 // Default unfilled color
+	}
+	return &GradientProgressBar{
+		Value:          initialValue,
+		MaxValue:       maxValue,
+		StartColorHex:  startColorHex,
+		EndColorHex:    endColorHex,
+		UnfilledColor:  unfilledColor,
+		ShowPercentage: showPercentage,
+		X:              x,
+		Y:              y,
+		Width:          width,
+	}
+}
+
+// SetValue updates the gradient progress bar's current value, clamping it between 0 and MaxValue.
+func (gpb *GradientProgressBar) SetValue(value float64) {
+	if value < 0 {
+		gpb.Value = 0
+	} else if value > gpb.MaxValue {
+		gpb.Value = gpb.MaxValue
+	} else {
+		gpb.Value = value
+	}
+}
+
+// Render draws the gradient progress bar element.
+func (gpb *GradientProgressBar) Render(buffer *strings.Builder, winX, winY int, _ int) {
+	absX := winX + gpb.X
+	absY := winY + gpb.Y
+	buffer.WriteString(MoveCursorCmd(absY, absX))
+
+	percentage := 0.0
+	if gpb.MaxValue > 0 {
+		percentage = gpb.Value / gpb.MaxValue
+	}
+
+	barWidth := gpb.Width
+	percentageText := ""
+	if gpb.ShowPercentage {
+		percentageText = fmt.Sprintf(" %.0f%%", percentage*100)
+		barWidth -= len(percentageText)
+		if barWidth < 0 {
+			barWidth = 0
+		}
+	}
+
+	filledWidth := int(float64(barWidth) * percentage)
+	emptyWidth := barWidth - filledWidth
+
+	// Draw the filled part with gradient
+	if filledWidth > 0 {
+		gradient := colors.GenerateGradient(gpb.StartColorHex, gpb.EndColorHex, filledWidth)
+		for i := 0; i < filledWidth; i++ {
+			buffer.WriteString(gradient[i])
+			buffer.WriteString("█") // Use a block character for filled part
+		}
+		buffer.WriteString(colors.Reset) // Reset after gradient
+	}
+
+	// Draw the empty part
+	buffer.WriteString(gpb.UnfilledColor)
+	buffer.WriteString(strings.Repeat("░", emptyWidth)) // Use a lighter shade or space for empty part
+
+	// Draw the percentage text if enabled
+	if gpb.ShowPercentage {
+		buffer.WriteString(colors.Reset) // Ensure text color is reset or set explicitly
+		buffer.WriteString(percentageText)
+	}
+
+	buffer.WriteString(colors.Reset) // Ensure color is reset at the end
+}
+
 // --- ScrollBar ---
 
 // ScrollBar represents a vertical scrollbar element.
@@ -661,20 +765,23 @@ func (sb *ScrollBar) GetCursorPosition() (int, int, bool) {
 
 // Container represents a scrollable area for content.
 type Container struct {
-	X, Y               int
-	Width, Height      int
-	Content            []string // Initially support only string content
-	scrollBar          *ScrollBar
-	needsScroll        bool
-	totalContentHeight int
-	IsActive           bool                    // Tracks if the container itself has focus
-	SelectedIndex      int                     // Index of the selected line in Content
-	Color              string                  // Default background/text color (use window's if empty)
-	ActiveColor        string                  // Border/indicator color when active (unused for now, but good practice)
-	SelectionColor     string                  // Background/text color for the selected line
-	OnItemSelected     func(selectedIndex int) // Callback when an item is selected via Enter
-	cursorAbsX         int                     // Used for cursor position tracking
-	cursorAbsY         int                     // Used for cursor position tracking
+	X, Y                  int
+	Width, Height         int
+	Content               []string // Initially support only string content
+	scrollBar             *ScrollBar
+	needsScroll           bool
+	totalContentHeight    int
+	IsActive              bool                    // Tracks if the container itself has focus
+	HighlightedIndex      int                     // Index of the currently highlighted line in Content
+	SelectedIndex         int                     // Index of the actually selected item (via Enter)
+	Color                 string                  // Default background/text color (use window's if empty)
+	ActiveColor           string                  // Border/indicator color when active (unused for now, but good practice)
+	SelectionColor        string                  // Background/text color for the highlighted line
+	OnItemSelected        func(selectedIndex int) // Callback when an item is selected via Enter
+	cursorAbsX            int                     // Used for cursor position tracking
+	cursorAbsY            int                     // Used for cursor position tracking
+	lastConfirmedIndex    int                     // Index of the last item confirmed with Enter
+	hasConfirmedSelection bool                    // Whether any item has been confirmed with Enter
 	// TODO: Add BgColor, ContentColor properties if needed explicitly for container
 }
 
@@ -700,33 +807,81 @@ func NewContainer(x, y, width, height int, content []string) *Container {
 	scrollBar.Visible = false // Start hidden
 
 	c := &Container{
-		X:              x,
-		Y:              y,
-		Width:          width,
-		Height:         height,
-		Content:        content,
-		scrollBar:      scrollBar, // Assign the created scrollbar
-		needsScroll:    false,     // Will be set by updateScrollState
-		IsActive:       false,
-		SelectedIndex:  0,
-		Color:          "",
-		ActiveColor:    colors.BoldWhite,
-		SelectionColor: colors.BgBlue + colors.BoldWhite,
-		OnItemSelected: nil, // Initialize new callback to nil
+		X:                     x,
+		Y:                     y,
+		Width:                 width,
+		Height:                height,
+		Content:               content,
+		scrollBar:             scrollBar, // Assign the created scrollbar
+		needsScroll:           false,     // Will be set by updateScrollState
+		IsActive:              false,
+		HighlightedIndex:      0,
+		SelectedIndex:         -1, // No actual selection initially, only highlighting
+		Color:                 "",
+		ActiveColor:           colors.BoldWhite,
+		SelectionColor:        colors.BgBlue + colors.BoldWhite,
+		OnItemSelected:        nil, // Initialize new callback to nil
+		lastConfirmedIndex:    -1,  // No confirmed selection initially
+		hasConfirmedSelection: false,
 	}
 
 	c.updateScrollState() // Calculate initial scroll state and visibility
 
-	// Ensure initial selection is valid
-	if c.SelectedIndex >= len(c.Content) && len(c.Content) > 0 {
-		c.SelectedIndex = len(c.Content) - 1
+	// Ensure initial highlight is valid
+	if c.HighlightedIndex >= len(c.Content) && len(c.Content) > 0 {
+		c.HighlightedIndex = len(c.Content) - 1
 	} else if len(c.Content) == 0 {
-		c.SelectedIndex = -1 // No selection possible
+		c.HighlightedIndex = -1 // No highlight possible
 	}
-	// Ensure initial selection is visible after state update
-	c.ensureSelectionVisible()
+	// Ensure initial highlight is visible after state update
+	c.ensureHighlightVisible()
 
 	return c
+}
+
+// SelectHighlightedItem selects the currently highlighted item.
+// This should be called when the user presses Enter on a highlighted item.
+func (c *Container) SelectHighlightedItem() {
+	if c.HighlightedIndex >= 0 && c.HighlightedIndex < len(c.Content) {
+		c.SelectedIndex = c.HighlightedIndex
+		c.lastConfirmedIndex = c.HighlightedIndex
+		c.hasConfirmedSelection = true
+
+		// Call the existing OnItemSelected callback if available
+		if c.OnItemSelected != nil {
+			c.OnItemSelected(c.SelectedIndex)
+		}
+	}
+}
+
+// ConfirmSelection marks the currently highlighted item as a confirmed selection.
+// This should be called when the user presses Enter on an item.
+// Keeping for backward compatibility, now just delegates to SelectHighlightedItem
+func (c *Container) ConfirmSelection() {
+	c.SelectHighlightedItem()
+}
+
+// GetLastConfirmedItem returns the index and content of the last confirmed selection.
+// Returns the index, content string, and a boolean indicating whether any selection was made.
+func (c *Container) GetLastConfirmedItem() (int, string, bool) {
+	if !c.hasConfirmedSelection {
+		return -1, "", false
+	}
+
+	if c.lastConfirmedIndex >= 0 && c.lastConfirmedIndex < len(c.Content) {
+		return c.lastConfirmedIndex, c.Content[c.lastConfirmedIndex], true
+	}
+
+	// The content has changed and the last selection is no longer valid
+	return -1, "", false
+}
+
+// ClearConfirmedSelection resets the confirmed selection state.
+// Useful when the container content changes or when starting a new selection process.
+func (c *Container) ClearConfirmedSelection() {
+	c.SelectedIndex = -1
+	c.lastConfirmedIndex = -1
+	c.hasConfirmedSelection = false
 }
 
 // updateScrollState calculates content height and determines if scrolling is needed.
@@ -735,12 +890,12 @@ func (c *Container) updateScrollState() {
 	c.totalContentHeight = len(c.Content)
 	c.needsScroll = c.totalContentHeight > c.Height
 
-	// Adjust SelectedIndex if it's now out of bounds
-	if c.SelectedIndex >= c.totalContentHeight {
+	// Adjust HighlightedIndex if it's now out of bounds
+	if c.HighlightedIndex >= c.totalContentHeight {
 		if c.totalContentHeight > 0 {
-			c.SelectedIndex = c.totalContentHeight - 1
+			c.HighlightedIndex = c.totalContentHeight - 1
 		} else {
-			c.SelectedIndex = -1 // No items left
+			c.HighlightedIndex = -1 // No items left
 		}
 	}
 
@@ -759,14 +914,20 @@ func (c *Container) updateScrollState() {
 		c.scrollBar.SetValue(0) // Reset scroll value if not needed
 	}
 
-	// Ensure selection is visible after potential scrollbar update
-	c.ensureSelectionVisible()
+	// Ensure highlight is visible after potential scrollbar update
+	c.ensureHighlightVisible()
 }
 
 // SetContent updates the container's content and recalculates scrolling state.
 func (c *Container) SetContent(content []string) {
+	// Check if the last confirmed selection is still valid with the new content
+	if c.hasConfirmedSelection && (c.lastConfirmedIndex < 0 || c.lastConfirmedIndex >= len(content)) {
+		c.hasConfirmedSelection = false // The selection is no longer valid
+		c.SelectedIndex = -1
+	}
+
 	c.Content = content
-	c.updateScrollState() // This will also adjust SelectedIndex if needed
+	c.updateScrollState() // This will also adjust HighlightedIndex if needed
 }
 
 // GetScrollOffset returns the current vertical scroll offset (top visible line index).
@@ -778,47 +939,66 @@ func (c *Container) GetScrollOffset() int {
 	return 0 // No scrollbar means no offset
 }
 
-// ensureSelectionVisible adjusts the scroll offset if the selected item is out of view.
-func (c *Container) ensureSelectionVisible() {
-	// Only adjust if scrollbar is currently needed/visible and selection is valid
-	if !c.scrollBar.Visible || c.SelectedIndex < 0 {
+// ensureHighlightVisible adjusts the scroll offset if the highlighted item is out of view.
+func (c *Container) ensureHighlightVisible() {
+	// Only adjust if scrollbar is currently needed/visible and highlight is valid
+	if !c.scrollBar.Visible || c.HighlightedIndex < 0 {
 		return
 	}
 
 	scrollOffset := c.scrollBar.Value
 	bottomVisibleIndex := scrollOffset + c.Height - 1
 
-	if c.SelectedIndex < scrollOffset {
-		// Selection is above the view, scroll up
-		c.scrollBar.SetValue(c.SelectedIndex)
-	} else if c.SelectedIndex > bottomVisibleIndex {
-		// Selection is below the view, scroll down
-		c.scrollBar.SetValue(c.SelectedIndex - c.Height + 1)
+	if c.HighlightedIndex < scrollOffset {
+		// Highlight is above the view, scroll up
+		c.scrollBar.SetValue(c.HighlightedIndex)
+	} else if c.HighlightedIndex > bottomVisibleIndex {
+		// Highlight is below the view, scroll down
+		c.scrollBar.SetValue(c.HighlightedIndex - c.Height + 1)
 	}
 }
 
-// SelectNext selects the next item in the container.
+// ensureSelectionVisible kept for backward compatibility, now delegates to ensureHighlightVisible
+func (c *Container) ensureSelectionVisible() {
+	c.ensureHighlightVisible()
+}
+
+// HighlightNext highlights the next item in the container (doesn't select it).
+func (c *Container) HighlightNext() {
+	if c.HighlightedIndex < c.totalContentHeight-1 {
+		c.HighlightedIndex++
+		c.ensureHighlightVisible()
+	}
+}
+
+// HighlightPrevious highlights the previous item in the container (doesn't select it).
+func (c *Container) HighlightPrevious() {
+	if c.HighlightedIndex > 0 {
+		c.HighlightedIndex--
+		c.ensureHighlightVisible()
+	}
+}
+
+// SelectNext kept for backward compatibility, now delegates to HighlightNext
 func (c *Container) SelectNext() {
-	if c.SelectedIndex < c.totalContentHeight-1 {
-		c.SelectedIndex++
-		c.ensureSelectionVisible()
-		// No callback call here anymore
-	}
+	c.HighlightNext()
 }
 
-// SelectPrevious selects the previous item in the container.
+// SelectPrevious kept for backward compatibility, now delegates to HighlightPrevious
 func (c *Container) SelectPrevious() {
-	if c.SelectedIndex > 0 {
-		c.SelectedIndex--
-		c.ensureSelectionVisible()
-		// No callback call here anymore
-	}
+	c.HighlightPrevious()
 }
 
-// GetSelectedIndex returns the index of the currently selected item.
-// Returns -1 if no item is selected (e.g., empty container).
+// GetSelectedIndex returns the index of the actually selected item (via Enter).
+// Returns -1 if no item is selected.
 func (c *Container) GetSelectedIndex() int {
 	return c.SelectedIndex
+}
+
+// GetHighlightedIndex returns the index of the currently highlighted item.
+// Returns -1 if no item is highlighted (e.g., empty container).
+func (c *Container) GetHighlightedIndex() int {
+	return c.HighlightedIndex
 }
 
 // NeedsCursor implements CursorManager interface
@@ -862,9 +1042,11 @@ func (c *Container) Render(buffer *strings.Builder, winX, winY int, _ int) {
 		buffer.WriteString(MoveCursorCmd(lineY, absX))
 
 		// Determine line color
-		lineColor := c.Color                                                                // Use container's default or inherit window's
-		if c.IsActive && contentIndex == c.SelectedIndex && contentIndex < len(c.Content) { // Check contentIndex bounds
-			lineColor = c.SelectionColor // Use selection color if active and selected
+		lineColor := c.Color // Use container's default or inherit window's
+
+		// Only highlight the currently highlighted item (modified)
+		if c.IsActive && contentIndex == c.HighlightedIndex && contentIndex < len(c.Content) {
+			lineColor = c.SelectionColor // Use selection color if active and highlighted
 		}
 		buffer.WriteString(lineColor) // Apply line color
 
@@ -1458,4 +1640,917 @@ func (ta *TextArea) SetText(text string) {
 // GetScrollbar returns the internal scrollbar.
 func (ta *TextArea) GetScrollbar() *ScrollBar {
 	return ta.scrollBar
+}
+
+// --- Menu Bar ---
+
+// MenuItem represents a menu item that can be clicked to trigger an action or open a submenu
+type MenuItem struct {
+	Text        string
+	Color       string
+	ActiveColor string
+	Action      func() bool // Function to execute when clicked (returns true to close menu)
+	SubMenu     *Menu       // Optional submenu that opens when this item is activated
+	IsActive    bool        // Whether this item is currently selected/active
+	Width       int         // Width of this item
+	X, Y        int         // Position relative to parent menu
+	Parent      *Menu       // Reference to parent menu (nil for top-level items)
+}
+
+// NewMenuItem creates a new menu item with the given text and action
+func NewMenuItem(text string, color, activeColor string, action func() bool) *MenuItem {
+	displayWidth := getStringDisplayWidth(text)
+	return &MenuItem{
+		Text:        text,
+		Color:       color,
+		ActiveColor: activeColor,
+		Action:      action,
+		Width:       displayWidth + 2, // Add padding to actual display width
+		IsActive:    false,
+	}
+}
+
+// Menu represents a menu containing menu items
+type Menu struct {
+	Items       []*MenuItem
+	X, Y        int    // Position relative to parent (or window for top-level)
+	Width       int    // Total width of the menu
+	Height      int    // Total height of the menu
+	Color       string // Background color
+	BorderColor string // Border color (for submenus)
+	SelectedIdx int    // Index of currently selected item
+	IsOpen      bool   // Whether this menu is currently open
+	IsTopLevel  bool   // Whether this is a top-level menu (in menu bar) or submenu
+	zIndex      int    // Z-index for submenus
+}
+
+// GetZIndex implements ZIndexer interface for Menu
+func (m *Menu) GetZIndex() int {
+	if m.IsTopLevel {
+		return 100 // Same as MenuBar
+	}
+	return 150 // Submenus appear above MenuBar
+}
+
+// NewMenu creates a new menu
+func NewMenu(x, y int, color, borderColor string, isTopLevel bool) *Menu {
+	return &Menu{
+		Items:       make([]*MenuItem, 0),
+		X:           x,
+		Y:           y,
+		Color:       color,
+		BorderColor: borderColor,
+		SelectedIdx: -1,
+		IsOpen:      isTopLevel, // Top-level menus are always "open" (visible)
+		IsTopLevel:  isTopLevel,
+		zIndex:      150, // Higher than MenuBar but lower than prompts
+	}
+}
+
+// AddItem adds a menu item to this menu
+func (m *Menu) AddItem(item *MenuItem) {
+	item.Parent = m
+	if m.IsTopLevel {
+		// For top-level menu, position items horizontally
+		if len(m.Items) > 0 {
+			prevItem := m.Items[len(m.Items)-1]
+			item.X = prevItem.X + prevItem.Width
+		} else {
+			item.X = 0
+		}
+		item.Y = 0
+	} else {
+		// For submenus, position items vertically
+		item.X = 1                // Account for border
+		item.Y = len(m.Items) + 1 // Account for top border and previous items
+	}
+	m.Items = append(m.Items, item)
+
+	// Update menu dimensions
+	m.recalculateSize()
+}
+
+// recalculateSize updates the width and height of the menu based on its items
+func (m *Menu) recalculateSize() {
+	if m.IsTopLevel {
+		// Top-level menu width is sum of all item widths (already includes padding)
+		width := 0
+		for _, item := range m.Items {
+			width += item.Width
+		}
+		m.Width = width
+		m.Height = 1 // Top-level menus are one row high
+	} else {
+		// Submenu width is based on the widest item plus borders
+		width := 0
+		for _, item := range m.Items {
+			displayWidth := getStringDisplayWidth(item.Text)
+			if displayWidth+2 > width { // +2 for padding
+				width = displayWidth + 2
+			}
+		}
+		m.Width = width + 4         // Add padding and borders
+		m.Height = len(m.Items) + 2 // Items + top/bottom borders
+	}
+}
+
+// AddSubMenu adds a submenu item to this menu
+func (m *Menu) AddSubMenu(text string, color, activeColor string) *Menu {
+	// Create the submenu
+	submenu := NewMenu(0, 0, m.Color, m.BorderColor, false)
+
+	// Create menu item that opens this submenu
+	item := NewMenuItem(text, color, activeColor, nil)
+	item.SubMenu = submenu
+
+	// Add the item to this menu
+	m.AddItem(item)
+
+	return submenu
+}
+
+// SelectNext selects the next item in the menu
+func (m *Menu) SelectNext() {
+	if len(m.Items) == 0 {
+		return
+	}
+
+	// Clear current selection
+	if m.SelectedIdx >= 0 && m.SelectedIdx < len(m.Items) {
+		m.Items[m.SelectedIdx].IsActive = false
+	}
+
+	// Select next item
+	m.SelectedIdx = (m.SelectedIdx + 1) % len(m.Items)
+	m.Items[m.SelectedIdx].IsActive = true
+}
+
+// SelectPrevious selects the previous item in the menu
+func (m *Menu) SelectPrevious() {
+	if len(m.Items) == 0 {
+		return
+	}
+
+	// Clear current selection
+	if m.SelectedIdx >= 0 && m.SelectedIdx < len(m.Items) {
+		m.Items[m.SelectedIdx].IsActive = false
+	}
+
+	// Select previous item
+	m.SelectedIdx--
+	if m.SelectedIdx < 0 {
+		m.SelectedIdx = len(m.Items) - 1
+	}
+	m.Items[m.SelectedIdx].IsActive = true
+}
+
+// ActivateSelected activates the currently selected item
+func (m *Menu) ActivateSelected() bool {
+	if m == nil || m.SelectedIdx < 0 || m.SelectedIdx >= len(m.Items) {
+		return false
+	}
+
+	item := m.Items[m.SelectedIdx]
+	if item == nil {
+		return false
+	}
+
+	// If item has submenu, open it
+	if item.SubMenu != nil {
+		// Calculate submenu position relative to this item
+		if m.IsTopLevel {
+			// Position submenu directly below the menu item
+			item.SubMenu.X = m.X + item.X
+			item.SubMenu.Y = m.Y + 1 // Below top-level menu
+		} else {
+			// Position submenu to the right of this menu
+			item.SubMenu.X = m.X + m.Width
+			item.SubMenu.Y = m.Y + item.Y - 1 // Align with the current item
+		}
+
+		item.SubMenu.IsOpen = true
+		item.SubMenu.SelectedIdx = 0
+		if len(item.SubMenu.Items) > 0 {
+			item.SubMenu.Items[0].IsActive = true
+		}
+		return false // Opening a submenu doesn't close menus
+	}
+
+	// Otherwise, execute the action if defined
+	if item.Action != nil {
+		return item.Action()
+	}
+
+	return false
+}
+
+// CloseSubMenus recursively closes all open submenus
+func (m *Menu) CloseSubMenus() {
+	for _, item := range m.Items {
+		if item.SubMenu != nil {
+			item.SubMenu.IsOpen = false
+			item.SubMenu.CloseSubMenus() // Recursively close nested submenus
+		}
+	}
+}
+
+// Render draws the menu
+func (m *Menu) Render(buffer *strings.Builder, winX, winY int, _ int) {
+	if !m.IsOpen {
+		return
+	}
+
+	absX := winX + m.X
+	absY := winY + m.Y
+
+	if m.IsTopLevel {
+		// Render top-level menu items horizontally
+		for _, item := range m.Items {
+			itemX := absX + item.X
+			itemY := absY
+
+			buffer.WriteString(MoveCursorCmd(itemY, itemX))
+
+			// Select appropriate color
+			if item.IsActive {
+				buffer.WriteString(item.ActiveColor)
+				buffer.WriteString(ReverseVideo())
+			} else {
+				buffer.WriteString(item.Color)
+			}
+
+			// Draw menu item with padding, using proper display width
+			buffer.WriteString(" " + item.Text + " ")
+			buffer.WriteString(colors.Reset)
+
+			// Render submenu if active
+			if item.SubMenu != nil && item.SubMenu.IsOpen {
+				item.SubMenu.Render(buffer, winX, winY, 0)
+			}
+		}
+	} else {
+		// Render submenu with border
+		buffer.WriteString(m.BorderColor)
+
+		// Top border
+		buffer.WriteString(MoveCursorCmd(absY, absX))
+		buffer.WriteString("┌" + strings.Repeat("─", m.Width-2) + "┐")
+
+		// Menu items
+		for i, item := range m.Items {
+			itemY := absY + i + 1
+
+			// Left border
+			buffer.WriteString(MoveCursorCmd(itemY, absX))
+			buffer.WriteString("│")
+
+			// Item text with appropriate color
+			if item.IsActive {
+				buffer.WriteString(item.ActiveColor)
+				buffer.WriteString(ReverseVideo())
+			} else {
+				buffer.WriteString(item.Color)
+			}
+
+			// Pad item text to fill menu width, using proper display width
+			displayWidth := getStringDisplayWidth(item.Text)
+			paddedText := " " + item.Text
+			padding := m.Width - 3 - displayWidth
+			if padding > 0 {
+				paddedText += strings.Repeat(" ", padding)
+			}
+
+			buffer.WriteString(paddedText)
+			buffer.WriteString(colors.Reset)
+
+			// Right border with submenu indicator if applicable
+			buffer.WriteString(m.BorderColor)
+			if item.SubMenu != nil {
+				buffer.WriteString("▶")
+			} else {
+				buffer.WriteString("│")
+			}
+		}
+
+		// Bottom border
+		buffer.WriteString(MoveCursorCmd(absY+m.Height-1, absX))
+		buffer.WriteString("└" + strings.Repeat("─", m.Width-2) + "┘")
+		buffer.WriteString(colors.Reset)
+
+		// Render any open submenu
+		for _, item := range m.Items {
+			if item.SubMenu != nil && item.SubMenu.IsOpen {
+				item.SubMenu.Render(buffer, winX, winY, 0)
+				break // Only one submenu can be open at a time
+			}
+		}
+	}
+}
+
+// MenuBar is the main container for a menu system
+type MenuBar struct {
+	Menu            *Menu  // Top-level menu
+	X, Y            int    // Position relative to window
+	Width           int    // Total width of the menu bar
+	BackgroundColor string // Background color for unused space
+	IsActive        bool   // Whether the menu is currently active
+	ActiveMenu      *Menu  // Currently active submenu (or nil if none)
+	zIndex          int    // Default z-index for menus
+}
+
+// NewMenuBar creates a new menu bar
+func NewMenuBar(x, y, width int, color, borderColor, bgColor string) *MenuBar {
+	return &MenuBar{
+		Menu:            NewMenu(x, y, color, borderColor, true),
+		X:               x,
+		Y:               y,
+		Width:           width,
+		BackgroundColor: bgColor,
+		IsActive:        false,
+		zIndex:          100, // Menus should appear above most elements
+	}
+}
+
+// AddItem adds a menu item to the top-level menu
+func (mb *MenuBar) AddItem(text string, color, activeColor string, action func() bool) *MenuItem {
+	item := NewMenuItem(text, color, activeColor, action)
+	mb.Menu.AddItem(item)
+	return item
+}
+
+// AddSubMenu adds a submenu to the top-level menu
+func (mb *MenuBar) AddSubMenu(text string, color, activeColor string) *Menu {
+	return mb.Menu.AddSubMenu(text, color, activeColor)
+}
+
+// Activate activates the menu bar
+func (mb *MenuBar) Activate() {
+	mb.IsActive = true
+	if mb.Menu.SelectedIdx < 0 && len(mb.Menu.Items) > 0 {
+		mb.Menu.SelectedIdx = 0
+		mb.Menu.Items[0].IsActive = true
+	}
+}
+
+// Deactivate deactivates the menu bar and closes all submenus
+func (mb *MenuBar) Deactivate() {
+	mb.IsActive = false
+	mb.ActiveMenu = nil
+
+	// Clear selection but keep menus visible
+	if mb.Menu.SelectedIdx >= 0 && mb.Menu.SelectedIdx < len(mb.Menu.Items) {
+		mb.Menu.Items[mb.Menu.SelectedIdx].IsActive = false
+	}
+	mb.Menu.SelectedIdx = -1
+
+	// Close all submenus
+	mb.Menu.CloseSubMenus()
+}
+
+// NeedsCursor implements CursorManager interface
+func (mb *MenuBar) NeedsCursor() bool {
+	return false
+}
+
+// GetCursorPosition implements CursorManager interface
+func (mb *MenuBar) GetCursorPosition() (int, int, bool) {
+	return 0, 0, false
+}
+
+// GetZIndex implements ZIndexer for MenuBar
+func (mb *MenuBar) GetZIndex() int {
+	return 100
+}
+
+// SelectNext selects the next menu item or delegates to active submenu
+func (mb *MenuBar) SelectNext() {
+	if !mb.IsActive {
+
+		return
+	}
+
+	if mb.ActiveMenu != nil {
+		mb.ActiveMenu.SelectNext()
+	} else {
+		mb.Menu.SelectNext()
+	}
+}
+
+// SelectPrevious selects the previous menu item or delegates to active submenu
+func (mb *MenuBar) SelectPrevious() {
+	if !mb.IsActive {
+		return
+	}
+
+	if mb.ActiveMenu != nil {
+		mb.ActiveMenu.SelectPrevious()
+	} else {
+		mb.Menu.SelectPrevious()
+	}
+}
+
+// MoveRight moves selection right in top-level menu
+func (mb *MenuBar) MoveRight() {
+	if !mb.IsActive || mb.ActiveMenu != nil {
+		return
+	}
+
+	mb.Menu.SelectNext()
+}
+
+// MoveLeft moves selection left in top-level menu
+func (mb *MenuBar) MoveLeft() {
+	if !mb.IsActive || mb.ActiveMenu != nil {
+		return
+	}
+
+	mb.Menu.SelectPrevious()
+}
+
+// MoveDown opens submenu if available
+func (mb *MenuBar) MoveDown() {
+	if !mb.IsActive {
+		return
+	}
+
+	if mb.ActiveMenu != nil {
+		mb.ActiveMenu.SelectNext()
+		return
+	}
+
+	// Check if current item has submenu
+	if mb.Menu.SelectedIdx >= 0 && mb.Menu.SelectedIdx < len(mb.Menu.Items) {
+
+		item := mb.Menu.Items[mb.Menu.SelectedIdx]
+		if item.SubMenu != nil {
+			// Position submenu directly below the menu item
+			item.SubMenu.X = mb.X + item.X
+			item.SubMenu.Y = mb.Y + 1 // Below top-level menu
+
+			item.SubMenu.IsOpen = true
+			item.SubMenu.SelectedIdx = 0
+			if len(item.SubMenu.Items) > 0 {
+				item.SubMenu.Items[0].IsActive = true
+			}
+			mb.ActiveMenu = item.SubMenu
+		}
+	}
+}
+
+// MoveUp closes current submenu if any
+func (mb *MenuBar) MoveUp() {
+	if !mb.IsActive {
+		return
+	}
+
+	if mb.ActiveMenu != nil {
+		// Check if this is a top-level submenu or nested
+		if mb.ActiveMenu.SelectedIdx > 0 {
+			mb.ActiveMenu.SelectPrevious()
+		} else {
+			// Close this menu and go up to parent
+			mb.ActiveMenu.IsOpen = false
+			mb.ActiveMenu = nil
+		}
+	}
+}
+
+// ActivateSelected activates the currently selected menu item
+func (mb *MenuBar) ActivateSelected() bool {
+	if !mb.IsActive {
+		return false
+	}
+
+	// Initialize result to false
+	result := false
+
+	if mb.ActiveMenu != nil {
+		// Get the current active menu before potential changes
+		currentMenu := mb.ActiveMenu
+
+		// Try to activate item in submenu
+		result = currentMenu.ActivateSelected()
+
+		// If an action was executed and returned true, close all menus
+		if result {
+			mb.Deactivate()
+			return true
+		}
+
+		// If we still have the same active menu (it wasn't closed)
+		if mb.ActiveMenu == currentMenu {
+			// Check if a submenu was opened
+			if currentMenu.SelectedIdx >= 0 && currentMenu.SelectedIdx < len(currentMenu.Items) {
+				selectedItem := currentMenu.Items[currentMenu.SelectedIdx]
+				if selectedItem != nil && selectedItem.SubMenu != nil && selectedItem.SubMenu.IsOpen {
+					mb.ActiveMenu = selectedItem.SubMenu
+				}
+			}
+		}
+	} else if mb.Menu != nil { // Add nil check for top-level menu
+		// Try to activate item in top-level menu
+
+		result = mb.Menu.ActivateSelected()
+
+		// If an action was executed and returned true, close the menu
+		if result {
+			mb.Deactivate()
+			return true
+		}
+
+		// Check if a submenu was opened
+		if mb.Menu.SelectedIdx >= 0 && mb.Menu.SelectedIdx < len(mb.Menu.Items) {
+			selectedItem := mb.Menu.Items[mb.Menu.SelectedIdx]
+			if selectedItem != nil && selectedItem.SubMenu != nil && selectedItem.SubMenu.IsOpen {
+				mb.ActiveMenu = selectedItem.SubMenu
+			}
+		}
+	}
+
+	return result
+}
+
+// Render draws the menu bar
+func (mb *MenuBar) Render(buffer *strings.Builder, winX, winY int, _ int) {
+	absX := winX + mb.X
+	absY := winY + mb.Y
+
+	// Draw background for entire menu bar width
+	buffer.WriteString(mb.BackgroundColor)
+	buffer.WriteString(MoveCursorCmd(absY, absX))
+	buffer.WriteString(strings.Repeat(" ", mb.Width))
+	buffer.WriteString(colors.Reset)
+
+	// Render the menu and all its active submenus
+
+	// Render only the top-level menu items here
+	mb.Menu.Render(buffer, winX, winY, 0)
+}
+
+// --- Prompt ---
+
+// PromptStyle defines whether the prompt is a single line or dialog box
+type PromptStyle int
+
+const (
+	SingleLinePrompt PromptStyle = iota
+	DialogBoxPrompt
+)
+
+// PromptButton represents a button in a prompt
+type PromptButton struct {
+	Text        string
+	Color       string
+	ActiveColor string
+	IsActive    bool
+	Action      func() bool // Returns true to close the prompt
+}
+
+// NewPromptButton creates a new button for a prompt
+func NewPromptButton(text string, color, activeColor string, action func() bool) *PromptButton {
+	return &PromptButton{
+		Text:        text,
+		Color:       color,
+		ActiveColor: activeColor,
+		IsActive:    false,
+		Action:      action,
+	}
+}
+
+// Prompt represents a message prompt with buttons
+type Prompt struct {
+	Title        string
+	Message      string
+	Buttons      []*PromptButton
+	X, Y         int
+	Width        int
+	Height       int // Calculated based on content for dialog box
+	Style        PromptStyle
+	Color        string // Background color
+	BorderColor  string // Border color for dialog box
+	TitleColor   string // Title text color
+	MessageColor string // Message text color
+	IsActive     bool   // Whether the prompt is active
+	SelectedIdx  int    // Index of selected button
+	Modal        bool   // Whether the prompt blocks interaction with elements behind it
+	zIndex       int    // Default z-index for prompts
+}
+
+// NewSingleLinePrompt creates a single-line prompt
+func NewSingleLinePrompt(title, message string, x, y, width int, titleColor, messageColor string, buttons []*PromptButton) *Prompt {
+	return &Prompt{
+		Title:        title,
+		Message:      message,
+		Buttons:      buttons,
+		X:            x,
+		Y:            y,
+		Width:        width,
+		Height:       1,
+		Style:        SingleLinePrompt,
+		TitleColor:   titleColor,
+		MessageColor: messageColor,
+		IsActive:     false,
+		SelectedIdx:  0,
+		Modal:        false, // Single line prompts are not modal by default
+		zIndex:       1000,  // Prompts should appear above everything
+	}
+}
+
+// NewDialogPrompt creates a dialog box prompt
+func NewDialogPrompt(title, message string, x, y, width int, color, borderColor, titleColor, messageColor string, buttons []*PromptButton) *Prompt {
+	// Calculate height based on message length and width
+	messageLines := 0
+	messageChars := len(message)
+	charsPerLine := width - 4 // Account for borders and padding
+	if charsPerLine < 1 {
+		charsPerLine = 1
+	}
+
+	// Simple word wrap calculation
+	messageLines = (messageChars + charsPerLine - 1) / charsPerLine
+	if messageLines < 1 {
+		messageLines = 1
+	}
+
+	// Height = title(1) + padding(1) + messageLines + padding(1) + buttons(1) + borders(2)
+	height := messageLines + 5
+
+	return &Prompt{
+		Title:        title,
+		Message:      message,
+		Buttons:      buttons,
+		X:            x,
+		Y:            y,
+		Width:        width,
+		Height:       height,
+		Style:        DialogBoxPrompt,
+		Color:        color,
+		BorderColor:  borderColor,
+		TitleColor:   titleColor,
+		MessageColor: messageColor,
+		IsActive:     false,
+		SelectedIdx:  0,
+		Modal:        true, // Dialog prompts are modal by default
+		zIndex:       1000, // Prompts should appear above everything
+	}
+}
+
+// SetActive activates or deactivates the prompt
+func (p *Prompt) SetActive(active bool) {
+	p.IsActive = active
+
+	// Reset button state
+	for i, button := range p.Buttons {
+		button.IsActive = (i == p.SelectedIdx && active)
+	}
+}
+
+// SelectNext selects the next button
+func (p *Prompt) SelectNext() {
+	if !p.IsActive || len(p.Buttons) <= 1 {
+		return
+	}
+
+	// Clear current selection
+	if p.SelectedIdx >= 0 && p.SelectedIdx < len(p.Buttons) {
+		p.Buttons[p.SelectedIdx].IsActive = false
+	}
+
+	// Select next button
+	p.SelectedIdx = (p.SelectedIdx + 1) % len(p.Buttons)
+	p.Buttons[p.SelectedIdx].IsActive = true
+}
+
+// SelectPrevious selects the previous button
+func (p *Prompt) SelectPrevious() {
+	if !p.IsActive || len(p.Buttons) <= 1 {
+		return
+	}
+
+	// Clear current selection
+	if p.SelectedIdx >= 0 && p.SelectedIdx < len(p.Buttons) {
+		p.Buttons[p.SelectedIdx].IsActive = false
+	}
+
+	// Select previous button
+	p.SelectedIdx--
+	if p.SelectedIdx < 0 {
+		p.SelectedIdx = len(p.Buttons) - 1
+	}
+	p.Buttons[p.SelectedIdx].IsActive = true
+}
+
+// ActivateSelected activates the currently selected button
+func (p *Prompt) ActivateSelected() bool {
+	if !p.IsActive || p.SelectedIdx < 0 || p.SelectedIdx >= len(p.Buttons) {
+		return false
+	}
+
+	button := p.Buttons[p.SelectedIdx]
+	if button.Action != nil {
+		result := button.Action()
+		if result {
+			p.SetActive(false)
+		}
+		return result
+	}
+
+	return false
+}
+
+// NeedsCursor implements CursorManager interface
+func (p *Prompt) NeedsCursor() bool {
+	return false
+}
+
+// GetCursorPosition implements CursorManager interface
+func (p *Prompt) GetCursorPosition() (int, int, bool) {
+	return 0, 0, false
+}
+
+// renderSingleLinePrompt renders the prompt as a single line
+func (p *Prompt) renderSingleLinePrompt(buffer *strings.Builder, absX, absY int) {
+	buffer.WriteString(MoveCursorCmd(absY, absX))
+
+	// Calculate available space
+	availWidth := p.Width
+
+	// Render title if present
+	if p.Title != "" {
+		buffer.WriteString(p.TitleColor)
+		buffer.WriteString(p.Title)
+		buffer.WriteString(": ")
+		buffer.WriteString(colors.Reset)
+		availWidth -= len(p.Title) + 2
+	}
+
+	// Calculate space needed for buttons
+	buttonSpace := 0
+	for _, button := range p.Buttons {
+		buttonSpace += len(button.Text) + 3 // [text] + space
+	}
+
+	// Render message with truncation if needed
+	messageWidth := availWidth - buttonSpace - 1
+	if messageWidth > 0 {
+		buffer.WriteString(p.MessageColor)
+		if len(p.Message) <= messageWidth {
+			buffer.WriteString(p.Message)
+		} else {
+			buffer.WriteString(p.Message[:messageWidth-3] + "...")
+		}
+		buffer.WriteString(colors.Reset)
+		buffer.WriteString(" ")
+	}
+
+	// Render buttons
+	for i, button := range p.Buttons {
+		if button.IsActive {
+			buffer.WriteString(button.ActiveColor)
+			buffer.WriteString(ReverseVideo())
+		} else {
+			buffer.WriteString(button.Color)
+		}
+
+		buffer.WriteString("[" + button.Text + "]")
+		buffer.WriteString(colors.Reset)
+
+		if i < len(p.Buttons)-1 {
+			buffer.WriteString(" ")
+		}
+	}
+}
+
+// renderDialogPrompt renders the prompt as a dialog box
+func (p *Prompt) renderDialogPrompt(buffer *strings.Builder, absX, absY int) {
+	// Draw border
+	buffer.WriteString(p.BorderColor)
+
+	// Top border with title
+	buffer.WriteString(MoveCursorCmd(absY, absX))
+	buffer.WriteString("┌" + strings.Repeat("─", p.Width-2) + "┐")
+
+	// Title (centered)
+	if p.Title != "" {
+		titleX := absX + (p.Width-len(p.Title)-2)/2
+		buffer.WriteString(MoveCursorCmd(absY, titleX))
+		buffer.WriteString("[ ")
+		buffer.WriteString(p.TitleColor)
+		buffer.WriteString(p.Title)
+		buffer.WriteString(p.BorderColor)
+		buffer.WriteString(" ]")
+	}
+
+	// Sides and background
+	for i := 1; i < p.Height-1; i++ {
+		buffer.WriteString(MoveCursorCmd(absY+i, absX))
+		buffer.WriteString("│")
+		buffer.WriteString(p.Color)
+		buffer.WriteString(strings.Repeat(" ", p.Width-2))
+		buffer.WriteString(p.BorderColor)
+		buffer.WriteString("│")
+	}
+
+	// Bottom border
+	buffer.WriteString(MoveCursorCmd(absY+p.Height-1, absX))
+	buffer.WriteString("└" + strings.Repeat("─", p.Width-2) + "┘")
+
+	// Message with simple word wrap
+	messageWidth := p.Width - 4 // Account for borders and padding
+	buffer.WriteString(p.MessageColor)
+
+	// Simple word wrap implementation
+	words := strings.Fields(p.Message)
+	lineY := absY + 2 // Start after title and top border
+	lineX := absX + 2 // Account for left border and padding
+	lineWidth := 0
+
+	for _, word := range words {
+		wordLen := len(word)
+
+		// Check if this word fits on the current line
+		if lineWidth > 0 && lineWidth+wordLen+1 > messageWidth {
+			// Word doesn't fit, move to next line
+			lineY++
+			lineWidth = 0
+			buffer.WriteString(MoveCursorCmd(lineY, lineX))
+		} else if lineWidth > 0 {
+			// Add space before word
+			buffer.WriteString(" ")
+			lineWidth++
+		}
+
+		// Position cursor if starting a new line
+		if lineWidth == 0 {
+			buffer.WriteString(MoveCursorCmd(lineY, lineX))
+		}
+
+		// Add the word
+		buffer.WriteString(word)
+		lineWidth += wordLen
+	}
+
+	// Render buttons centered at bottom
+	buttonY := absY + p.Height - 2 // One row up from bottom
+
+	// Calculate total width of all buttons
+	totalButtonWidth := 0
+	for i, button := range p.Buttons {
+		totalButtonWidth += len(button.Text) + 2 // [text]
+		if i < len(p.Buttons)-1 {
+			totalButtonWidth += 1 // space between buttons
+		}
+	}
+
+	// Center buttons
+	buttonX := absX + (p.Width-totalButtonWidth)/2
+	buffer.WriteString(MoveCursorCmd(buttonY, buttonX))
+
+	for i, button := range p.Buttons {
+		if button.IsActive {
+			buffer.WriteString(button.ActiveColor)
+			buffer.WriteString(ReverseVideo())
+		} else {
+			buffer.WriteString(button.Color)
+		}
+
+		buffer.WriteString("[" + button.Text + "]")
+		buffer.WriteString(colors.Reset)
+
+		if i < len(p.Buttons)-1 {
+			buffer.WriteString(" ")
+		}
+	}
+
+	buffer.WriteString(colors.Reset)
+}
+
+// Render draws the prompt
+func (p *Prompt) Render(buffer *strings.Builder, winX, winY int, _ int) {
+	absX := winX + p.X
+	absY := winY + p.Y
+
+	if p.Style == SingleLinePrompt {
+		p.renderSingleLinePrompt(buffer, absX, absY)
+	} else {
+		p.renderDialogPrompt(buffer, absX, absY)
+	}
+}
+
+// GetButtons returns the buttons in this prompt
+func (p *Prompt) GetButtons() []*PromptButton {
+	return p.Buttons
+}
+
+// GetButton returns the button at the specified index or nil if index is invalid
+func (p *Prompt) GetButton(index int) *PromptButton {
+	if index >= 0 && index < len(p.Buttons) {
+		return p.Buttons[index]
+	}
+	return nil
+}
+
+// IsModal returns whether this prompt is modal
+func (p *Prompt) IsModal() bool {
+	return p.Modal && p.IsActive
 }

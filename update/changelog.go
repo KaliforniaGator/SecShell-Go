@@ -165,6 +165,30 @@ var changelogData = []ChangelogItem{
 			},
 		},
 	},
+	{
+		Version: "1.3.2",
+		Date:    "2025-05-14",
+		Sections: map[string][]string{
+			"🚀 New Features": {
+				"Interactive File Manager.",
+				"Window Library now supports Menu Bars, prompts, and more.",
+			},
+			"✨ Improvements": {
+				"Improved interactive Job Manager for better usability.",
+				"Improved SecShell for better job exit code handling.",
+				"Added real-time CPU and Memory usage to the Job Manager.",
+				"Added Gradient support to SecShell.",
+				"Upgraded GUI library for better performance.",
+			},
+			"🐛 Bug Fixes": {
+				"Fixed issue with interactive Job Manager not displaying exit codes correctly.",
+				"Removed print after closing interactive apps.",
+			},
+			"⚠️ Known Issues": {
+				"Interactive history and More utility having visual scrollback buffer issues. But this time less often.",
+			},
+		},
+	},
 }
 
 // sectionOrder defines the display order for changelog sections.
