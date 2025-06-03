@@ -191,13 +191,26 @@ var changelogData = []ChangelogItem{
 	},
 	{
 		Version: "1.3.3",
-		Date:    "2025-05-15",
+		Date:    "2025-06-02",
 		Sections: map[string][]string{
 			"🚀 New Features": {
 				"Now compatible with macOS.",
 			},
 			"🐛 Bug Fixes": {
 				"Project would not compile on macOS.",
+			},
+		},
+	},
+	{
+		Version: "1.3.4",
+		Date:    "2025-06-03",
+		Sections: map[string][]string{
+			"🚀 New Features": {
+				"New command system that allows for more flexibility and control over commands.",
+				"New and improved security for blacklist, whitelist, restricted commands, and toggle-security.",
+			},
+			"🐛 Bug Fixes": {
+				"Fixed visual scrollback buffer issues in interactive history and More utility.",
 			},
 		},
 	},

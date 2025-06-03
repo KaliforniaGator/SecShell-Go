@@ -45,6 +45,7 @@ var RestrictedCommands = map[string]bool{
 	"prompt":           true,
 	"edit-prompt":      true,
 	"reload-prompt":    true,
+	"services":         true,
 }
 
 // isCommandAllowed checks if a command should be visible to non-admin users

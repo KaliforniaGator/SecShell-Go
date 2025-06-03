@@ -41,19 +41,6 @@ func DisplayWelcomeScreen(version string, needsUpdate bool) {
 	// Add version display
 	fmt.Printf("\n%sVersion: %s %s%s\n", colors.BoldWhite, version, versionIcon, colors.Reset)
 	fmt.Printf("\n%sFeatures:%s\n", colors.BoldWhite, colors.Reset)
-	features := []string{
-		"✓ Command whitelisting and blacklisting",
-		"✓ Input sanitization",
-		"✓ Process isolation",
-		"✓ Service and Job management",
-		"✓ Logging and auditing",
-		"✓ Interactive Command history",
-		"✓ Built-In Penetration testing tools",
-	}
-
-	for _, feature := range features {
-		fmt.Printf("  %s%s%s\n", colors.BoldGreen, feature, colors.Reset)
-	}
 
 	fmt.Printf("\n%sType 'help' for available commands%s\n\n", colors.BoldCyan, colors.Reset)
 	InitPrompt()
@@ -386,7 +373,7 @@ func ResetPrompt() {
 
 // DisplayPromptOptions showcases all the Prompt Options and their corresponding values that the user can configure.
 func DisplayPromptOptions() {
-	fmt.Printf("\n%sCurrent Prompt Configuration:%s\n", colors.BoldWhite, colors.Reset)
+	fmt.Printf("%sCurrent Prompt Configuration:%s\n", colors.BoldWhite, colors.Reset)
 	fmt.Printf("  %sPROMPT_TYPE:%s %s%s%s\n", colors.BoldCyan, colors.Reset, colors.Yellow, PromptOptions.PromptType, colors.Reset)
 	fmt.Printf("  %sPROMPT_ENDCAPS:%s %s%s%s\n", colors.BoldCyan, colors.Reset, colors.Yellow, PromptOptions.PromptEndCaps, colors.Reset)
 	fmt.Printf("  %sPROMPT_ENDCAPCOLOR:%s %s%s%s\n", colors.BoldCyan, colors.Reset, colors.Yellow, PromptOptions.PromptEndCapColor, colors.Reset)
