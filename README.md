@@ -120,19 +120,33 @@ ________________________________________________________________________________
 
 ### Requirements
 
-- **Go (Golang)**
-- **systemctl**
-- **Nano Editor**
+- **Go (Golang)** - For building from source
+- **systemctl** - For service management features
+- **Nano Editor** - For built-in editing features
 - **DrawBox** ([DrawBox Repository](https://github.com/KaliforniaGator/DrawBox))
-- **PAM Development Library (`libpam0g-dev`)**
+- **PAM Development Library (`libpam0g-dev`)** - For Linux authentication (not required on macOS)
 
-### One-Step Installation
+### Installation Options
+
+#### Option 1: Quick Binary Installation (Recommended)
+
+Install the pre-compiled binary directly:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/main/install.sh | bash
+```
+
+This will download the appropriate binary for your system (Linux or macOS) and install it.
+
+#### Option 2: Build from Source
+
+Build and install from source:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/main/update.sh | bash
 ```
 
-This will install dependencies, clone SecShell-Go, and build the project.
+This will install dependencies, clone SecShell-Go, and build the project from source.
 
 ---
 
