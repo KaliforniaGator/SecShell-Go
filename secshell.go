@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -15,6 +14,7 @@ import (
 	"time"
 
 	"secshell/admin"
+	"secshell/auth"
 	"secshell/colors"
 	"secshell/commands"
 	"secshell/core"
@@ -36,7 +36,6 @@ import (
 	"secshell/ui/gui/tests"
 	"secshell/update"
 
-	"github.com/msteinert/pam"
 	"golang.org/x/term"
 )
 
@@ -1490,7 +1489,7 @@ func (s *SecShell) toggleSecurity() {
 	password := strings.TrimSpace(string(bytePassword))
 
 	// Authenticate the user
-	if !authenticateUser(password) {
+	if !auth.AuthenticateUser(password) {
 		logging.LogAlert("Authentication failed. Incorrect password.")
 		gui.ErrorBox("Authentication failed. Incorrect password.")
 		return
@@ -1505,36 +1504,6 @@ func (s *SecShell) toggleSecurity() {
 		logging.LogAlert("Security enforcement DISABLED. All commands are now allowed.")
 		gui.AlertBox("Security enforcement DISABLED. All commands are now allowed.")
 	}
-}
-
-func authenticateUser(password string) bool {
-	// Get current user
-	currentUser, err := user.Current()
-	if err != nil {
-		logging.LogError(err)
-		fmt.Println("Error getting current user:", err)
-		return false
-	}
-
-	// Start a PAM authentication transaction
-	transaction, err := pam.StartFunc("login", currentUser.Username, func(s pam.Style, msg string) (string, error) {
-		return password, nil
-	})
-	if err != nil {
-		logging.LogError(err)
-		fmt.Println("PAM transaction start failed:", err)
-		return false
-	}
-
-	// Attempt authentication
-	err = transaction.Authenticate(0)
-	if err != nil {
-		logging.LogError(err)
-		fmt.Println("Authentication failed:", err)
-		return false
-	}
-
-	return true // Authentication successful
 }
 
 // manageServices manages system services

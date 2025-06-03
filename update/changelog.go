@@ -189,6 +189,18 @@ var changelogData = []ChangelogItem{
 			},
 		},
 	},
+	{
+		Version: "1.3.3",
+		Date:    "2025-05-15",
+		Sections: map[string][]string{
+			"🚀 New Features": {
+				"Now compatible with macOS.",
+			},
+			"🐛 Bug Fixes": {
+				"Project would not compile on macOS.",
+			},
+		},
+	},
 }
 
 // sectionOrder defines the display order for changelog sections.
