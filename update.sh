@@ -1,8 +1,21 @@
 #!/bin/bash
 
-# Function to check if a package is installed
-is_installed() {
+# Detect operating system
+OS="$(uname -s)"
+case "${OS}" in
+    Linux*)     OS_TYPE=linux;;
+    Darwin*)    OS_TYPE=mac;;
+    *)          OS_TYPE=unknown;;
+esac
+
+# Function to check if a package is installed (Linux)
+is_installed_linux() {
     dpkg -l | grep -qw "$1"
+}
+
+# Function to check if a package is installed (macOS)
+is_installed_mac() {
+    brew list --formula | grep -q "^$1$"
 }
 
 # Function to handle errors
@@ -37,20 +50,37 @@ update_progress() {
     echo -ne "\033[0K\r"
 }
 
-# Update package lists
-sudo apt-get update || handle_error "Failed to update package lists."
-update_progress
+# Update package lists and install required packages based on OS
+if [ "$OS_TYPE" = "linux" ]; then
+    # Linux (Ubuntu/Debian)
+    sudo apt-get update || handle_error "Failed to update package lists."
+    update_progress
 
-# Install necessary packages if not already installed
-for package in golang-go libpam0g-dev; do
-    if is_installed "$package"; then
-        #echo "$package is already installed. Skipping..."
-        continue
-    else
-        #echo "$package is not installed. Installing..."
-        sudo apt-get install -y "$package" || handle_error "Failed to install $package."
+    # Install necessary packages if not already installed
+    for package in golang-go libpam0g-dev; do
+        if is_installed_linux "$package"; then
+            continue
+        else
+            sudo apt-get install -y "$package" || handle_error "Failed to install $package."
+        fi
+    done
+elif [ "$OS_TYPE" = "mac" ]; then
+    # macOS
+    if ! command -v brew &> /dev/null; then
+        echo "Homebrew not found. Installing Homebrew..."
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" || handle_error "Failed to install Homebrew."
     fi
-done
+    
+    brew update || handle_error "Failed to update Homebrew."
+    update_progress
+
+    # Install Go if not already installed
+    if ! command -v go &> /dev/null; then
+        brew install go || handle_error "Failed to install Go."
+    fi
+else
+    handle_error "Unsupported operating system: ${OS}"
+fi
 update_progress
 
 # Define the GitHub repositories
@@ -67,7 +97,6 @@ update_progress
 
 # Clone SecShell-Go repository
 if [ -d "$SECSHELL_DIR" ]; then
-    #echo "Directory $SECSHELL_DIR already exists. Pulling latest changes..."
     cd "$SECSHELL_DIR"
     git pull -q origin main || handle_error "Failed to pull latest changes from $SECSHELL_REPO."
 else
@@ -90,8 +119,12 @@ update_progress
 go build -o secshell secshell.go > /dev/null || handle_error "Compilation failed."
 update_progress
 
-# Move the binary to /usr/bin
-sudo mv secshell /usr/bin/ || handle_error "Failed to move secshell binary to /usr/bin."
+# Move the binary to /usr/bin or /usr/local/bin based on OS
+if [ "$OS_TYPE" = "linux" ]; then
+    sudo mv secshell /usr/bin/ || handle_error "Failed to move secshell binary to /usr/bin."
+elif [ "$OS_TYPE" = "mac" ]; then
+    sudo mv secshell /usr/local/bin/ || handle_error "Failed to move secshell binary to /usr/local/bin."
+fi
 update_progress
 
 # Update version file
