@@ -5,6 +5,7 @@ import (
 	"os"
 	"secshell/colors"
 	"secshell/drawbox"
+	"secshell/terminal"
 	"secshell/ui/chars"
 	"secshell/ui/gui"
 	"strings"
@@ -433,7 +434,22 @@ func ClearScreen() {
 }
 
 func ClearScreenAndBuffer() {
-	// Clear the screen and buffer
-	fmt.Print("\033[H\033[2J\033[3J")
-	// Clear the scrollback buffer
+	// Use the modern approach for clearing screen and buffer
+	terminal.EnterAlternateScreen()
+	fmt.Print("\033[H\033[2J") // Clear the visible screen
+}
+
+// EnterInteractiveMode is a convenience wrapper around terminal.EnterInteractiveMode
+func EnterInteractiveMode() error {
+	return terminal.EnterInteractiveMode()
+}
+
+// ExitInteractiveMode is a convenience wrapper around terminal.ExitInteractiveMode
+func ExitInteractiveMode() {
+	terminal.ExitInteractiveMode()
+}
+
+// WithInteractiveMode is a convenience wrapper around terminal.WithInteractiveMode
+func WithInteractiveMode(fn func() error) error {
+	return terminal.WithInteractiveMode(fn)
 }

@@ -7,11 +7,9 @@ import (
 	"secshell/colors"
 	"secshell/core"
 	"secshell/logging"
-	"secshell/ui"
+	"secshell/terminal"
 	"secshell/ui/gui"
 	"strings"
-
-	"golang.org/x/term"
 )
 
 // Define processCommand function
@@ -64,24 +62,19 @@ func RunHistoryCommand(history []string, number int, processCommand processComma
 }
 
 func InteractiveHistorySearch(history []string, processCommand processCommand) {
-
-	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	// Use the terminal package for interactive mode
+	err := terminal.EnterInteractiveMode()
 	if err != nil {
 		logging.LogError(err)
-		gui.ErrorBox(fmt.Sprintf("Failed to set terminal to raw mode: %s", err))
+		gui.ErrorBox(fmt.Sprintf("Failed to enter interactive mode: %s", err))
 		return
 	}
 
-	// Clear screen and enter alternate screen buffer
-	fmt.Print("\033[H\033[2J\x1b[?1049h")
-
 	// Create exit function to handle cleanup
 	exitFunc := func(cmd string, runCommand bool) {
-		fmt.Print("\033[H\033[2J") // Clear screen
-		fmt.Print("\x1b[?1049l")   // Exit alternate screen buffer
-		ui.ClearScreenAndBuffer()
-		fmt.Print("\033[?25h") // Show cursor
-		term.Restore(int(os.Stdin.Fd()), oldState)
+		// Show cursor before exiting interactive mode
+		fmt.Print("\033[?25h")
+		terminal.ExitInteractiveMode()
 
 		if runCommand && cmd != "" {
 			gui.AlertBox("Running: " + cmd)
@@ -98,11 +91,11 @@ func InteractiveHistorySearch(history []string, processCommand processCommand) {
 
 	// Hide cursor while navigating
 	fmt.Print("\033[?25l")
-	// Defer for showing cursor is handled above
+
 	// Helper function to refresh display
 	refreshDisplay := func() {
 		// Get terminal height
-		_, termHeight, err := term.GetSize(int(os.Stdout.Fd()))
+		_, termHeight, err := terminal.GetTerminalSize()
 		if err != nil {
 			termHeight = 24 // Default height if error
 		}
@@ -180,36 +173,30 @@ func InteractiveHistorySearch(history []string, processCommand processCommand) {
 			sb.WriteString(fmt.Sprintf("-- Page %d/%d (%d results) --", currentPage+1, totalPages, len(filteredHistory)))
 		}
 
-		// Actual printing:
-		fmt.Print("\033[H\033[2J") // Clear screen and move cursor home (as before)
-		fmt.Print(sb.String())     // Print the composed buffer
+		// Clear the screen and move cursor to home position
+		fmt.Print("\033[2J\033[H")
+		// Print the composed buffer
+		fmt.Print(sb.String())
 	}
 
 	// Initial display
 	refreshDisplay()
 
 	// Input loop
-
 	buf := make([]byte, 3)
 
 	for {
-
 		n, err := os.Stdin.Read(buf)
 
 		if err != nil {
-
 			logging.LogError(err)
-
 			gui.ErrorBox(fmt.Sprintf("Failed to read input: %s", err))
-
-			return // Defer will handle cleanup
-
+			exitFunc("", false)
+			return
 		}
 
 		if n == 1 {
-
 			switch buf[0] {
-
 			case 27: // ESC
 				exitFunc("", false)
 				return
@@ -222,41 +209,24 @@ func InteractiveHistorySearch(history []string, processCommand processCommand) {
 				}
 
 			case 127, 8: // Backspace/Delete
-
 				if len(query) > 0 {
-
 					query = query[:len(query)-1]
-
 					selectedIndex = 0 // Reset selection
-
-					currentPage = 0 // Reset page
-
+					currentPage = 0   // Reset page
 					refreshDisplay()
-
 				}
 
 			default:
-
 				// Add printable characters to query
-
 				if buf[0] >= 32 && buf[0] <= 126 {
-
 					query += string(buf[0])
-
 					selectedIndex = 0 // Reset selection
-
-					currentPage = 0 // Reset page
-
+					currentPage = 0   // Reset page
 					refreshDisplay()
-
 				}
-
 			}
-
 		} else if n == 3 && buf[0] == 27 && buf[1] == 91 {
-
 			// Handle arrow keys
-
 			if len(filteredHistory) > 0 { // Only navigate if there are results
 				pageStartIndex := currentPage * pageSize
 				// Ensure pageEndIndex is correctly calculated, even for partially filled last page
@@ -268,7 +238,6 @@ func InteractiveHistorySearch(history []string, processCommand processCommand) {
 				}
 
 				switch buf[2] {
-
 				case 65: // Up arrow
 					if selectedIndex > pageStartIndex {
 						selectedIndex--
@@ -313,8 +282,6 @@ func InteractiveHistorySearch(history []string, processCommand processCommand) {
 						}
 						selectedIndex = currentPage * pageSize
 						// Ensure selectedIndex is not out of bounds if the new page is the last and not full
-						// This typically shouldn't happen if totalPages and currentPage are correct,
-						// but good for safety.
 						if selectedIndex >= len(filteredHistory) {
 							selectedIndex = len(filteredHistory) - 1
 						}

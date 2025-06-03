@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"secshell/terminal"
 	"strings"
 
 	"golang.org/x/term"
@@ -22,7 +23,6 @@ type MorePager struct {
 	searchMatches []int         // Indices of items matching search query
 	currentMatch  int           // Current match index (-1 if none)
 	showHelp      bool          // Whether to show help
-	oldState      *term.State   // Terminal state to restore
 	termWidth     int           // Terminal width
 	termHeight    int           // Terminal height
 	wrapText      bool          // Whether to wrap text instead of truncating
@@ -30,16 +30,15 @@ type MorePager struct {
 
 // NewMorePager creates and initializes a new MorePager
 func NewMorePager(items []string) (*MorePager, error) {
-	// Save terminal state and enable raw mode
-	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
-	if err != nil {
+	// Enter raw mode using the terminal package
+	if err := terminal.EnterRawMode(); err != nil {
 		return nil, err
 	}
 
 	// Get terminal size
-	width, height, err := term.GetSize(int(os.Stdin.Fd()))
+	width, height, err := terminal.GetTerminalSize()
 	if err != nil {
-		term.Restore(int(os.Stdin.Fd()), oldState)
+		terminal.ExitRawMode()
 		return nil, err
 	}
 
@@ -56,7 +55,6 @@ func NewMorePager(items []string) (*MorePager, error) {
 		searchMatches: []int{},
 		currentMatch:  -1,
 		showHelp:      false,
-		oldState:      oldState,
 		termWidth:     width,
 		termHeight:    height,
 		wrapText:      true, // Enable text wrapping by default
@@ -74,8 +72,9 @@ func More(items []string) error {
 		return err
 	}
 
-	// Enter alternate screen buffer and hide cursor
-	fmt.Print("\x1b[?1049h\x1b[?25l")
+	// Enter alternate screen buffer and hide cursor using the terminal package
+	terminal.EnterAlternateScreen()
+	fmt.Print("\x1b[?25l") // Hide cursor
 
 	// Clear the alternate screen to start fresh
 	fmt.Print("\x1b[2J\x1b[H")
@@ -86,10 +85,11 @@ func More(items []string) error {
 		fmt.Print("\x1b[2J\x1b[H")
 
 		// Show cursor and exit alternate screen buffer
-		fmt.Print("\x1b[?25h\x1b[?1049l")
+		fmt.Print("\x1b[?25h")
+		terminal.ExitAlternateScreen()
 
 		// Restore terminal state
-		term.Restore(int(os.Stdin.Fd()), pager.oldState)
+		terminal.ExitRawMode()
 
 		// Clear screen and buffer again after returning to main screen
 		fmt.Print("\x1b[2J\x1b[H\x1b[3J")
