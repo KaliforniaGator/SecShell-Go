@@ -45,7 +45,14 @@ sudo mv "${TMP_FILE}" "${BIN_PATH}" || handle_error "Failed to install binary. M
 # Clean up
 rm -rf "${TMP_DIR}"
 
-# Create .secshell directory if it doesn't exist
+# Remove old .secshell directory if it exists
+if [ -d ~/.secshell ]; then
+    echo "Removing old .secshell directory..."
+    rm -rf ~/.secshell
+fi
+
+# Create .secshell directory
+echo "Creating .secshell directory..."
 mkdir -p ~/.secshell &> /dev/null || handle_error "Failed to create ~/.secshell directory."
 
 # Get the version from the binary
@@ -57,21 +64,24 @@ fi
 # Create version file
 echo "${CURRENT_VERSION}" > ~/.secshell/.ver || handle_error "Failed to create version file"
 
-# Install DrawBox dependency
+# Install DrawBox dependency - using direct download instead of compiling
 echo "Installing DrawBox dependency..."
-curl -s https://raw.githubusercontent.com/KaliforniaGator/DrawBox/main/update.sh | bash || handle_error "Failed to install DrawBox dependency"
+DRAWBOX_TMP_FILE="${TMP_DIR}/drawbox-download"
+mkdir -p "${TMP_DIR}"
 
-# Check if DrawBox binary was downloaded to temp directory
-DRAWBOX_TMP_PATH="/tmp/drawbox"
-if [ -f "$DRAWBOX_TMP_PATH" ]; then
-    echo "Moving DrawBox binary to ${DRAWBOX_BIN_PATH}..."
-    # Make the binary executable if it's not already
-    chmod +x "$DRAWBOX_TMP_PATH" || handle_error "Failed to make DrawBox binary executable"
-    # Move to the appropriate location
-    sudo mv "$DRAWBOX_TMP_PATH" "$DRAWBOX_BIN_PATH" || handle_error "Failed to install DrawBox binary"
-else
-    echo "Warning: DrawBox binary not found at expected location. Installation may be incomplete."
+if [ "$OS_TYPE" = "linux" ]; then
+    DRAWBOX_URL="https://github.com/KaliforniaGator/DrawBox/releases/download/linux-latest/drawbox-linux"
+    curl -L -o "${DRAWBOX_TMP_FILE}" "${DRAWBOX_URL}" || handle_error "Failed to download DrawBox binary"
+elif [ "$OS_TYPE" = "mac" ]; then
+    DRAWBOX_URL="https://github.com/KaliforniaGator/DrawBox/releases/download/mac-latest/drawbox-mac"
+    curl -L -o "${DRAWBOX_TMP_FILE}" "${DRAWBOX_URL}" || handle_error "Failed to download DrawBox binary"
 fi
+
+# Make DrawBox executable
+chmod +x "${DRAWBOX_TMP_FILE}" || handle_error "Failed to make DrawBox binary executable"
+
+# Move DrawBox to the appropriate location
+sudo mv "${DRAWBOX_TMP_FILE}" "${DRAWBOX_BIN_PATH}" || handle_error "Failed to install DrawBox binary"
 
 echo "SecShell has been successfully installed!"
 echo "You can now run 'secshell' to start the shell." 
