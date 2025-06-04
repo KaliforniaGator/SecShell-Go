@@ -138,15 +138,35 @@ curl -fsSL https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/main/in
 
 This will download the appropriate binary for your system (Linux or macOS) and install it.
 
-#### Option 2: Build from Source
+#### Option 2: Update Existing Installation
 
-Build and install from source:
+Update an existing installation to the latest version:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/main/update.sh | bash
 ```
 
-This will install dependencies, clone SecShell-Go, and build the project from source.
+This will download the latest pre-compiled binary for your system and update your existing installation.
+
+#### Option 3: Manual Build from Source
+
+If you prefer to build from source:
+
+```bash
+# Clone the repository
+git clone https://github.com/KaliforniaGator/SecShell-Go.git
+cd SecShell-Go
+
+# Build the binary
+go build -o secshell secshell.go
+
+# Install the binary
+sudo mv secshell /usr/bin/  # Linux
+# or
+sudo mv secshell /usr/local/bin/  # macOS
+```
+
+Note: Building from source requires Go to be installed on your system.
 
 ---
 
