@@ -46,33 +46,54 @@ if [ "$OS_TYPE" = "unknown" ]; then
 fi
 update_progress
 
+# Create temporary directory
+TMP_DIR=$(mktemp -d)
+if [ ! -d "$TMP_DIR" ]; then
+    handle_error "Failed to create temporary directory"
+fi
+
 # Define URLs and paths
-DRAWBOX_URL="https://raw.githubusercontent.com/KaliforniaGator/DrawBox/refs/heads/main/update.sh"
 if [ "$OS_TYPE" = "linux" ]; then
     DOWNLOAD_URL="https://github.com/KaliforniaGator/SecShell-Go/releases/download/linux-latest/secshell-linux-latest"
     BIN_PATH="/usr/bin/secshell"
     DRAWBOX_BIN_PATH="/usr/bin/drawbox"
+    DRAWBOX_URL="https://github.com/KaliforniaGator/DrawBox/releases/download/linux-latest/drawbox-linux"
 elif [ "$OS_TYPE" = "mac" ]; then
     DOWNLOAD_URL="https://github.com/KaliforniaGator/SecShell-Go/releases/download/mac-latest/secshell-mac-latest"
     BIN_PATH="/usr/local/bin/secshell"
     DRAWBOX_BIN_PATH="/usr/local/bin/drawbox"
+    DRAWBOX_URL="https://github.com/KaliforniaGator/DrawBox/releases/download/mac-latest/drawbox-mac"
 fi
 
 # Set up DrawBox
 if ! command -v drawbox &> /dev/null; then
     echo "Installing DrawBox..."
-    curl -s "$DRAWBOX_URL" | bash || handle_error "Failed to download or execute DrawBox update script."
     
-    # Check if DrawBox binary was downloaded to temp directory
-    DRAWBOX_TMP_PATH="/tmp/drawbox"
-    if [ -f "$DRAWBOX_TMP_PATH" ]; then
-        # Make the binary executable if it's not already
-        chmod +x "$DRAWBOX_TMP_PATH" || handle_error "Failed to make DrawBox binary executable"
-        # Move to the appropriate location
-        sudo mv "$DRAWBOX_TMP_PATH" "$DRAWBOX_BIN_PATH" || handle_error "Failed to install DrawBox binary"
-    else
-        echo "Warning: DrawBox binary not found at expected location. Installation may be incomplete."
-    fi
+    # Create temporary directory for DrawBox if it doesn't exist
+    DRAWBOX_TMP_FILE="${TMP_DIR}/drawbox-download"
+    
+    # Download DrawBox binary
+    curl -L -o "${DRAWBOX_TMP_FILE}" "${DRAWBOX_URL}" || handle_error "Failed to download DrawBox binary"
+    
+    # Make DrawBox executable
+    chmod +x "${DRAWBOX_TMP_FILE}" || handle_error "Failed to make DrawBox binary executable"
+    
+    # Move DrawBox to the appropriate location
+    sudo mv "${DRAWBOX_TMP_FILE}" "${DRAWBOX_BIN_PATH}" || handle_error "Failed to install DrawBox binary"
+else
+    echo "DrawBox is already installed. Checking for updates..."
+    
+    # Create temporary directory for DrawBox if it doesn't exist
+    DRAWBOX_TMP_FILE="${TMP_DIR}/drawbox-download"
+    
+    # Download DrawBox binary
+    curl -L -o "${DRAWBOX_TMP_FILE}" "${DRAWBOX_URL}" || handle_error "Failed to download DrawBox binary"
+    
+    # Make DrawBox executable
+    chmod +x "${DRAWBOX_TMP_FILE}" || handle_error "Failed to make DrawBox binary executable"
+    
+    # Move DrawBox to the appropriate location
+    sudo mv "${DRAWBOX_TMP_FILE}" "${DRAWBOX_BIN_PATH}" || handle_error "Failed to install DrawBox binary"
 fi
 update_progress
 
@@ -93,7 +114,14 @@ echo "Installing to ${BIN_PATH}..."
 sudo mv "${TMP_FILE}" "${BIN_PATH}" || handle_error "Failed to install binary. Make sure you have sudo privileges."
 update_progress
 
-# Create .secshell directory if it doesn't exist
+# Remove old .secshell directory if it exists
+if [ -d ~/.secshell ]; then
+    echo "Removing old .secshell directory..."
+    rm -rf ~/.secshell
+fi
+
+# Create .secshell directory
+echo "Creating .secshell directory..."
 mkdir -p ~/.secshell &> /dev/null || handle_error "Failed to create ~/.secshell directory."
 
 # Get the version from the binary
