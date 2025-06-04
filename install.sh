@@ -18,11 +18,11 @@ echo "Installing SecShell for ${OS_TYPE}..."
 
 # Set download URL and binary path based on OS
 if [ "$OS_TYPE" = "linux" ]; then
-    DOWNLOAD_URL="https://github.com/KaliforniaGator/SecShell-Go/releases/download/latest/secshell-linux-latest"
+    DOWNLOAD_URL="https://github.com/KaliforniaGator/SecShell-Go/releases/download/linux-latest/secshell-linux-latest"
     BIN_PATH="/usr/bin/secshell"
     DRAWBOX_BIN_PATH="/usr/bin/drawbox"
 elif [ "$OS_TYPE" = "mac" ]; then
-    DOWNLOAD_URL="https://github.com/KaliforniaGator/SecShell-Go/releases/download/latest/secshell-mac-latest"
+    DOWNLOAD_URL="https://github.com/KaliforniaGator/SecShell-Go/releases/download/mac-latest/secshell-mac-latest"
     BIN_PATH="/usr/local/bin/secshell"
     DRAWBOX_BIN_PATH="/usr/local/bin/drawbox"
 fi
