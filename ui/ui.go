@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 	"secshell/colors"
-	"secshell/drawbox"
+	"secshell/terminal"
 	"secshell/ui/chars"
 	"secshell/ui/gui"
 	"strings"
@@ -17,9 +17,15 @@ func DisplayWelcomeScreen(version string, needsUpdate bool) {
 	// Check for Update
 	versionIcon := ""
 	if needsUpdate {
-		versionIcon = drawbox.PrintIcon("warning")
+		// Try to use drawbox if available, fallback to unicode symbols
+		if versionIcon == "" {
+			versionIcon = "⚠️" // Unicode warning symbol
+		}
 	} else {
-		versionIcon = drawbox.PrintIcon("success")
+		// Try to use drawbox if available, fallback to unicode symbols
+		if versionIcon == "" {
+			versionIcon = "✅" // Unicode checkmark/success symbol
+		}
 	}
 	// Clear the screen first
 	fmt.Print("\033[H\033[2J")
@@ -39,21 +45,6 @@ func DisplayWelcomeScreen(version string, needsUpdate bool) {
 	gui.SuccessBox("Welcome to SecShell - A Secure Command Shell")
 	// Add version display
 	fmt.Printf("\n%sVersion: %s %s%s\n", colors.BoldWhite, version, versionIcon, colors.Reset)
-	fmt.Printf("\n%sFeatures:%s\n", colors.BoldWhite, colors.Reset)
-	features := []string{
-		"✓ Command whitelisting and blacklisting",
-		"✓ Input sanitization",
-		"✓ Process isolation",
-		"✓ Service and Job management",
-		"✓ Logging and auditing",
-		"✓ Interactive Command history",
-		"✓ Built-In Penetration testing tools",
-	}
-
-	for _, feature := range features {
-		fmt.Printf("  %s%s%s\n", colors.BoldGreen, feature, colors.Reset)
-	}
-
 	fmt.Printf("\n%sType 'help' for available commands%s\n\n", colors.BoldCyan, colors.Reset)
 	InitPrompt()
 }
@@ -385,7 +376,7 @@ func ResetPrompt() {
 
 // DisplayPromptOptions showcases all the Prompt Options and their corresponding values that the user can configure.
 func DisplayPromptOptions() {
-	fmt.Printf("\n%sCurrent Prompt Configuration:%s\n", colors.BoldWhite, colors.Reset)
+	fmt.Printf("%sCurrent Prompt Configuration:%s\n", colors.BoldWhite, colors.Reset)
 	fmt.Printf("  %sPROMPT_TYPE:%s %s%s%s\n", colors.BoldCyan, colors.Reset, colors.Yellow, PromptOptions.PromptType, colors.Reset)
 	fmt.Printf("  %sPROMPT_ENDCAPS:%s %s%s%s\n", colors.BoldCyan, colors.Reset, colors.Yellow, PromptOptions.PromptEndCaps, colors.Reset)
 	fmt.Printf("  %sPROMPT_ENDCAPCOLOR:%s %s%s%s\n", colors.BoldCyan, colors.Reset, colors.Yellow, PromptOptions.PromptEndCapColor, colors.Reset)
@@ -433,7 +424,22 @@ func ClearScreen() {
 }
 
 func ClearScreenAndBuffer() {
-	// Clear the screen and buffer
-	fmt.Print("\033[H\033[2J\033[3J")
-	// Clear the scrollback buffer
+	// Use the modern approach for clearing screen and buffer
+	terminal.EnterAlternateScreen()
+	fmt.Print("\033[H\033[2J") // Clear the visible screen
+}
+
+// EnterInteractiveMode is a convenience wrapper around terminal.EnterInteractiveMode
+func EnterInteractiveMode() error {
+	return terminal.EnterInteractiveMode()
+}
+
+// ExitInteractiveMode is a convenience wrapper around terminal.ExitInteractiveMode
+func ExitInteractiveMode() {
+	terminal.ExitInteractiveMode()
+}
+
+// WithInteractiveMode is a convenience wrapper around terminal.WithInteractiveMode
+func WithInteractiveMode(fn func() error) error {
+	return terminal.WithInteractiveMode(fn)
 }

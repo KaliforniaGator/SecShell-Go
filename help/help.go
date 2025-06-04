@@ -6,6 +6,7 @@ import (
 	"secshell/admin"
 	"secshell/colors"
 	"secshell/globals"
+	"secshell/terminal"
 	"secshell/ui/gui"
 	"sort" // Import the sort package
 	"strings"
@@ -480,6 +481,12 @@ Options:
 	},
 }
 
+// clearLine clears the current line before printing
+func clearLine() {
+	// ANSI escape sequence to clear the entire line
+	fmt.Print("\033[2K\r")
+}
+
 // DisplayHelp shows the help message or specific command help
 func DisplayHelp(args ...string) {
 	// If we have arguments, display specific command help
@@ -487,8 +494,6 @@ func DisplayHelp(args ...string) {
 		displayCommandHelp(args[0])
 		return
 	}
-
-	gui.TitleBox("SecShell Help")
 
 	// Group commands by category
 	commandsByCategory := make(map[string][]string)
@@ -506,29 +511,201 @@ func DisplayHelp(args ...string) {
 		sort.Strings(commandsByCategory[category])
 	}
 
-	// Print commands by category
-	fmt.Println("\nAvailable Commands:")
-
 	// Order of categories to display
 	categories := []string{"System", "FileSystem", "Process", "Environment", "Security", "Network", "Pentesting", "Encoding", "Scripting", "Analysis"}
+
+	// Try to use the interactive mode with pagination
+	err := terminal.WithInteractiveMode(func() error {
+		return displayPaginatedHelp(categories, commandsByCategory)
+	})
+
+	if err != nil {
+		// Fallback if interactive mode fails
+		displaySimpleHelp(categories, commandsByCategory)
+	}
+}
+
+// displayPaginatedHelp shows commands in a paginated interface
+func displayPaginatedHelp(categories []string, commandsByCategory map[string][]string) error {
+	// Get terminal dimensions
+	width, height, err := terminal.GetTerminalSize()
+	if err != nil {
+		return err
+	}
+
+	// Calculate how many command lines can fit on screen
+	// Reserve lines for: title (2), header(1), footer instructions (2)
+	maxLinesPerPage := height - 5
+	if maxLinesPerPage < 5 {
+		maxLinesPerPage = 5 // Minimum reasonable size
+	}
+
+	// Prepare content for all pages
+	var pages [][]string
+	var currentPage []string
+	linesOnCurrentPage := 0
+
+	// Calculate column widths for command and description
+	cmdWidth := 15                    // Width for command column
+	descWidth := width - cmdWidth - 5 // Width for description column, adjusting for formatting chars
+
+	// Add title to first page
+	currentPage = append(currentPage, fmt.Sprintf("%sSecShell Help%s", colors.BoldCyan, colors.Reset))
+	currentPage = append(currentPage, "")
+	currentPage = append(currentPage, fmt.Sprintf("%sAvailable Commands:%s", colors.BoldWhite, colors.Reset))
+	linesOnCurrentPage = 3
 
 	for _, category := range categories {
 		commands, exists := commandsByCategory[category]
 		if exists && len(commands) > 0 {
-			fmt.Printf("\n%s%s Commands:%s\n", colors.Cyan, category, colors.Reset)
+			// Check if we need to start a new page for this category
+			// Category header + commands + extra space before next category
+			categorySize := 2 + len(commands)
 
-			// Print each command in this category (now sorted)
+			if linesOnCurrentPage+categorySize > maxLinesPerPage && linesOnCurrentPage > 3 {
+				// Start a new page if current category won't fit
+				pages = append(pages, currentPage)
+				currentPage = []string{}
+				linesOnCurrentPage = 0
+			}
+
+			// Add category header
+			currentPage = append(currentPage, "")
+			currentPage = append(currentPage, fmt.Sprintf("%s%s Commands:%s", colors.Cyan, category, colors.Reset))
+			linesOnCurrentPage += 2
+
+			// Add commands
 			for _, cmd := range commands {
 				if topic, exists := HelpTopics[cmd]; exists {
-					fmt.Printf("  %s%-12s%s - %s\n",
+					// Truncate description if needed
+					desc := topic.Description
+					if len(desc) > descWidth && descWidth > 3 {
+						desc = desc[:descWidth-3] + "..."
+					}
+
+					cmdLine := fmt.Sprintf("  %s%-*s%s - %s",
 						colors.BoldWhite,
+						cmdWidth,
 						topic.Command,
 						colors.Reset,
-						topic.Description)
+						desc)
+
+					currentPage = append(currentPage, cmdLine)
+					linesOnCurrentPage++
+
+					// If page is full, start a new one
+					if linesOnCurrentPage >= maxLinesPerPage {
+						pages = append(pages, currentPage)
+						currentPage = []string{}
+						linesOnCurrentPage = 0
+					}
 				}
 			}
 		}
 	}
+
+	// Add the last page if it has content
+	if len(currentPage) > 0 {
+		pages = append(pages, currentPage)
+	}
+
+	// Display pages with navigation
+	currentPageIndex := 0
+	totalPages := len(pages)
+
+	for {
+		// Clear screen
+		fmt.Print("\033[H\033[2J")
+
+		// Display current page content
+		for _, line := range pages[currentPageIndex] {
+			clearLine() // Clear the line before printing
+			fmt.Println(line)
+		}
+
+		// Fill remaining lines with empty space up to footer position
+		remainingLines := maxLinesPerPage - len(pages[currentPageIndex]) + 3
+		for i := 0; i < remainingLines; i++ {
+			clearLine() // Clear each empty line
+			fmt.Println()
+		}
+
+		// Display navigation footer
+		clearLine()
+		fmt.Println()
+		clearLine()
+		nav := fmt.Sprintf("%sPage %d/%d%s", colors.BoldWhite, currentPageIndex+1, totalPages, colors.Reset)
+		controls := fmt.Sprintf("%s(← prev | next → | q quit)%s", colors.Gray, colors.Reset)
+		fmt.Printf("%s    %s\n", nav, controls)
+
+		// Read a single key press
+		b := make([]byte, 3)
+		os.Stdin.Read(b)
+
+		// Process navigation
+		if b[0] == 'q' || b[0] == 'Q' {
+			break
+		} else if b[0] == 27 && b[1] == 91 { // Arrow keys
+			switch b[2] {
+			case 68: // Left arrow
+				if currentPageIndex > 0 {
+					currentPageIndex--
+				}
+			case 67: // Right arrow
+				if currentPageIndex < totalPages-1 {
+					currentPageIndex++
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// displaySimpleHelp shows help without pagination (fallback)
+func displaySimpleHelp(categories []string, commandsByCategory map[string][]string) {
+	// Clear the screen first
+	fmt.Print("\033[H\033[2J")
+
+	gui.TitleBox("SecShell Help")
+
+	clearLine()
+	fmt.Println("\nAvailable Commands:")
+
+	// Calculate column widths for command and description
+	cmdWidth := 15  // Width for command column
+	descWidth := 50 // Width for description column
+
+	for _, category := range categories {
+		commands, exists := commandsByCategory[category]
+		if exists && len(commands) > 0 {
+			clearLine()
+			fmt.Printf("\n%s%s Commands:%s\n", colors.Cyan, category, colors.Reset)
+
+			// Print each command in this category
+			for _, cmd := range commands {
+				if topic, exists := HelpTopics[cmd]; exists {
+					clearLine() // Clear line before printing
+
+					// Truncate description if too long
+					desc := topic.Description
+					if len(desc) > descWidth {
+						desc = desc[:descWidth-3] + "..."
+					}
+
+					// Print command with fixed width formatting
+					fmt.Printf("  %s%-*s%s - %s\n",
+						colors.BoldWhite,
+						cmdWidth,
+						topic.Command,
+						colors.Reset,
+						desc)
+				}
+			}
+		}
+	}
+
+	clearLine()
 	fmt.Printf("\n%sUsage:%s Type '%shelp <command>%s' for more details on a specific command\n",
 		colors.Cyan, colors.Reset, colors.BoldWhite, colors.Reset)
 }
@@ -539,28 +716,48 @@ func displayCommandHelp(command string) {
 	topic, exists := HelpTopics[command]
 
 	if !exists {
+		clearLine()
 		fmt.Fprintf(os.Stdout, "No help available for command: %s\n", command)
 		return
 	}
 
 	// Check if user has permission to view this command's help
 	if !admin.IsAdmin() && !globals.IsCommandAllowed(command) {
+		clearLine()
 		fmt.Fprintf(os.Stdout, "Access denied: This command requires admin privileges\n")
 		return
 	}
 
+	// Clear the screen first
+	fmt.Print("\033[H\033[2J")
+
 	gui.TitleBox(fmt.Sprintf("Help: %s", command))
 
-	fmt.Printf("\n%sDescription:%s %s\n\n", colors.BoldWhite, colors.Reset, topic.Description)
-	fmt.Printf("%sUsage:%s %s\n\n", colors.BoldWhite, colors.Reset, topic.Usage)
+	clearLine()
+	fmt.Printf("\n%sDescription:%s %s\n", colors.BoldWhite, colors.Reset, topic.Description)
+
+	clearLine()
+	fmt.Printf("\n%sUsage:%s %s\n", colors.BoldWhite, colors.Reset, topic.Usage)
 
 	if len(topic.Examples) > 0 {
-		fmt.Printf("%sExamples:%s\n", colors.BoldWhite, colors.Reset)
+		clearLine()
+		fmt.Printf("\n%sExamples:%s\n", colors.BoldWhite, colors.Reset)
 		for _, example := range topic.Examples {
+			clearLine()
 			fmt.Printf("  > %s\n", example)
 		}
 	}
 
+	clearLine()
 	fmt.Printf("\n%sCategory:%s %s\n", colors.BoldWhite, colors.Reset, topic.Category)
+	clearLine()
 	fmt.Println()
+}
+
+// min returns the smaller of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

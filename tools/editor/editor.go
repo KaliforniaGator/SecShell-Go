@@ -4,12 +4,11 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"secshell/terminal"
 	"secshell/ui"
 	"secshell/ui/gui"
 	"strings"
 	"unicode"
-
-	"golang.org/x/term"
 )
 
 // Key constants for special keys (using common ANSI escape sequences)
@@ -43,17 +42,16 @@ type Position struct {
 
 // Editor holds the state of the text editor
 type Editor struct {
-	lines           []string // Content of the file, line by line
-	cursorX         int      // Horizontal cursor position (rune index)
-	cursorY         int      // Vertical cursor position (line index)
-	offsetX         int      // Horizontal scroll offset (rune index)
-	offsetY         int      // Vertical scroll offset (line index)
-	termWidth       int      // Terminal width
-	termHeight      int      // Terminal height (usable area)
-	fileName        string   // Name of the file being edited
-	statusMsg       string   // Message to display in the status bar
-	isDirty         bool     // True if the buffer has been modified since the last save
-	originalTerm    *term.State
+	lines           []string  // Content of the file, line by line
+	cursorX         int       // Horizontal cursor position (rune index)
+	cursorY         int       // Vertical cursor position (line index)
+	offsetX         int       // Horizontal scroll offset (rune index)
+	offsetY         int       // Vertical scroll offset (line index)
+	termWidth       int       // Terminal width
+	termHeight      int       // Terminal height (usable area)
+	fileName        string    // Name of the file being edited
+	statusMsg       string    // Message to display in the status bar
+	isDirty         bool      // True if the buffer has been modified since the last save
 	selection       Selection // Added selection state
 	selectionAnchor Position  // Anchor point for shift-selection
 }
@@ -87,25 +85,18 @@ func NewEditor() *Editor {
 
 // enableRawMode puts the terminal into raw mode and enters the alternate screen buffer
 func (e *Editor) enableRawMode() error {
-	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
-	if err != nil {
+	if err := terminal.EnterInteractiveMode(); err != nil {
 		return err
 	}
-	e.originalTerm = oldState
-	// Enter alternate screen buffer
-	fmt.Print("\x1b[?1049h")
 	return nil
 }
 
 // disableRawMode exits the alternate screen buffer and restores the terminal to its original state
 func (e *Editor) disableRawMode() {
-	if e.originalTerm != nil {
-		// Clear the screen
-		ui.ClearScreen()
-		// Exit alternate screen buffer (restores previous screen and scrollback)
-		fmt.Print("\x1b[?1049l")
-		term.Restore(int(os.Stdin.Fd()), e.originalTerm)
-	}
+	// Clear the screen
+	ui.ClearScreen()
+	// Exit interactive mode (which includes both raw mode and alternate screen)
+	terminal.ExitInteractiveMode()
 }
 
 // Run starts the editor's main loop

@@ -15,25 +15,19 @@ import (
 
 	"secshell/admin"
 	"secshell/auth"
+	"secshell/cmdmap"
 	"secshell/colors"
-	"secshell/commands"
 	"secshell/core"
-	"secshell/download"
-	"secshell/env"
 	"secshell/globals"
-	"secshell/help"
 	"secshell/history"
 	"secshell/jobs"
 	"secshell/logging"
-	"secshell/pentest"
 	"secshell/sanitize"
 	"secshell/services"
 	"secshell/tools"
 	"secshell/tools/editor"
-	filemanager "secshell/tools/file-manager"
 	"secshell/ui"
 	"secshell/ui/gui"
-	"secshell/ui/gui/tests"
 	"secshell/update"
 
 	"golang.org/x/term"
@@ -86,10 +80,26 @@ func NewSecShell(blacklistPath, whitelistPath string) *SecShell {
 	shell.allowedCommands = core.AllowedCommands
 	shell.history = history.GetHistoryFromFile(globals.HistoryPath)
 	shell.historyIndex = len(shell.history)
-	commands.AllowedCommands = core.AllowedCommands
-	commands.BuiltInCommands = globals.BuiltInCommands
-	commands.AllowedDirs = globals.TrustedDirs
-	commands.Init()
+
+	// Log that we're loading blacklisted commands
+	if len(core.BlacklistedCommands) > 0 {
+		logging.LogAlert(fmt.Sprintf("Loaded %d blacklisted commands", len(core.BlacklistedCommands)))
+	}
+
+	// Update command map to remove blacklisted commands
+	for _, cmd := range core.BlacklistedCommands {
+		if _, exists := cmdmap.GlobalCommandMap[cmd]; exists {
+			logging.LogAlert(fmt.Sprintf("Removing blacklisted command from command map: %s", cmd))
+			delete(cmdmap.GlobalCommandMap, cmd)
+		}
+	}
+
+	// Log the state of restricted commands
+	restrictedCount := len(globals.RestrictedCommands)
+	if restrictedCount > 0 {
+		logging.LogAlert(fmt.Sprintf("Loaded %d admin-restricted commands", restrictedCount))
+	}
+
 	return shell
 }
 
@@ -263,7 +273,12 @@ func (s *SecShell) getInput() string {
 					}
 				}
 			case 9: // Tab
-				line, pos = commands.CompleteCommand(line, pos)
+				newLine, newPos := cmdmap.CompleteCommand(line, pos)
+				if newLine != line {
+					// The completion function already handles clearing and reprinting
+					line = newLine
+					pos = newPos
+				}
 			case 13, 10: // Enter (CR or LF)
 				fmt.Println()
 				input := s.sanitizeInput(strings.TrimSpace(line), true)
@@ -355,6 +370,18 @@ func (s *SecShell) processCommand(input string) {
 
 	// Check for script execution (files with ./ prefix)
 	if strings.HasPrefix(input, "./") {
+		// Extract the command name from the input to check if it's blacklisted
+		parts := strings.Fields(input)
+		if len(parts) > 0 {
+			scriptCmd := parts[0]
+			// Only check blacklist if security is enabled or user is not admin
+			if s.isCommandBlacklisted(scriptCmd) {
+				logging.LogAlert(fmt.Sprintf("Script execution denied: '%s' is blacklisted", scriptCmd))
+				gui.ErrorBox(fmt.Sprintf("Script execution denied: '%s' is blacklisted", scriptCmd))
+				return
+			}
+		}
+
 		output, err := tools.ExecuteScript(input)
 		if err != nil {
 			logging.LogError(err)
@@ -366,552 +393,8 @@ func (s *SecShell) processCommand(input string) {
 		return
 	}
 
-	splitCommands := strings.Split(input, "|")
-	for i, command := range splitCommands {
-		splitCommands[i] = strings.TrimSpace(command)
-	}
-
-	if len(splitCommands) > 1 {
-		s.executePipedCommands(splitCommands)
-	} else {
-		args := strings.Fields(splitCommands[0])
-		if len(args) == 0 {
-			return
-		}
-
-		// Prevent deletion of critical files and the config directory
-		if args[0] == "rm" {
-			// Get absolute paths of critical files/dirs for comparison
-			criticalPaths := make(map[string]string)
-			criticalItems := []string{
-				logging.LogFile,
-				globals.BlacklistPath,
-				globals.WhitelistPath,
-				globals.VersionPath,
-				globals.HistoryPath,
-				globals.ConfigDir,
-			}
-			for _, item := range criticalItems {
-				absPath, err := filepath.Abs(item)
-				if err == nil { // Only add if we can resolve the absolute path
-					criticalPaths[absPath] = item // Store original name for logging if needed
-				} else {
-					logging.LogError(fmt.Errorf("error resolving critical path %s: %w", item, err))
-				}
-			}
-
-			for _, arg := range args[1:] {
-				// Ignore flags like -r, -f, -rf etc.
-				if strings.HasPrefix(arg, "-") {
-					continue
-				}
-
-				// Resolve potential relative paths for the argument
-				absArg, err := filepath.Abs(arg)
-				if err != nil {
-					logging.LogError(fmt.Errorf("error resolving path %s: %w", arg, err))
-					continue // Skip if path resolution fails for the argument
-				}
-
-				// Check if the argument matches any critical path
-				if _, isCritical := criticalPaths[absArg]; isCritical {
-					alertMsg := fmt.Sprintf("Attempt to delete the critical file/directory '%s' is forbidden.", arg)
-					logging.LogAlert(alertMsg)
-					ui.NewLine() // Ensure error box appears on a new line
-					gui.ErrorBox(alertMsg)
-					return // Prevent execution
-				}
-			}
-		}
-
-		// Check if command requires admin privileges
-		if globals.RestrictedCommands[args[0]] {
-			if !admin.IsAdmin() {
-				logging.LogAlert(fmt.Sprintf("Permission denied: '%s' requires admin privileges", args[0]))
-				gui.ErrorBox(fmt.Sprintf("Permission denied: '%s' requires admin privileges", args[0]))
-				return
-			}
-		}
-
-		background := false
-		if args[len(args)-1] == "&" {
-			background = true
-			args = args[:len(args)-1]
-		}
-
-		if s.isCommandBlacklisted(args[0]) {
-			logging.LogAlert(fmt.Sprintf("Blacklisted command: %s", args[0]))
-			gui.ErrorBox(fmt.Sprintf("Command is blacklisted: %s", args[0]))
-			return
-		}
-
-		// Clear the current line before executing the command
-		fmt.Print("\r\033[K")
-
-		switch args[0] {
-		case "--version":
-			update.DisplayVersion(s.versionFile)
-		case "--update":
-			update.UpdateSecShell(admin.IsAdmin(), s.versionFile)
-		case "services":
-			s.manageServices(args)
-		case "jobs":
-			if len(args) > 1 {
-				if args[1] == "-i" || args[1] == "--interactive" {
-					jobs.InteractiveJobManager(s.jobs)
-				}
-			} else {
-				s.manageJobs(args)
-			}
-		case "help":
-			if len(args) > 1 {
-				if args[1] == "-i" || args[1] == "--interactive" {
-					help.InteractiveHelpApp()
-				} else {
-					help.DisplayHelp(args[1])
-				}
-			} else {
-				help.DisplayHelp()
-			}
-		case "cd":
-			core.ChangeDirectory(args)
-		case "time":
-			s.getTime()
-		case "date":
-			s.getDate()
-		case "features": // Added features command case
-			help.DisplayFeatures()
-		case "allowed":
-			if len(args) > 1 {
-				switch args[1] {
-				case "dirs":
-					gui.TitleBox("Allowed Directories")
-					commands.PrintAllowedDirs()
-				case "commands":
-					gui.TitleBox("Allowed Commands")
-					commands.PrintAllowedCommands()
-				case "bins":
-					gui.TitleBox("Allowed Binaries")
-					commands.PrintProgramCommands()
-				case "builtins":
-					gui.TitleBox("Built-in Commands")
-					commands.PrintBuiltInCommands()
-				case "all":
-					gui.TitleBox("All Allowed")
-					commands.PrintAllCommands()
-				}
-			} else {
-				logging.LogAlert("Usage: allowed <dirs|commands|bins|builtins|all>")
-				gui.ErrorBox("Usage: allowed <dirs|commands|bins|builtins|all>")
-			}
-		case "history":
-			if len(args) == 1 {
-				history.DisplayHistory(s.history) // Display command history
-			} else {
-				switch args[1] {
-				case "-s":
-					if len(args) < 3 {
-						logging.LogAlert("Usage: history -s <query>")
-						gui.ErrorBox("Usage: history -s <query>")
-						return
-					}
-					history.SearchHistory(s.history, strings.Join(args[2:], " ")) // Search history for the given query
-				case "-i":
-					history.InteractiveHistorySearch(s.history, s.processCommand) // Run interactive history search
-				case "clear":
-					s.history = []string{}
-					core.ClearHistory(s.historyFile)
-				default:
-					logging.LogAlert("Invalid history option. Use -s for search or -i for interactive mode.")
-					gui.ErrorBox("Invalid history option. Use -s for search or -i for interactive mode.")
-				}
-			}
-		case "export":
-			env.ExportVariable(args)
-		case "env":
-			env.ListEnvVariables()
-		case "unset":
-			env.UnsetEnvVariable(args)
-		case "logs":
-			if len(args) < 2 {
-				logging.LogAlert("Usage: logs list") // Updated usage message
-				gui.ErrorBox("Usage: logs list")     // Updated usage message
-				return
-			} else {
-				switch args[1] {
-				case "list":
-					err := logging.PrintLog()
-					if err != nil {
-						logging.LogError(err)
-						gui.ErrorBox("Failed to read log file")
-					}
-				default: // Added default case for invalid options
-					logging.LogAlert("Invalid logs option. Use 'list'.")
-					gui.ErrorBox("Invalid logs option. Use 'list'.")
-				}
-			}
-		case "blacklist":
-			core.ListBlacklistCommands(s.blacklist)
-		case "whitelist":
-			core.ListWhitelistCommands()
-		case "edit-blacklist", "edit-whitelist", "reload-whitelist", "reload-blacklist", "exit":
-			// Require admin privileges for these commands
-			if !admin.IsAdmin() {
-				logging.LogAlert("Permission denied: Admin privileges required.")
-				gui.ErrorBox("Permission denied: Admin privileges required.")
-				return
-			}
-
-			switch args[0] {
-			case "edit-blacklist":
-				core.EditBlacklist(s.blacklist)
-			case "edit-whitelist":
-				core.EditWhitelist(s.whitelist)
-			case "reload-whitelist":
-				s.reloadWhitelist()
-			case "reload-blacklist":
-				s.reloadBlacklist()
-			case "exit":
-				s.running = false
-			}
-		case "toggle-security":
-			s.toggleSecurity()
-		case "download":
-			download.DownloadFiles(args)
-		case "portscan":
-			if len(args) < 2 {
-				gui.ErrorBox("Usage: portscan [-p ports] [-udp] [-t timing] [-v] [-j|-html] [-o file] [-syn] [-os] [-e] <target>")
-				return
-			}
-
-			options := &pentest.ScanOptions{
-				Protocol:       "tcp",
-				Timing:         3,
-				ShowVersion:    false,
-				Format:         "text",
-				OutputFile:     "",
-				SynScan:        false,
-				DetectOS:       false,
-				EnhancedDetect: false,
-			}
-
-			target := ""
-			portRange := ""
-
-			// Parse arguments
-			for i := 1; i < len(args); i++ {
-				switch args[i] {
-				case "-p":
-					if i+1 < len(args) {
-						portRange = args[i+1]
-						i++
-					}
-				case "-udp":
-					options.Protocol = "udp"
-				case "-t":
-					if i+1 < len(args) {
-						if t, err := strconv.Atoi(args[i+1]); err == nil && t >= 1 && t <= 5 {
-							options.Timing = t
-							i++
-						}
-					}
-				case "-v":
-					options.ShowVersion = true
-				case "-j":
-					options.Format = "json"
-				case "-html":
-					options.Format = "html"
-				case "-syn":
-					options.SynScan = true
-				case "-os":
-					options.DetectOS = true
-				case "-e":
-					options.EnhancedDetect = true
-				case "-o":
-					if i+1 < len(args) {
-						options.OutputFile = args[i+1]
-						i++
-					}
-				default:
-					if !strings.HasPrefix(args[i], "-") {
-						target = args[i]
-					}
-				}
-			}
-
-			if target == "" {
-				gui.ErrorBox("No target specified")
-				return
-			}
-
-			pentest.RunPortScan(target, portRange, options)
-
-		case "hostscan":
-			if len(args) < 2 {
-				gui.ErrorBox("Usage: hostscan <network-range>")
-				return
-			}
-			pentest.RunHostDiscovery(args[1])
-
-		case "webscan":
-			if len(args) < 2 {
-				help.DisplayHelp("webscan")
-				return
-			}
-
-			options := &pentest.WebScanOptions{
-				Timeout:       10,
-				Threads:       10,
-				CustomHeaders: make(map[string]string),
-				SkipSSL:       false,
-				MaxDepth:      5,
-				TestMethods:   []string{"GET", "POST", "HEAD"},
-				SafetyChecks:  true,
-			}
-
-			target := ""
-			for i := 1; i < len(args); i++ {
-				switch args[i] {
-				case "-t", "--timeout":
-					if i+1 < len(args) {
-						if t, err := strconv.Atoi(args[i+1]); err == nil {
-							options.Timeout = t
-						}
-						i++
-					}
-				case "-H", "--header":
-					if i+1 < len(args) {
-						parts := strings.SplitN(args[i+1], ":", 2)
-						if len(parts) == 2 {
-							options.CustomHeaders[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
-						}
-						i++
-					}
-				case "-k", "--insecure":
-					options.SkipSSL = true
-				case "-A", "--user-agent":
-					if i+1 < len(args) {
-						options.UserAgent = args[i+1]
-						i++
-					}
-				case "--threads":
-					if i+1 < len(args) {
-						if t, err := strconv.Atoi(args[i+1]); err == nil {
-							options.Threads = t
-						}
-						i++
-					}
-				case "-w", "--wordlist":
-					if i+1 < len(args) {
-						options.WordlistPath = args[i+1]
-						i++
-					}
-				case "-m", "--methods":
-					if i+1 < len(args) {
-						options.TestMethods = strings.Split(args[i+1], ",")
-						i++
-					}
-				case "-v", "--verbose":
-					options.VerboseMode = true
-				case "--follow-redirects":
-					options.FollowRedirect = true
-				case "--cookie":
-					if i+1 < len(args) {
-						options.Cookies = args[i+1]
-						i++
-					}
-				case "--auth":
-					if i+1 < len(args) {
-						options.Authentication = args[i+1]
-						i++
-					}
-				case "-f", "--format":
-					if i+1 < len(args) {
-						options.OutputFormat = args[i+1]
-						i++
-					}
-				case "-o", "--output":
-					if i+1 < len(args) {
-						options.OutputFile = args[i+1]
-						i++
-					}
-				default:
-					if !strings.HasPrefix(args[i], "-") {
-						target = args[i]
-					}
-				}
-			}
-
-			if target == "" {
-				gui.ErrorBox("No target specified")
-				return
-			}
-
-			pentest.WebScan(target, options)
-
-		case "payload":
-			if len(args) < 3 {
-				gui.ErrorBox("Usage: payload <ip-address> <port>")
-				return
-			}
-			pentest.GenerateReverseShellPayload(args[1], args[2])
-
-		case "session":
-			if len(args) < 2 {
-				pentest.ListSessions()
-				return
-			}
-
-			switch args[1] {
-			case "-l":
-				pentest.ListSessions()
-			case "-i":
-				if len(args) < 3 {
-					gui.ErrorBox("Usage: session -i <id>")
-					return
-				}
-				id, err := strconv.Atoi(args[2])
-				if err != nil {
-					logging.LogError(err)
-					gui.ErrorBox("Invalid session ID")
-					return
-				}
-				pentest.InteractWithSession(id)
-			case "-c":
-				if len(args) < 3 {
-					gui.ErrorBox("Usage: session -c <port>")
-					return
-				}
-				port := args[2]
-				id := pentest.ListenForConnections(port)
-				if id != -1 {
-					gui.AlertBox(fmt.Sprintf("Created session %d", id))
-				}
-			case "-k":
-				if len(args) < 3 {
-					gui.ErrorBox("Usage: session -k <id>")
-					return
-				}
-				id, err := strconv.Atoi(args[2])
-				if err != nil {
-					logging.LogError(err)
-					gui.ErrorBox("Invalid session ID")
-					return
-				}
-				pentest.CloseSession(id)
-			default:
-				gui.ErrorBox("Unknown session command. Use -l, -i, -c, or -k")
-			}
-
-		case "base64":
-			err := tools.ExecuteEncodingCommand(args, tools.Base64Encoding)
-			if err != nil {
-				gui.ErrorBox(fmt.Sprintf("Base64 operation failed: %v", err))
-			}
-			return
-
-		case "hex":
-			err := tools.ExecuteEncodingCommand(args, tools.HexEncoding)
-			if err != nil {
-				gui.ErrorBox(fmt.Sprintf("Hex operation failed: %v", err))
-			}
-			return
-
-		case "urlencode", "url":
-			err := tools.ExecuteEncodingCommand(args, tools.URLEncoding)
-			if err != nil {
-				gui.ErrorBox(fmt.Sprintf("URL encoding operation failed: %v", err))
-			}
-			return
-
-		case "binary":
-			err := tools.ExecuteEncodingCommand(args, tools.BinaryEncoding)
-			if err != nil {
-				gui.ErrorBox(fmt.Sprintf("Binary operation failed: %v", err))
-			}
-			return
-
-		case "hash":
-			result, err := tools.HashCommand(args[1:])
-			if err != nil {
-				gui.ErrorBox(fmt.Sprintf("Hash operation failed: %v", err))
-				return
-			}
-			fmt.Println(result)
-			return
-
-		case "extract-strings":
-			// Extract strings from binary files
-			if len(args) < 2 {
-				gui.ErrorBox("Usage: extract-strings <file> [-n min-len]")
-				return
-			}
-			// Remove "extract-strings" from the arguments and pass the rest to StringExtractCmd
-			err := tools.RunStringExtract(args[1:])
-			if err != nil {
-				gui.ErrorBox(fmt.Sprintf("String extraction failed: %v", err))
-			}
-			return
-
-		case "more":
-			// Handle the more command
-			if len(args) < 2 {
-				// If no argument is provided, show usage
-				gui.ErrorBox("Usage: more <file> or command | more")
-				return
-			}
-
-			// Remove "more" from the args and pass the rest to RunMore
-			err := core.RunMore(args[1:])
-			if err != nil {
-				logging.LogError(err)
-				gui.ErrorBox(fmt.Sprintf("Error: %v", err))
-			}
-			return
-
-		case "edit":
-			// Open the file in the default editor
-			editor.EditCommand(args[1:])
-			return
-
-		case "prompt":
-			if len(args) > 1 {
-				if args[1] == "-r" || args[1] == "--reset" {
-					// Reset the prompt to default
-					ui.ResetPrompt()
-					return
-				}
-			}
-			ui.DisplayPromptOptions()
-
-		case "edit-prompt":
-			// Open the prompt file in the default editor
-			editor.EditCommand([]string{globals.PromptConfigFile})
-		case "reload-prompt":
-			version := update.GetCurrentVersion(s.versionFile)
-			latestVersion := update.GetLatestVersion()
-			needsUpdate := IsUpdateNeeded(version, latestVersion)
-			// Reload the prompt
-			ui.ReloadPrompt(version, needsUpdate)
-		case "colors":
-			colors.DisplayColors()
-
-		case "testwindow": // Add this case
-			gui.TestWindowApp() // Call the test function from the gui package
-
-		case "test":
-			tests.TestSegmentsApp()
-		case "changelog":
-			// Display changelog
-			update.DisplayChangelog()
-		case "files":
-			filemanager.FileManagerApp()
-		default:
-			// Handle quoted arguments
-			args = s.parseQuotedArgs(args)
-			s.executeSystemCommand(args, background)
-		}
-	}
+	// Handle command with our command mapping system
+	cmdmap.ExecuteCommand(input, s.jobs)
 }
 
 // parseQuotedArgs handles quoted arguments in commands
@@ -1453,9 +936,9 @@ func (s *SecShell) isCommandAllowed(cmd string) bool {
 
 // isCommandBlacklisted checks if a command is blacklisted
 func (s *SecShell) isCommandBlacklisted(cmd string) bool {
-	// Bypass security checks for built-in commands
+	// If security is disabled and user is admin, bypass the blacklist
 	if admin.IsAdmin() && !securityEnabled {
-		return false // Admins bypass blacklist
+		return false // Admins bypass blacklist when security is disabled
 	}
 
 	for _, blacklistedCmd := range s.blacklistedCommands {
@@ -1497,12 +980,17 @@ func (s *SecShell) toggleSecurity() {
 
 	// Toggle security state
 	securityEnabled = !securityEnabled
+	// Update the security flag in the cmdmap package
+	cmdmap.SetSecurityEnabled(securityEnabled)
+
 	if securityEnabled {
 		logging.LogAlert("Security enforcement ENABLED.")
 		gui.AlertBox("Security enforcement ENABLED.")
 	} else {
-		logging.LogAlert("Security enforcement DISABLED. All commands are now allowed.")
-		gui.AlertBox("Security enforcement DISABLED. All commands are now allowed.")
+		logging.LogAlert("Security enforcement DISABLED. All commands are now allowed for admin users.")
+		gui.AlertBox("Security enforcement DISABLED. Admin user can now execute ANY command including blacklisted ones.")
+		// Print the state of the security flag in cmdmap for debugging
+		fmt.Printf("Security state in cmdmap: %v\n", cmdmap.GetSecurityEnabledFlag())
 	}
 }
 
@@ -1582,6 +1070,166 @@ func main() {
 		return
 	}
 
+	// Initialize command mapping system
+	cmdmap.InitCommandMap()
+
+	// Initialize security state in cmdmap package
+	cmdmap.SetSecurityEnabled(securityEnabled)
+
+	// Register command handlers
+	cmdmap.RegisterBuiltInCommandHandlers()
+
+	// Create shell instance
 	shell := NewSecShell(globals.BlacklistPath, globals.WhitelistPath)
+
+	// Register shell-specific handlers
+	registerShellHandlers(shell)
+
+	// Run the shell
 	shell.run()
+}
+
+// registerShellHandlers registers handlers for commands that need direct access to the shell state
+func registerShellHandlers(shell *SecShell) {
+	// Register exit handler
+	exitHandler := func(args []string) (int, error) {
+		// Set the running flag to false to exit the shell
+		shell.running = false
+		return 0, nil
+	}
+
+	// Register reload-blacklist handler
+	reloadBlacklistHandler := func(args []string) (int, error) {
+		if !admin.IsAdmin() {
+			logging.LogAlert("Permission denied: Admin privileges required.")
+			gui.ErrorBox("Permission denied: Admin privileges required.")
+			return 1, fmt.Errorf("permission denied")
+		}
+		shell.reloadBlacklist()
+		return 0, nil
+	}
+
+	// Register reload-whitelist handler
+	reloadWhitelistHandler := func(args []string) (int, error) {
+		if !admin.IsAdmin() {
+			logging.LogAlert("Permission denied: Admin privileges required.")
+			gui.ErrorBox("Permission denied: Admin privileges required.")
+			return 1, fmt.Errorf("permission denied")
+		}
+		shell.reloadWhitelist()
+		return 0, nil
+	}
+
+	// Register toggle-security handler
+	toggleSecurityHandler := func(args []string) (int, error) {
+		shell.toggleSecurity()
+		return 0, nil
+	}
+
+	// Register jobs handler
+	jobsHandler := func(args []string) (int, error) {
+		if len(args) > 1 {
+			if args[1] == "-i" || args[1] == "--interactive" {
+				jobs.InteractiveJobManager(shell.jobs)
+			}
+		} else {
+			shell.manageJobs(args)
+		}
+		return 0, nil
+	}
+
+	// Register history handler
+	historyHandler := func(args []string) (int, error) {
+		if len(args) == 1 {
+			history.DisplayHistory(shell.history) // Display command history
+		} else {
+			switch args[1] {
+			case "-s":
+				if len(args) < 3 {
+					logging.LogAlert("Usage: history -s <query>")
+					gui.ErrorBox("Usage: history -s <query>")
+					return 1, fmt.Errorf("invalid usage")
+				}
+				history.SearchHistory(shell.history, strings.Join(args[2:], " ")) // Search history for the given query
+			case "-i":
+				history.InteractiveHistorySearch(shell.history, shell.processCommand) // Run interactive history search
+			case "clear":
+				shell.history = []string{}
+				core.ClearHistory(shell.historyFile)
+			default:
+				logging.LogAlert("Invalid history option. Use -s for search or -i for interactive mode.")
+				gui.ErrorBox("Invalid history option. Use -s for search or -i for interactive mode.")
+				return 1, fmt.Errorf("invalid option")
+			}
+		}
+		return 0, nil
+	}
+
+	// Register edit-prompt handler
+	editPromptHandler := func(args []string) (int, error) {
+		editor.EditCommand([]string{globals.PromptConfigFile})
+		return 0, nil
+	}
+
+	// Register reload-prompt handler
+	reloadPromptHandler := func(args []string) (int, error) {
+		version := update.GetCurrentVersion(shell.versionFile)
+		latestVersion := update.GetLatestVersion()
+		needsUpdate := IsUpdateNeeded(version, latestVersion)
+		// Reload the prompt
+		ui.ReloadPrompt(version, needsUpdate)
+		return 0, nil
+	}
+
+	// Update command handlers in the command map
+	cmdmap.RegisterCommand(cmdmap.Command{
+		Name:     "exit",
+		Handler:  exitHandler,
+		Category: cmdmap.CategorySystem,
+	})
+
+	cmdmap.RegisterCommand(cmdmap.Command{
+		Name:     "reload-blacklist",
+		Handler:  reloadBlacklistHandler,
+		Category: cmdmap.CategorySecurity,
+		Admin:    true,
+	})
+
+	cmdmap.RegisterCommand(cmdmap.Command{
+		Name:     "reload-whitelist",
+		Handler:  reloadWhitelistHandler,
+		Category: cmdmap.CategorySecurity,
+		Admin:    true,
+	})
+
+	cmdmap.RegisterCommand(cmdmap.Command{
+		Name:     "toggle-security",
+		Handler:  toggleSecurityHandler,
+		Category: cmdmap.CategorySecurity,
+		Admin:    true,
+	})
+
+	cmdmap.RegisterCommand(cmdmap.Command{
+		Name:     "jobs",
+		Handler:  jobsHandler,
+		Category: cmdmap.CategoryProcess,
+	})
+
+	cmdmap.RegisterCommand(cmdmap.Command{
+		Name:     "history",
+		Handler:  historyHandler,
+		Category: cmdmap.CategorySystem,
+	})
+
+	cmdmap.RegisterCommand(cmdmap.Command{
+		Name:     "edit-prompt",
+		Handler:  editPromptHandler,
+		Category: cmdmap.CategorySystem,
+	})
+
+	cmdmap.RegisterCommand(cmdmap.Command{
+		Name:     "reload-prompt",
+		Handler:  reloadPromptHandler,
+		Category: cmdmap.CategorySystem,
+	})
 }
