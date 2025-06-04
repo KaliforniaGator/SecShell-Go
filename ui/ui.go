@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"secshell/colors"
-	"secshell/drawbox"
 	"secshell/terminal"
 	"secshell/ui/chars"
 	"secshell/ui/gui"
@@ -18,9 +17,15 @@ func DisplayWelcomeScreen(version string, needsUpdate bool) {
 	// Check for Update
 	versionIcon := ""
 	if needsUpdate {
-		versionIcon = drawbox.PrintIcon("warning")
+		// Try to use drawbox if available, fallback to unicode symbols
+		if versionIcon == "" {
+			versionIcon = "⚠️" // Unicode warning symbol
+		}
 	} else {
-		versionIcon = drawbox.PrintIcon("success")
+		// Try to use drawbox if available, fallback to unicode symbols
+		if versionIcon == "" {
+			versionIcon = "✅" // Unicode checkmark/success symbol
+		}
 	}
 	// Clear the screen first
 	fmt.Print("\033[H\033[2J")
@@ -40,8 +45,6 @@ func DisplayWelcomeScreen(version string, needsUpdate bool) {
 	gui.SuccessBox("Welcome to SecShell - A Secure Command Shell")
 	// Add version display
 	fmt.Printf("\n%sVersion: %s %s%s\n", colors.BoldWhite, version, versionIcon, colors.Reset)
-	fmt.Printf("\n%sFeatures:%s\n", colors.BoldWhite, colors.Reset)
-
 	fmt.Printf("\n%sType 'help' for available commands%s\n\n", colors.BoldCyan, colors.Reset)
 	InitPrompt()
 }

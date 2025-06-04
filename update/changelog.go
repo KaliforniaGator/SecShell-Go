@@ -211,6 +211,9 @@ var changelogData = []ChangelogItem{
 			},
 			"🐛 Bug Fixes": {
 				"Fixed visual scrollback buffer issues in interactive history and More utility.",
+				"Fixed help command requiring scrollback buffer.",
+				"Fixed drawbox installation issues.",
+				"Fixed install.sh not installing the latest version of SecShell.",
 			},
 		},
 	},
