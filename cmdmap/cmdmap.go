@@ -1,6 +1,7 @@
 package cmdmap
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -339,27 +340,64 @@ func CompleteCommand(line string, pos int) (string, int) {
 		currentDir, err := os.Getwd()
 		if err == nil {
 			matches, _ := filepath.Glob(filepath.Join(currentDir, scriptPrefix+"*"))
-			var execMatches []string
+			var scriptMatches []string
 
-			// Filter for executable files
+			// Script extensions that ExecuteScript can handle
+			scriptExtensions := map[string]bool{
+				".sh":   true,
+				".bash": true,
+				".zsh":  true,
+				".py":   true,
+				".rb":   true,
+				".pl":   true,
+				".js":   true,
+				".php":  true,
+				".lua":  true,
+				".r":    true,
+				".R":    true,
+			}
+
+			// Filter for script files and executable files
 			for _, match := range matches {
 				info, err := os.Stat(match)
-				if err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
-					// Keep the "./" prefix in the matches
-					execMatches = append(execMatches, "./"+filepath.Base(match))
+				if err == nil && !info.IsDir() {
+					filename := filepath.Base(match)
+					ext := filepath.Ext(filename)
+
+					// Include if it's executable OR has a supported script extension OR has shebang
+					isExecutable := info.Mode()&0111 != 0
+					hasScriptExt := scriptExtensions[ext]
+					hasShebang := false
+
+					// Check for shebang in non-executable files
+					if !isExecutable {
+						if file, err := os.Open(match); err == nil {
+							scanner := bufio.NewScanner(file)
+							if scanner.Scan() {
+								firstLine := scanner.Text()
+								hasShebang = strings.HasPrefix(firstLine, "#!")
+							}
+							file.Close()
+						}
+					}
+
+					if isExecutable || hasScriptExt || hasShebang {
+						// Keep the "./" prefix in the matches
+						scriptMatches = append(scriptMatches, "./"+filename)
+					}
 				}
 			}
 
-			if len(execMatches) > 0 {
-				words[len(words)-1] = execMatches[0]
+			if len(scriptMatches) > 0 {
+				words[len(words)-1] = scriptMatches[0]
 				newLine := strings.Join(words, " ")
 
 				ui.ClearLineAndPrintBottom()
 				fmt.Print(newLine)
 
-				if len(execMatches) > 1 {
+				if len(scriptMatches) > 1 {
 					fmt.Println()
-					for _, match := range execMatches {
+					for _, match := range scriptMatches {
 						fmt.Print(match + "  ")
 					}
 					fmt.Println()
