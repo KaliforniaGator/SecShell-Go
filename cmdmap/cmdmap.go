@@ -316,7 +316,6 @@ func CompleteCommand(line string, pos int) (string, int) {
 
 	lastWord := words[len(words)-1]
 	prefix := lastWord
-
 	// Special handling for help command completion
 	if len(words) == 2 && words[0] == "help" {
 		matches := getHelpCommandMatches(prefix)
@@ -328,9 +327,26 @@ func CompleteCommand(line string, pos int) (string, int) {
 		words[len(words)-1] = matches[0]
 		newLine := strings.Join(words, " ")
 
-		// Use the proper function to clear line and print bottom
+		// Clear line and print bottom first
 		ui.ClearLineAndPrintBottom()
 		fmt.Print(newLine)
+
+		// If there are multiple matches, show them below while keeping cursor on prompt
+		if len(matches) > 1 {
+			// Save cursor position
+			fmt.Print("\033[s")
+			// Move to next line and print matches with spacing
+			fmt.Println()
+			fmt.Println()
+			ui.ClearLine()
+			for _, match := range matches {
+				fmt.Print(match + "  ")
+			}
+			fmt.Println()
+			// Restore cursor position
+			fmt.Print("\033[u")
+		}
+
 		return newLine, len(newLine)
 	}
 
@@ -392,18 +408,26 @@ func CompleteCommand(line string, pos int) (string, int) {
 				words[len(words)-1] = scriptMatches[0]
 				newLine := strings.Join(words, " ")
 
+				// Clear line and print bottom first
 				ui.ClearLineAndPrintBottom()
 				fmt.Print(newLine)
 
+				// Show matches below while keeping cursor on prompt
 				if len(scriptMatches) > 1 {
+					// Save cursor position
+					fmt.Print("\033[s")
+					// Move to next line and print matches with spacing
 					fmt.Println()
+					fmt.Println()
+					ui.ClearLine()
 					for _, match := range scriptMatches {
 						fmt.Print(match + "  ")
 					}
 					fmt.Println()
-					ui.ClearLineAndPrintBottom()
-					fmt.Print(newLine)
+					// Restore cursor position
+					fmt.Print("\033[u")
 				}
+
 				return newLine, len(newLine)
 			}
 		}
@@ -416,38 +440,58 @@ func CompleteCommand(line string, pos int) (string, int) {
 		matches := getCommandMatches(prefix)
 		if len(matches) == 0 {
 			return line, pos
-		}
-
-		// Replace the last word with the first match
+		} // Replace the last word with the first match
 		words[len(words)-1] = matches[0]
 		newLine := strings.Join(words, " ")
 
+		// Clear line and print bottom first
 		ui.ClearLineAndPrintBottom()
 		fmt.Print(newLine)
+
+		// Show matches below while keeping cursor on prompt
+		if len(matches) > 1 {
+			// Save cursor position
+			fmt.Print("\033[s")
+			// Move to next line and print matches with spacing
+			fmt.Println()
+			fmt.Println()
+			ui.ClearLine()
+			for _, match := range matches {
+				fmt.Print(match + "  ")
+			}
+			fmt.Println()
+			// Restore cursor position
+			fmt.Print("\033[u")
+		}
+
 		return newLine, len(newLine)
 	} else {
 		// Path completion
 		matches, _ := filepath.Glob(prefix + "*")
 		if len(matches) == 0 {
 			return line, pos
-		}
-
-		// Replace the last word with the first match
+		} // Replace the last word with the first match
 		words[len(words)-1] = matches[0]
 		newLine := strings.Join(words, " ")
 
+		// Clear line and print bottom first
 		ui.ClearLineAndPrintBottom()
 		fmt.Print(newLine)
 
-		// If there are multiple matches, show them below
+		// If there are multiple matches, show them below while keeping cursor on prompt
 		if len(matches) > 1 {
+			// Save cursor position
+			fmt.Print("\033[s")
+			// Move to next line and print matches with spacing
 			fmt.Println()
+			fmt.Println()
+			ui.ClearLine()
 			for _, match := range matches {
 				fmt.Print(match + "  ")
 			}
 			fmt.Println()
-			ui.ClearLineAndPrintBottom()
-			fmt.Print(newLine)
+			// Restore cursor position
+			fmt.Print("\033[u")
 		}
 
 		return newLine, len(newLine)
