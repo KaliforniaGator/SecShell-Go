@@ -33,11 +33,6 @@ func ExecuteScript(command string) error {
 		return fmt.Errorf("%s is a directory, not a script file", scriptPath)
 	}
 
-	// Check for executable permission
-	if info.Mode().Perm()&0111 == 0 {
-		return fmt.Errorf("script is not executable, use 'chmod +x %s' first", scriptPath)
-	}
-
 	// Open file to check for shebang
 	file, err := os.Open(scriptPath)
 	if err != nil {
@@ -131,6 +126,11 @@ func ExecuteScript(command string) error {
 	var cmd *exec.Cmd
 
 	if interpreter == "" {
+		// For files without a detected interpreter, check executable permissions
+		if info.Mode().Perm()&0111 == 0 {
+			return fmt.Errorf("script is not executable and no interpreter detected, use 'chmod +x %s' first", scriptPath)
+		}
+
 		// Try to execute the file directly (for compiled executables or scripts with proper shebang)
 		if len(args) > 0 {
 			cmd = exec.Command(scriptPath, args...)
@@ -138,7 +138,7 @@ func ExecuteScript(command string) error {
 			cmd = exec.Command(scriptPath)
 		}
 	} else {
-		// Use the detected interpreter
+		// Use the detected interpreter - no executable permission needed
 		cmdArgs := []string{scriptPath}
 
 		// Add interpreter arguments from shebang if any
