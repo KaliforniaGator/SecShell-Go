@@ -382,14 +382,12 @@ func (s *SecShell) processCommand(input string) {
 			}
 		}
 
-		output, err := tools.ExecuteScript(input)
+		err := tools.ExecuteScript(input)
 		if err != nil {
 			logging.LogError(err)
 			gui.ErrorBox(fmt.Sprintf("Script execution failed: %s", err))
 			return
 		}
-		// Script executed successfully
-		fmt.Print(output)
 		return
 	}
 
