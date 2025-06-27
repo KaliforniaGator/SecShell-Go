@@ -217,6 +217,20 @@ var changelogData = []ChangelogItem{
 			},
 		},
 	},
+	{
+		Version: "1.3.5",
+		Date:    "2025-06-27",
+		Sections: map[string][]string{
+			"🚀 New Features": {
+				"Script commands now support auto completion and arguments.",
+			},
+			"🐛 Bug Fixes": {
+				"Fixed issue with script commands not executing correctly.",
+				"Fixed layout of auto-completion matches in SecShell.",
+				"Fixed auto-detection of script interpreter.",
+			},
+		},
+	},
 }
 
 // sectionOrder defines the display order for changelog sections.

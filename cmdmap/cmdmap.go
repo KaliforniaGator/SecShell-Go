@@ -1,6 +1,7 @@
 package cmdmap
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -315,7 +316,6 @@ func CompleteCommand(line string, pos int) (string, int) {
 
 	lastWord := words[len(words)-1]
 	prefix := lastWord
-
 	// Special handling for help command completion
 	if len(words) == 2 && words[0] == "help" {
 		matches := getHelpCommandMatches(prefix)
@@ -327,9 +327,26 @@ func CompleteCommand(line string, pos int) (string, int) {
 		words[len(words)-1] = matches[0]
 		newLine := strings.Join(words, " ")
 
-		// Use the proper function to clear line and print bottom
+		// Clear line and print bottom first
 		ui.ClearLineAndPrintBottom()
 		fmt.Print(newLine)
+
+		// If there are multiple matches, show them below while keeping cursor on prompt
+		if len(matches) > 1 {
+			// Save cursor position
+			fmt.Print("\033[s")
+			// Move to next line and print matches with spacing
+			fmt.Println()
+			fmt.Println()
+			ui.ClearLine()
+			for _, match := range matches {
+				fmt.Print(match + "  ")
+			}
+			fmt.Println()
+			// Restore cursor position
+			fmt.Print("\033[u")
+		}
+
 		return newLine, len(newLine)
 	}
 
@@ -339,33 +356,78 @@ func CompleteCommand(line string, pos int) (string, int) {
 		currentDir, err := os.Getwd()
 		if err == nil {
 			matches, _ := filepath.Glob(filepath.Join(currentDir, scriptPrefix+"*"))
-			var execMatches []string
+			var scriptMatches []string
 
-			// Filter for executable files
+			// Script extensions that ExecuteScript can handle
+			scriptExtensions := map[string]bool{
+				".sh":   true,
+				".bash": true,
+				".zsh":  true,
+				".py":   true,
+				".rb":   true,
+				".pl":   true,
+				".js":   true,
+				".php":  true,
+				".lua":  true,
+				".r":    true,
+				".R":    true,
+			}
+
+			// Filter for script files and executable files
 			for _, match := range matches {
 				info, err := os.Stat(match)
-				if err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
-					// Keep the "./" prefix in the matches
-					execMatches = append(execMatches, "./"+filepath.Base(match))
+				if err == nil && !info.IsDir() {
+					filename := filepath.Base(match)
+					ext := filepath.Ext(filename)
+
+					// Include if it's executable OR has a supported script extension OR has shebang
+					isExecutable := info.Mode()&0111 != 0
+					hasScriptExt := scriptExtensions[ext]
+					hasShebang := false
+
+					// Check for shebang in non-executable files
+					if !isExecutable {
+						if file, err := os.Open(match); err == nil {
+							scanner := bufio.NewScanner(file)
+							if scanner.Scan() {
+								firstLine := scanner.Text()
+								hasShebang = strings.HasPrefix(firstLine, "#!")
+							}
+							file.Close()
+						}
+					}
+
+					if isExecutable || hasScriptExt || hasShebang {
+						// Keep the "./" prefix in the matches
+						scriptMatches = append(scriptMatches, "./"+filename)
+					}
 				}
 			}
 
-			if len(execMatches) > 0 {
-				words[len(words)-1] = execMatches[0]
+			if len(scriptMatches) > 0 {
+				words[len(words)-1] = scriptMatches[0]
 				newLine := strings.Join(words, " ")
 
+				// Clear line and print bottom first
 				ui.ClearLineAndPrintBottom()
 				fmt.Print(newLine)
 
-				if len(execMatches) > 1 {
+				// Show matches below while keeping cursor on prompt
+				if len(scriptMatches) > 1 {
+					// Save cursor position
+					fmt.Print("\033[s")
+					// Move to next line and print matches with spacing
 					fmt.Println()
-					for _, match := range execMatches {
+					fmt.Println()
+					ui.ClearLine()
+					for _, match := range scriptMatches {
 						fmt.Print(match + "  ")
 					}
 					fmt.Println()
-					ui.ClearLineAndPrintBottom()
-					fmt.Print(newLine)
+					// Restore cursor position
+					fmt.Print("\033[u")
 				}
+
 				return newLine, len(newLine)
 			}
 		}
@@ -378,38 +440,58 @@ func CompleteCommand(line string, pos int) (string, int) {
 		matches := getCommandMatches(prefix)
 		if len(matches) == 0 {
 			return line, pos
-		}
-
-		// Replace the last word with the first match
+		} // Replace the last word with the first match
 		words[len(words)-1] = matches[0]
 		newLine := strings.Join(words, " ")
 
+		// Clear line and print bottom first
 		ui.ClearLineAndPrintBottom()
 		fmt.Print(newLine)
+
+		// Show matches below while keeping cursor on prompt
+		if len(matches) > 1 {
+			// Save cursor position
+			fmt.Print("\033[s")
+			// Move to next line and print matches with spacing
+			fmt.Println()
+			fmt.Println()
+			ui.ClearLine()
+			for _, match := range matches {
+				fmt.Print(match + "  ")
+			}
+			fmt.Println()
+			// Restore cursor position
+			fmt.Print("\033[u")
+		}
+
 		return newLine, len(newLine)
 	} else {
 		// Path completion
 		matches, _ := filepath.Glob(prefix + "*")
 		if len(matches) == 0 {
 			return line, pos
-		}
-
-		// Replace the last word with the first match
+		} // Replace the last word with the first match
 		words[len(words)-1] = matches[0]
 		newLine := strings.Join(words, " ")
 
+		// Clear line and print bottom first
 		ui.ClearLineAndPrintBottom()
 		fmt.Print(newLine)
 
-		// If there are multiple matches, show them below
+		// If there are multiple matches, show them below while keeping cursor on prompt
 		if len(matches) > 1 {
+			// Save cursor position
+			fmt.Print("\033[s")
+			// Move to next line and print matches with spacing
 			fmt.Println()
+			fmt.Println()
+			ui.ClearLine()
 			for _, match := range matches {
 				fmt.Print(match + "  ")
 			}
 			fmt.Println()
-			ui.ClearLineAndPrintBottom()
-			fmt.Print(newLine)
+			// Restore cursor position
+			fmt.Print("\033[u")
 		}
 
 		return newLine, len(newLine)
