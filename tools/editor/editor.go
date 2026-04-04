@@ -185,6 +185,8 @@ func (e *Editor) readKey(reader *bufio.Reader) (rune, error) {
 				return keyPageDown, nil
 			case "[3~":
 				return keyDelete, nil
+			case "[27~": // Backspace (modern terminals send this for standalone Backspace)
+				return keyBackspace, nil
 			case "[1;2C": // Shift+Right (common variant)
 				return keyShiftArrowRight, nil
 			case "[1;2D": // Shift+Left (common variant)
