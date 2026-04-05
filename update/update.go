@@ -1,24 +1,59 @@
 package update
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
 	"os"
 	"os/exec"
+	"runtime"
+	"strings"
+
 	"secshell/ui"
 	"secshell/ui/gui"
-	"strings"
 )
 
 const (
-	DefaultVersion = "1.2.5" // Default version if not specified
-	// Update script URL
-	UpdateScript = "https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/refs/heads/main/update.sh"
+	DefaultVersion      = "1.2.5"
+	GitHubRepo          = "KaliforniaGator/SecShell-Go"
+	GitHubReleasesURL   = "https://github.com/" + GitHubRepo + "/releases"
 	// Version URL
 	VersionURL = "https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/refs/heads/main/VERSION"
 )
+
+// getOSInfo returns the OS name and architecture for download URL construction
+func getOSInfo() (osName, arch string) {
+	switch runtime.GOOS {
+	case "linux":
+		osName = "Linux"
+	case "darwin":
+		osName = "Darwin"
+	default:
+		osName = strings.Title(runtime.GOOS)
+	}
+
+	switch runtime.GOARCH {
+	case "amd64":
+		arch = "x86_64"
+	case "arm64":
+		arch = "arm64"
+	default:
+		arch = runtime.GOARCH
+	}
+
+	return osName, arch
+}
+
+// getInstallPath returns the installation path for the current OS
+func getInstallPath() string {
+	if runtime.GOOS == "darwin" {
+		return "/usr/local/bin/secshell"
+	}
+	return "/usr/bin/secshell"
+}
 
 // checkForUpdates checks if there's a new version available
 func CheckForUpdates(versionFile string) {
@@ -89,6 +124,140 @@ func DisplayVersion(versionFile string) {
 	gui.TitleBox(fmt.Sprintf("SecShell Version: %s", version))
 }
 
+// getReleaseDownloadURL constructs the download URL for the current OS/arch and version
+func getReleaseDownloadURL(version string) string {
+	osName, arch := getOSInfo()
+	// Archive naming: SecShell-Go_{OS}_{Arch}.tar.gz
+	// OS is title-cased (Linux, Darwin), Arch is x86_64 for amd64, arm64 for arm64
+	fileName := fmt.Sprintf("SecShell-Go_%s_%s.tar.gz", osName, arch)
+	return fmt.Sprintf("https://github.com/%s/releases/download/v%s/%s", GitHubRepo, version, fileName)
+}
+
+// downloadAndExtract downloads the release archive and extracts the binary
+func downloadAndExtract(version string, tmpDir string) (string, error) {
+	downloadURL := getReleaseDownloadURL(version)
+	osName, arch := getOSInfo()
+
+	gui.AlertBox(fmt.Sprintf("Downloading SecShell-Go v%s for %s %s...", version, osName, arch))
+	ui.NewLine()
+
+	// Initialize HTTP client and request
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", downloadURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %s", err)
+	}
+
+	// Execute request
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to download: %s", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to download. Status: %s\nURL: %s", resp.Status, downloadURL)
+	}
+
+	// Get content length for progress bar
+	contentLength := resp.ContentLength
+	if contentLength <= 0 {
+		contentLength = 1000000 // Default size if unknown
+	}
+
+	// First, download to a temporary file
+	archivePath := tmpDir + "/secshell-release.tar.gz"
+	archiveFile, err := os.Create(archivePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to create archive file: %s", err)
+	}
+
+	// Create progress tracking reader
+	progressReader := &ProgressReader{
+		Reader: resp.Body,
+		Total:  contentLength,
+		UpdateFunc: func(bytesRead, total int64) {
+			percent := int(math.Min(float64(bytesRead)/float64(total)*100, 100))
+			// Run drawbox progress command
+			cmd := exec.Command("drawbox", "progress", fmt.Sprintf("%d", percent), "100", "50", "block_full", "block_light", "green")
+			cmd.Stdout = os.Stdout
+			cmd.Run()
+		},
+	}
+
+	// Save the archive
+	_, err = io.Copy(archiveFile, progressReader)
+	if err != nil {
+		return "", fmt.Errorf("failed to save archive: %s", err)
+	}
+
+	// Reset file pointer for reading
+	_, err = archiveFile.Seek(0, 0)
+	if err != nil {
+		return "", fmt.Errorf("failed to seek archive: %s", err)
+	}
+
+	ui.NewLine()
+	gui.AlertBox("Extracting binary...")
+
+	// Extract the archive
+	binPath, err := extractTarGz(archiveFile, tmpDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to extract archive: %s", err)
+	}
+
+	return binPath, nil
+}
+
+// extractTarGz extracts a tar.gz archive and returns the path to the extracted binary
+func extractTarGz(reader io.Reader, destDir string) (string, error) {
+	gzReader, err := gzip.NewReader(reader)
+	if err != nil {
+		return "", fmt.Errorf("failed to create gzip reader: %s", err)
+	}
+	defer gzReader.Close()
+
+	tarReader := tar.NewReader(gzReader)
+
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return "", fmt.Errorf("failed to read tar header: %s", err)
+		}
+
+		// We're looking for the main binary (secshell or SecShell-Go)
+		baseName := header.Name
+		// The binary name in the archive matches the project name from goreleaser
+		if baseName == "SecShell-Go" || baseName == "secshell" {
+			binPath := destDir + "/secshell"
+			outFile, err := os.Create(binPath)
+			if err != nil {
+				return "", fmt.Errorf("failed to create binary: %s", err)
+			}
+
+			_, err = io.Copy(outFile, tarReader)
+			outFile.Close()
+
+			if err != nil {
+				return "", fmt.Errorf("failed to write binary: %s", err)
+			}
+
+			// Make executable
+			err = os.Chmod(binPath, 0755)
+			if err != nil {
+				return "", fmt.Errorf("failed to chmod binary: %s", err)
+			}
+
+			return binPath, nil
+		}
+	}
+
+	return "", fmt.Errorf("binary not found in archive")
+}
+
 // Update the current version of the shell
 func UpdateSecShell(isAdmin bool, versionFile string) {
 	// Check if user is an admin
@@ -104,7 +273,7 @@ func UpdateSecShell(isAdmin bool, versionFile string) {
 		gui.AlertBox("Local version information not found. Proceeding with update...")
 	} else {
 		// Fetch the latest version from GitHub
-		resp, err := http.Get("https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/refs/heads/main/VERSION")
+		resp, err := http.Get(VersionURL)
 		if err != nil {
 			gui.ErrorBox(fmt.Sprintf("Failed to check version: %s", err))
 			return
@@ -125,85 +294,64 @@ func UpdateSecShell(isAdmin bool, versionFile string) {
 		}
 	}
 
-	// Create a temporary file for the update script
-	tmpFile, err := os.CreateTemp("", "secshell-update-*.sh")
+	// Get the latest version (re-fetch for the download)
+	resp, err := http.Get(VersionURL)
 	if err != nil {
-		gui.ErrorBox(fmt.Sprintf("Failed to create temporary file: %s", err))
+		gui.ErrorBox(fmt.Sprintf("Failed to check version: %s", err))
 		return
 	}
-	defer os.Remove(tmpFile.Name()) // Clean up temp file when done
+	body, err := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		gui.ErrorBox(fmt.Sprintf("Failed to read version data: %s", err))
+		return
+	}
+	latestVersion := strings.TrimSpace(string(body))
 
-	// Download the update script with progress
-	gui.AlertBox("Downloading update script...")
+	if latestVersion == "" {
+		gui.ErrorBox("Could not determine latest version.")
+		return
+	}
+
+	osName, arch := getOSInfo()
+	downloadURL := getReleaseDownloadURL(latestVersion)
+
+	// Confirm with user
+	gui.AlertBox(fmt.Sprintf("New version available: v%s (Current: %s)\nOS: %s %s\nWill download from:\n%s", latestVersion, GetCurrentVersion(versionFile), osName, arch, downloadURL))
 	ui.NewLine()
 
-	// Initialize HTTP client and request
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", UpdateScript, nil)
+	// Create a temporary directory for the download
+	tmpDir, err := os.MkdirTemp("", "secshell-update-*")
 	if err != nil {
-		gui.ErrorBox(fmt.Sprintf("Failed to create request: %s", err))
+		gui.ErrorBox(fmt.Sprintf("Failed to create temporary directory: %s", err))
 		return
 	}
+	defer os.RemoveAll(tmpDir) // Clean up temp dir when done
 
-	// Execute request
-	resp, err := client.Do(req)
+	// Download and extract the release
+	binPath, err := downloadAndExtract(latestVersion, tmpDir)
 	if err != nil {
-		gui.ErrorBox(fmt.Sprintf("Failed to download update script: %s", err))
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		gui.ErrorBox(fmt.Sprintf("Failed to download update script. Status: %s", resp.Status))
+		gui.ErrorBox(fmt.Sprintf("Failed to download release: %s", err))
 		return
 	}
 
-	// Get content length for progress bar
-	contentLength := resp.ContentLength
-	if contentLength <= 0 {
-		contentLength = 1000 // Default size if unknown
-	}
+	// Install the binary
+	installPath := getInstallPath()
+	gui.AlertBox(fmt.Sprintf("Installing to %s...", installPath))
 
-	// Create progress tracking reader
-	progressReader := &ProgressReader{
-		Reader: resp.Body,
-		Total:  contentLength,
-		UpdateFunc: func(bytesRead, total int64) {
-			percent := int(math.Min(float64(bytesRead)/float64(total)*100, 100))
-			// Run drawbox progress command
-			cmd := exec.Command("drawbox", "progress", fmt.Sprintf("%d", percent), "100", "50", "block_full", "block_light", "green")
-			cmd.Stdout = os.Stdout
-			cmd.Run()
-		},
-	}
-
-	// Save the update script to the temporary file
-	_, err = io.Copy(tmpFile, progressReader)
-	if err != nil {
-		gui.ErrorBox(fmt.Sprintf("Failed to save update script: %s", err))
-		return
-	}
-	tmpFile.Close()
-
-	// Make the script executable
-	if err := os.Chmod(tmpFile.Name(), 0755); err != nil {
-		gui.ErrorBox(fmt.Sprintf("Failed to make update script executable: %s", err))
-		return
-	}
-
-	ui.NewLine()
-	// Run the update script
-	gui.AlertBox("Running update script...")
-	cmd := exec.Command(tmpFile.Name())
+	// Use sudo to move the binary to the install path
+	cmd := exec.Command("sudo", "mv", binPath, installPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		gui.ErrorBox(fmt.Sprintf("Update failed: %s", err))
+		gui.ErrorBox(fmt.Sprintf("Failed to install binary: %s", err))
 		return
 	}
 
-	gui.AlertBox("Update completed successfully. Restart SecShell to use the new version.")
-	CheckForUpdates(versionFile)
+	// Update the version file
+	UpdateVersionFile(latestVersion, versionFile)
+
+	gui.AlertBox(fmt.Sprintf("SecShell-Go updated to v%s successfully!\nRestart SecShell to use the new version.", latestVersion))
 }
 
 // ProgressReader is a wrapper around an io.Reader that reports progress
