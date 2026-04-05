@@ -3,6 +3,8 @@ name: Release
 on:
   push:
     # This ensures the workflow only runs when you push a version tag
+    branches:
+      - main
     tags:
       - 'v*'
 
@@ -34,7 +36,7 @@ jobs:
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: release --clean
+          args: release --snapshot--clean
         env:
           # GitHub automatically provides this; no setup needed in Secrets
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
