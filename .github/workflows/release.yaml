@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    # This ensures the workflow only runs when you push a version tag
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # Allows GoReleaser to create the release and upload binaries
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Required by GoReleaser to generate a changelog
+
+      - name: Install PAM headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpam0g-dev
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true # Speeds up subsequent runs
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+        env:
+          # GitHub automatically provides this; no setup needed in Secrets
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,3 +1,4 @@
 secshell
 samples/
-.github/
+# Added by goreleaser init:
+dist/
