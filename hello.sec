@@ -1,0 +1,110 @@
+#!/usr/bin/secshell
+-- Welcome to SecEngine - SecShell's Lua Scripting Engine
+-- This script demonstrates the key capabilities of .sec scripts
+
+print("=========================================")
+print("  Welcome to SecShell SecEngine!")
+print("=========================================")
+print()
+
+-- 1. Basic print and Lua string operations
+print(">>> Section 1: Print & String Operations")
+local name = "SecShell"
+local version = "1.0"
+print("Engine: " .. name .. " v" .. version)
+print("Lua arithmetic: 2 + 2 = " .. tostring(2 + 2))
+print()
+
+-- 2. Execute shell commands with run()
+print(">>> Section 2: Shell Commands (run)")
+local whoami = run("whoami")
+print("Current user: " .. whoami)
+local hostname = run("hostname")
+print("Hostname: " .. hostname)
+print()
+
+-- 3. Working with environment variables
+print(">>> Section 3: Environment Variables")
+local path = env("PATH")
+print("PATH (first 50 chars): " .. string.sub(path, 1, 50) .. "...")
+print()
+
+-- 4. File operations
+print(">>> Section 4: File Operations")
+write("/tmp/secshell_demo.txt", "Hello from SecEngine!\nThis file was created by hello.sec\n")
+local ok, content = read("/tmp/secshell_demo.txt")
+if ok then
+    print("File read successfully:")
+    print(content)
+end
+print()
+
+-- 5. File pattern matching
+print(">>> Section 5: File Globbing")
+local success, files = glob("*.go")
+if success then
+    print("Go files in current directory:")
+    for i, f in ipairs(files) do
+        print("  - " .. f)
+    end
+end
+print()
+
+-- 6. Exec command with exit code
+print(">>> Section 6: Exec with Exit Code")
+local code, out, err = exec("ls -la /tmp/secshell_demo.txt")
+if code then
+    print("File exists!")
+    print(out)
+else
+    print("Error: " .. err)
+end
+print()
+
+-- 7. HTTP fetch
+print(">>> Section 7: HTTP Fetch")
+local success, body, status = fetch("https://httpbin.org/get", "GET")
+if success then
+    print("HTTP Status: " .. tostring(status))
+    print("Response (first 100 chars): " .. string.sub(body, 1, 100))
+else
+    print("Fetch failed: " .. tostring(body))
+end
+print()
+
+-- 8. Lua tables and loops
+print(">>> Section 8: Lua Tables & Loops")
+local targets = {"192.168.1.1", "10.0.0.1", "172.16.0.1"}
+print("Network scan targets:")
+for i, target in ipairs(targets) do
+    print("  [" .. i .. "] " .. target)
+end
+print()
+
+-- 9. Port mapping
+print(">>> Section 9: Port Mapping")
+portmap(22, "ssh")
+portmap(80, "http")
+portmap(443, "https")
+portmap(8080, "http-proxy")
+portmap(3306, "mysql")
+print("Ports mapped (see output above)")
+print()
+
+-- 10. Script info
+print(">>> Section 10: Script Info")
+print("Script name: " .. script_name)
+print("Arguments: " .. #args)
+if #args > 0 then
+    for i, arg in ipairs(args) do
+        print("  arg[" .. i .. "] = " .. arg)
+    end
+else
+    print("  (no arguments passed)")
+end
+print()
+
+print("=========================================")
+print("  SecEngine demo complete!")
+print("  Happy scripting with SecShell!")
+print("=========================================")

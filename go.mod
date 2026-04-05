@@ -6,6 +6,7 @@ require (
 	github.com/google/gopacket v1.1.19
 	github.com/msteinert/pam v1.2.0
 	github.com/shirou/gopsutil/v4 v4.25.4
+	github.com/yuin/gopher-lua v1.1.2
 	golang.org/x/term v0.30.0
 	golang.org/x/text v0.25.0
 )

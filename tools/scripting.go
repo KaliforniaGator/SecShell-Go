@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"secshell/sec-engine"
 	"secshell/ui"
 	"strings"
 )
@@ -31,6 +32,12 @@ func ExecuteScript(command string) error {
 
 	if info.IsDir() {
 		return fmt.Errorf("%s is a directory, not a script file", scriptPath)
+	}
+
+	// Check if this is a .sec script - route to SecEngine
+	if secengine.IsSecScript(scriptPath) {
+		ui.NewLine()
+		return secengine.ExecuteScriptFile(scriptPath, args)
 	}
 
 	// Open file to check for shebang
