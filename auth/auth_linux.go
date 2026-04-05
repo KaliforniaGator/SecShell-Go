@@ -1,5 +1,5 @@
-//go:build !darwin
-// +build !darwin
+//go:build linux && cgo
+// +build linux,cgo
 
 package auth
 

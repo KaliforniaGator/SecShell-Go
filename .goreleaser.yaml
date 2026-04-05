@@ -7,20 +7,19 @@ before:
 
 builds:
   - main: ./...
-    # Default to CGO disabled for easier cross-compilation
-    env:
-      - CGO_ENABLED=0
+    # CGO is controlled by the CGO_ENABLED environment variable
+    # - Local macOS builds: CGO_ENABLED=0 (cross-compilation)
+    # - GitHub Actions: CGO_ENABLED=1 (native Linux build with PAM support)
     goos:
       - linux
       - darwin
     goarch:
       - amd64
       - arm64
-    # Enable CGO specifically for Linux to support libpam
-    overrides:
+    # linux_arm64 excluded because PAM (libpam) doesn't support ARM64
+    ignore:
       - goos: linux
-        env:
-          - CGO_ENABLED=1
+        goarch: arm64
 
 archives:
   - formats: [tar.gz]
