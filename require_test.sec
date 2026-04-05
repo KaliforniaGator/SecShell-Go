@@ -1,0 +1,132 @@
+#!/usr/bin/secshell
+-- SecShell require() Test Script
+-- This script tests the require() function for loading .sec libraries
+
+print("=========================================")
+print("  SecShell require() Test Suite")
+print("=========================================")
+print()
+
+-- ============================================
+-- TEST 1: Basic require() with module return
+-- ============================================
+colorPrint(">>> Test 1: Basic require() with module return", "cyan")
+
+-- Load the utils library
+local utils = require("libs/utils.sec")
+
+-- Check if we got the module
+if utils then
+    colorPrint("  SUCCESS: require() returned the utils module", "green")
+    print("  utils type: " .. type(utils))
+else
+    colorPrint("  FAILED: require() returned nil", "red")
+end
+print()
+
+-- ============================================
+-- TEST 2: Call utility functions
+-- ============================================
+colorPrint(">>> Test 2: Call utility functions", "cyan")
+
+-- Test header function
+utils.header("Utils Library Test")
+
+-- Test separator
+utils.separator()
+print("Testing utility functions...")
+utils.separator()
+
+-- Test randomIP
+local ip = utils.randomIP()
+print("Random IP: " .. ip)
+
+-- Test progressBar
+for i = 0, 10 do
+    local bar = utils.progressBar(i, 10, 30)
+    io.write("\r  " .. bar)
+    io.flush()
+    sleep(0.1)
+end
+print()
+print()
+
+-- ============================================
+-- TEST 3: Test hashAll function
+-- ============================================
+colorPrint(">>> Test 3: Test hashAll function", "cyan")
+
+local hashes = utils.hashAll("test123")
+print("Hashes for 'test123':")
+print("  MD5:    " .. tostring(hashes.md5))
+print("  SHA1:   " .. tostring(hashes.sha1))
+print("  SHA256: " .. tostring(hashes.sha256))
+print()
+
+-- ============================================
+-- TEST 4: Test encoding roundtrip
+-- ============================================
+colorPrint(">>> Test 4: Test encoding roundtrip", "cyan")
+
+local testStr = "Hello SecShell!"
+local formats = {"base64", "hex"}
+
+for _, fmt in ipairs(formats) do
+    local ok, decoded = utils.testEncoding(testStr, fmt)
+    if ok and decoded == testStr then
+        colorPrint("  " .. fmt .. " roundtrip: SUCCESS", "green")
+    else
+        colorPrint("  " .. fmt .. " roundtrip: FAILED", "red")
+    end
+end
+print()
+
+-- ============================================
+-- TEST 5: Test port checking
+-- ============================================
+colorPrint(">>> Test 5: Test port checking (google.com:80)", "cyan")
+
+local ok, status, banner = utils.checkPort("google.com", 80)
+print("  checkPort result: ok=" .. tostring(ok) .. ", status=" .. tostring(status))
+if banner and #banner > 0 then
+    print("  Banner: " .. string.sub(banner, 1, 50))
+end
+print()
+
+-- ============================================
+-- TEST 6: require() with non-existent file
+-- ============================================
+colorPrint(">>> Test 6: require() error handling", "cyan")
+
+-- This should fail gracefully
+local ok, err = pcall(function()
+    local bad = require("nonexistent.sec")
+end)
+
+if not ok then
+    colorPrint("  SUCCESS: require() properly handles missing files", "green")
+    print("  Error: " .. tostring(err))
+else
+    colorPrint("  UNEXPECTED: require() did not error on missing file", "yellow")
+end
+print()
+
+-- ============================================
+-- TEST 7: Multiple requires (caching test)
+-- ============================================
+colorPrint(">>> Test 7: Multiple requires", "cyan")
+
+local utils2 = require("libs/utils.sec")
+if utils2 then
+    colorPrint("  SUCCESS: Second require() also worked", "green")
+    print("  utils == utils2: " .. tostring(utils == utils2))
+end
+print()
+
+-- ============================================
+-- FINAL SUMMARY
+-- ============================================
+print("=========================================")
+colorPrint("  require() tests completed!", "green")
+colorPrint("  Module loading is working!", "bold")
+print("=========================================")

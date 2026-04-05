@@ -70,6 +70,35 @@ var FunctionRegistry = map[string]lua.LGFunction{
 
 	// Script Organization
 	"require":   builtinRequire,   // require(script) - import/run another .sec script
+
+	// ===================== NEW FUNCTIONS =====================
+
+	// Error Handling
+	"attempt":   builtinAttempt,   // attempt(func, ...) - safe function execution (wraps pcall)
+	"pcall":     builtinPcall,     // pcall(func, ...) - protected call with error handling
+
+	// Network Reconnaissance
+	"tcpConnect":builtinTcpConnect,// tcpConnect(host, port, timeout) - TCP connection test with banner grab
+	"udpProbe":  builtinUdpProbe,  // udpProbe(host, port, timeout) - UDP port probe
+	"serviceDetect": builtinServiceDetect, // serviceDetect(host, port, timeout) - identify service on port
+	"osDetect":  builtinOsDetect,  // osDetect(host) - basic OS fingerprinting via TTL
+
+	// Payload Generation
+	"genReverseShell": builtinGenReverseShell, // genReverseShell(lhost, lport, type) - generate reverse shell
+	"genBindShell":  builtinGenBindShell,    // genBindShell(port, type) - generate bind shell payload
+	"encodePayload": builtinEncodePayload,   // encodePayload(data, encoder) - encode with various methods
+
+	// Exploitation Helpers
+	"httpRequest": builtinHttpRequest, // httpRequest(url, method, headers, body) - full HTTP request
+	"fuzz":        builtinFuzz,        // fuzz(template, payloads) - fuzzing helper
+	"bruteForce":  builtinBruteForce,  // bruteForce(target, service, wordlist) - basic brute force
+
+	// Post-Exploitation
+	"privCheck":   builtinPrivCheck,   // privCheck() - check current privilege level
+	"enumSystem":  builtinEnumSystem,  // enumSystem() - enumerate system information
+	"enumNetwork": builtinEnumNetwork, // enumNetwork() - enumerate network interfaces
+	"persistAdd":  builtinPersistAdd,  // persistAdd(script, method) - add persistence mechanism
+	"persistRemove": builtinPersistRemove, // persistRemove() - remove persistence mechanisms
 }
 
 // RegisterFunctions registers all SecShell builtin functions in the Lua state

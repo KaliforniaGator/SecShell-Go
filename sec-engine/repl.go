@@ -20,7 +20,7 @@ func replPrint(text string) {
 
 // replPrintf is a helper function that formats and prints text followed by \r\n for proper raw mode output.
 func replPrintf(format string, args ...interface{}) {
-	fmt.Print(fmt.Sprintf(format+"\r\n", args...))
+	fmt.Printf(format+"\r\n", args...)
 }
 
 // REPL provides an interactive Lua prompt similar to Python's shell
@@ -473,6 +473,33 @@ func (r *REPL) printHelp() {
 	replPrint("Network:")
 	replPrint("  fetch(url, method) - HTTP request")
 	replPrint("  scan()             - Network scan")
+	replPrint("")
+	replPrint("Error Handling:")
+	replPrint("  attempt(func,...)  - Safe function execution")
+	replPrint("  pcall(func,...)    - Protected call")
+	replPrint("")
+	replPrint("Network Reconnaissance:")
+	replPrint("  tcpConnect(h,p,t)  - TCP connection test")
+	replPrint("  udpProbe(h,p,t)    - UDP port probe")
+	replPrint("  serviceDetect(h,p) - Identify service on port")
+	replPrint("  osDetect(host)     - OS fingerprinting via TTL")
+	replPrint("")
+	replPrint("Payload Generation:")
+	replPrint("  genReverseShell(lh,lp,t) - Reverse shell payload")
+	replPrint("  genBindShell(port,t)     - Bind shell payload")
+	replPrint("  encodePayload(data,e)    - Encode payload")
+	replPrint("")
+	replPrint("Exploitation Helpers:")
+	replPrint("  httpRequest(u,m,h,b) - Full HTTP request")
+	replPrint("  fuzz(template, pay)  - Fuzzing helper")
+	replPrint("  bruteForce(t,s,w)    - Basic brute force")
+	replPrint("")
+	replPrint("Post-Exploitation:")
+	replPrint("  privCheck()        - Check privilege level")
+	replPrint("  enumSystem()       - Enumerate system info")
+	replPrint("  enumNetwork()      - Enumerate network")
+	replPrint("  persistAdd(s,m)    - Add persistence")
+	replPrint("  persistRemove()    - Remove persistence")
 	replPrint("")
 }
 

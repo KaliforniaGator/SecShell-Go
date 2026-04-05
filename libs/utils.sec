@@ -1,0 +1,67 @@
+-- SecShell Utility Library
+-- This file demonstrates a reusable .sec library that can be required by other scripts
+
+-- Utility functions table
+local utils = {}
+
+-- Print a formatted header
+function utils.header(title)
+    print("=========================================")
+    print("  " .. title)
+    print("=========================================")
+end
+
+-- Print a formatted separator
+function utils.separator()
+    print("-----------------------------------------")
+end
+
+-- Generate a random IP address
+function utils.randomIP()
+    return random(1, 254) .. "." .. random(1, 254) .. "." .. random(1, 254) .. "." .. random(1, 254)
+end
+
+-- Check if a port is open using tcpConnect
+function utils.checkPort(host, port)
+    local ok, status, banner = tcpConnect(host, port, 2)
+    return ok, status, banner
+end
+
+-- Hash a string with multiple algorithms
+function utils.hashAll(data)
+    local result = {}
+    
+    local ok, md5 = hash(data, "md5")
+    result.md5 = md5
+    
+    local ok, sha1 = hash(data, "sha1")
+    result.sha1 = sha1
+    
+    local ok, sha256 = hash(data, "sha256")
+    result.sha256 = sha256
+    
+    return result
+end
+
+-- Encode/decode roundtrip test
+function utils.testEncoding(data, format)
+    local ok, encoded = encode(data, format)
+    if not ok then
+        return false, encoded
+    end
+    local ok2, decoded = decode(encoded, format)
+    return ok2, decoded
+end
+
+-- Simple progress bar
+function utils.progressBar(current, total, width)
+    width = width or 40
+    local pct = current / total
+    local filled = math.floor(pct * width)
+    local empty = width - filled
+    local bar = string.rep("█", filled) .. string.rep("░", empty)
+    return string.format("[%s] %d/%d (%.1f%%)", bar, current, total, pct * 100)
+end
+
+-- Return the utils table so require() can use it
+return utils

