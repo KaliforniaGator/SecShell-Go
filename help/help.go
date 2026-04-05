@@ -67,6 +67,7 @@ var HelpCommands = []string{
 	"reload-prompt",
 	"prompt",
 	"files",
+	"sec",
 }
 
 // HelpTopics contains detailed help information for each command
