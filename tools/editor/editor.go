@@ -28,11 +28,15 @@ const (
 	keyCtrlQ           rune = 17   // Ctrl+Q
 	keyCtrlL           rune = 12   // Ctrl+L (Select Line)
 	keyCtrlA           rune = 1    // Ctrl+A (Select All)
+	keyCtrlH           rune = 8    // Ctrl+H (Help)
 	keyEscape          rune = 27   // ASCII Escape
 	keyShiftArrowLeft  rune = 1009 // Arbitrary
 	keyShiftArrowRight rune = 1010 // Arbitrary
 	tabWidth                = 4    // Visual width of a tab character
 )
+
+// Help message constant
+const helpMessage = "HELP: Ctrl+S = Save | Ctrl+Q = Quit | Ctrl+L = Select Line | Ctrl+A = Select All | Shift+Arrows = Select | Esc = Cancel Select"
 
 // Position represents a coordinate in the text buffer
 type Position struct {
@@ -51,6 +55,7 @@ type Editor struct {
 	termHeight      int       // Terminal height (usable area)
 	fileName        string    // Name of the file being edited
 	statusMsg       string    // Message to display in the status bar
+	showingHelp     bool      // True when help message is being displayed
 	isDirty         bool      // True if the buffer has been modified since the last save
 	selection       Selection // Added selection state
 	selectionAnchor Position  // Anchor point for shift-selection
@@ -75,7 +80,8 @@ func NewEditor() *Editor {
 		termWidth:  w,
 		termHeight: h - 2, // Reserve space for status bar and command line/prompt
 		fileName:   "[No Name]",
-		statusMsg:  "HELP: Ctrl+S = Save | Ctrl+Q = Quit | Ctrl+L = Select Line | Ctrl+A = Select All | Shift+Arrows = Select | Esc = Cancel Select",
+		statusMsg:  helpMessage,
+		showingHelp: true,
 		isDirty:    false,
 		selection: Selection{ // Initialize selection
 			active: false,
@@ -414,44 +420,63 @@ func (e *Editor) drawRows(sb *strings.Builder) {
 func (e *Editor) drawStatusBar(sb *strings.Builder) {
 	sb.WriteString(gui.MoveCursorCmd(e.termHeight, 0)) // Move to the status bar line
 
-	status := fmt.Sprintf(" %.80s", e.statusMsg) // Truncate status message
-	if len([]rune(status)) > e.termWidth {
-		status = string([]rune(status)[:e.termWidth])
-	}
+	var bar string
 
-	fileNameInfo := fmt.Sprintf(" %s %s ", e.fileName, map[bool]string{true: "(modified)", false: ""}[e.isDirty])
-	posInfo := fmt.Sprintf(" %d:%d ", e.cursorY+1, e.cursorX+1) // 1-based indexing for display
-
-	middleWidth := e.termWidth - len([]rune(status)) - len([]rune(posInfo))
-	if middleWidth < 0 {
-		middleWidth = 0 // Avoid negative repeats
-	}
-
-	maxFilenameWidth := middleWidth - 2 // Account for spaces around filename
-	if maxFilenameWidth < 1 {
-		maxFilenameWidth = 1
-	}
-	displayFileName := fmt.Sprintf(" %.*s ", maxFilenameWidth, fileNameInfo)
-	if len([]rune(displayFileName)) > middleWidth {
-		displayFileName = string([]rune(displayFileName)[:middleWidth]) // Final truncation if needed
-	}
-
-	padding := middleWidth - len([]rune(displayFileName))
-	if padding < 0 {
-		padding = 0
-	}
-
-	bar := status + strings.Repeat(" ", padding) + displayFileName + posInfo
-
-	if len([]rune(bar)) > e.termWidth {
-		bar = string([]rune(bar)[:e.termWidth])
+	if e.showingHelp {
+		// When showing help, use full width for the message
+		bar = fmt.Sprintf(" %.*s", e.termWidth-1, e.statusMsg)
+		if len([]rune(bar)) < e.termWidth {
+			bar += strings.Repeat(" ", e.termWidth-len([]rune(bar)))
+		}
 	} else {
-		bar += strings.Repeat(" ", e.termWidth-len([]rune(bar)))
+		// Normal mode: show status message on left, filename and position on right
+		status := fmt.Sprintf(" %.80s", e.statusMsg) // Truncate status message
+		if len([]rune(status)) > e.termWidth {
+			status = string([]rune(status)[:e.termWidth])
+		}
+
+		fileNameInfo := fmt.Sprintf(" %s %s ", e.fileName, map[bool]string{true: "(modified)", false: ""}[e.isDirty])
+		posInfo := fmt.Sprintf(" %d:%d ", e.cursorY+1, e.cursorX+1) // 1-based indexing for display
+
+		middleWidth := e.termWidth - len([]rune(status)) - len([]rune(posInfo))
+		if middleWidth < 0 {
+			middleWidth = 0 // Avoid negative repeats
+		}
+
+		maxFilenameWidth := middleWidth - 2 // Account for spaces around filename
+		if maxFilenameWidth < 1 {
+			maxFilenameWidth = 1
+		}
+		displayFileName := fmt.Sprintf(" %.*s ", maxFilenameWidth, fileNameInfo)
+		if len([]rune(displayFileName)) > middleWidth {
+			displayFileName = string([]rune(displayFileName)[:middleWidth]) // Final truncation if needed
+		}
+
+		padding := middleWidth - len([]rune(displayFileName))
+		if padding < 0 {
+			padding = 0
+		}
+
+		bar = status + strings.Repeat(" ", padding) + displayFileName + posInfo
+
+		if len([]rune(bar)) > e.termWidth {
+			bar = string([]rune(bar)[:e.termWidth])
+		} else {
+			bar += strings.Repeat(" ", e.termWidth-len([]rune(bar)))
+		}
 	}
 
 	sb.WriteString("\x1b[7m") // Start reverse video
 	sb.WriteString(bar)
 	sb.WriteString("\x1b[m") // End reverse video
+}
+
+// clearHelp turns off help display mode
+func (e *Editor) clearHelp() {
+	if e.showingHelp {
+		e.showingHelp = false
+		e.statusMsg = ""
+	}
 }
 
 // moveCursorOnly handles cursor movement keys (basic movement without selection)
@@ -815,6 +840,7 @@ func (e *Editor) processKeyPress(r rune) bool {
 		return true // Signal to quit
 
 	case keyCtrlS:
+		e.clearHelp()
 		e.deactivateSelection()
 		err := e.SaveFile()
 		if err == nil {
@@ -824,11 +850,12 @@ func (e *Editor) processKeyPress(r rune) bool {
 		}
 
 	case keyArrowUp, keyArrowDown, keyArrowLeft, keyArrowRight, keyHome, keyEnd, keyPageUp, keyPageDown:
+		e.clearHelp()
 		e.deactivateSelection()
 		e.moveCursorOnly(r)
-		e.statusMsg = ""
 
 	case keyShiftArrowLeft, keyShiftArrowRight:
+		e.clearHelp()
 		if !e.selection.active {
 			e.selection.active = true
 			e.selectionAnchor = currentPos
@@ -841,21 +868,32 @@ func (e *Editor) processKeyPress(r rune) bool {
 		e.statusMsg = "Selecting..."
 
 	case keyEnter:
+		e.clearHelp()
 		e.insertNewline() // Handles selection deletion internally
 
 	case keyBackspace:
+		e.clearHelp()
 		e.deleteChar() // Handles selection deletion internally
 
 	case keyDelete:
+		e.clearHelp()
 		e.deleteForwardChar() // Handles selection deletion internally
 
 	case keyCtrlL:
+		e.clearHelp()
 		e.selectLine()
 
 	case keyCtrlA:
+		e.clearHelp()
 		e.selectAll()
 
+	case keyCtrlH:
+		e.deactivateSelection()
+		e.statusMsg = helpMessage
+		e.showingHelp = true
+
 	case keyEscape:
+		e.clearHelp()
 		if e.selection.active {
 			e.deactivateSelection()
 		} else {
@@ -863,6 +901,7 @@ func (e *Editor) processKeyPress(r rune) bool {
 		}
 
 	default:
+		e.clearHelp()
 		if unicode.IsPrint(r) || unicode.IsSpace(r) {
 			e.insertChar(r) // Handles selection deletion internally
 		} else if selectionWasActive {
@@ -892,6 +931,7 @@ func (e *Editor) OpenFile(filename string) error {
 			e.fileName = filename
 			e.lines = []string{""}
 			e.isDirty = false
+			e.clearHelp()
 			e.statusMsg = fmt.Sprintf("New file: %s", filename)
 			return nil
 		}
@@ -914,6 +954,7 @@ func (e *Editor) OpenFile(filename string) error {
 	e.isDirty = false
 	e.cursorX, e.cursorY = 0, 0
 	e.offsetX, e.offsetY = 0, 0
+	e.clearHelp()
 	e.statusMsg = fmt.Sprintf("Opened %s", filename)
 	return nil
 }
@@ -948,6 +989,7 @@ func LaunchEditor(args []string) {
 		fmt.Println("  Ctrl+Q: Quit editor (prompts to save if modified)")
 		fmt.Println("  Ctrl+L: Select current line")
 		fmt.Println("  Ctrl+A: Select all text")
+		fmt.Println("  Ctrl+H: Show help in status bar")
 		fmt.Println("  Shift+Left/Right: Select text")
 		fmt.Println("  Esc: Cancel selection")
 		return
