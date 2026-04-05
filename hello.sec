@@ -1,100 +1,287 @@
 #!/usr/bin/secshell
--- Welcome to SecEngine - SecShell's Lua Scripting Engine
--- This script demonstrates the key capabilities of .sec scripts
+-- SecShell SecEngine - Comprehensive Function Tests
+-- This script tests all built-in functions in the SecEngine
 
 print("=========================================")
-print("  Welcome to SecShell SecEngine!")
+print("  SecShell SecEngine - Full Test Suite")
 print("=========================================")
 print()
 
--- 1. Basic print and Lua string operations
-print(">>> Section 1: Print & String Operations")
-local name = "SecShell"
-local version = "1.0"
-print("Engine: " .. name .. " v" .. version)
-print("Lua arithmetic: 2 + 2 = " .. tostring(2 + 2))
+-- ============================================
+-- SECTION 1: Basic Print and String Operations
+-- ============================================
+colorPrint(">>> Section 1: Print & String Operations", "cyan")
+print("Basic print: Hello from SecShell!")
+colorPrint("  Colored: This is red text", "red")
+colorPrint("  Colored: This is green text", "green")
+colorPrint("  Colored: This is yellow text", "yellow")
+colorPrint("  Colored: This is blue text", "blue")
+colorPrint("  Colored: This is bold text", "bold")
 print()
 
--- 2. Execute shell commands with run()
-print(">>> Section 2: Shell Commands (run)")
-local whoami = run("whoami")
-print("Current user: " .. whoami)
-local hostname = run("hostname")
-print("Hostname: " .. hostname)
-print()
+-- ============================================
+-- SECTION 2: String Processing Functions
+-- ============================================
+colorPrint(">>> Section 2: String Processing", "cyan")
 
--- 3. Working with environment variables
-print(">>> Section 3: Environment Variables")
-local path = env("PATH")
-print("PATH (first 50 chars): " .. string.sub(path, 1, 50) .. "...")
-print()
+-- upper/lower/trim
+local testStr = "  Hello World  "
+print("Original: '" .. testStr .. "'")
+print("upper: " .. upper(testStr))
+print("lower: " .. lower(testStr))
+print("trim: '" .. trim(testStr) .. "'")
 
--- 4. File operations
-print(">>> Section 4: File Operations")
-write("/tmp/secshell_demo.txt", "Hello from SecEngine!\nThis file was created by hello.sec\n")
-local ok, content = read("/tmp/secshell_demo.txt")
-if ok then
-    print("File read successfully:")
-    print(content)
+-- replace
+local replaced = replace("foo bar baz", "bar", "QUX")
+print("replace: " .. replaced)
+
+-- split
+local parts = split("apple,banana,cherry", ",")
+print("split 'apple,banana,cherry':")
+for i, p in ipairs(parts) do
+    print("  [" .. i .. "] " .. p)
 end
-print()
 
--- 5. File pattern matching
-print(">>> Section 5: File Globbing")
-local success, files = glob("*.go")
-if success then
-    print("Go files in current directory:")
-    for i, f in ipairs(files) do
-        print("  - " .. f)
+-- join
+local items = {"one", "two", "three"}
+local joined = join(items, " | ")
+print("join: " .. joined)
+
+-- match (regex)
+local found, matches = match("\\d+", "Order 123 and 456")
+if found then
+    print("match '\\d+' in 'Order 123 and 456':")
+    for i, m in ipairs(matches) do
+        print("  [" .. i .. "] " .. m)
     end
 end
 print()
 
--- 6. Exec command with exit code
-print(">>> Section 6: Exec with Exit Code")
-local code, out, err = exec("ls -la /tmp/secshell_demo.txt")
-if code then
-    print("File exists!")
-    print(out)
+-- ============================================
+-- SECTION 3: Hash Functions
+-- ============================================
+colorPrint(">>> Section 3: Hash Functions", "cyan")
+
+local password = "SecShell2024!"
+local ok, md5hash, _ = hash(password, "md5")
+print("MD5('" .. password .. "'): " .. md5hash)
+
+local ok, sha1hash, _ = hash(password, "sha1")
+print("SHA1('" .. password .. "'): " .. sha1hash)
+
+local ok, sha256hash, _ = hash(password, "sha256")
+print("SHA256('" .. password .. "'): " .. sha256hash)
+
+local ok, sha512hash, _ = hash(password, "sha512")
+print("SHA512('" .. password .. "'): " .. sha512hash)
+print()
+
+-- ============================================
+-- SECTION 4: Encode/Decode Functions
+-- ============================================
+colorPrint(">>> Section 4: Encode/Decode", "cyan")
+
+-- Base64
+local original = "Hello, SecShell!"
+local ok, encoded, _ = encode(original, "base64")
+print("Base64 encode('" .. original .. "'): " .. encoded)
+local ok, decoded, _ = decode(encoded, "base64")
+print("Base64 decode: " .. decoded)
+
+-- Hex
+local ok, hexEncoded, _ = encode("ABC", "hex")
+print("Hex encode('ABC'): " .. hexEncoded)
+local ok, hexDecoded, _ = decode(hexEncoded, "hex")
+print("Hex decode: " .. hexDecoded)
+print()
+
+-- ============================================
+-- SECTION 5: File Operations
+-- ============================================
+colorPrint(">>> Section 5: File Operations", "cyan")
+
+-- exists
+local testFile = "/tmp/secshell_test.txt"
+local testDir = "/tmp/secshell_test_dir"
+print("exists('" .. testFile .. "'): " .. tostring(exists(testFile)))
+print("exists('/etc/passwd'): " .. tostring(exists("/etc/passwd")))
+
+-- isDir/isFile
+print("isDir('/tmp'): " .. tostring(isDir("/tmp")))
+print("isFile('/etc/passwd'): " .. tostring(isFile("/etc/passwd")))
+
+-- mkdir
+local ok, err = mkdir(testDir)
+if ok then
+    print("mkdir('" .. testDir .. "'): SUCCESS")
 else
-    print("Error: " .. err)
+    print("mkdir failed: " .. err)
 end
-print()
 
--- 7. HTTP fetch
-print(">>> Section 7: HTTP Fetch")
-local success, body, status = fetch("https://httpbin.org/get", "GET")
-if success then
-    print("HTTP Status: " .. tostring(status))
-    print("Response (first 100 chars): " .. string.sub(body, 1, 100))
+-- write
+local ok, err = write(testFile, "Test content from SecShell\nLine 2\nLine 3")
+if ok then
+    print("write('" .. testFile .. "'): SUCCESS")
 else
-    print("Fetch failed: " .. tostring(body))
+    print("write failed: " .. err)
+end
+
+-- read
+local ok, content = read(testFile)
+if ok then
+    print("read('" .. testFile .. "'):")
+    print(content)
+else
+    print("read failed: " .. content)
+end
+
+-- stat
+local ok, info = stat(testFile)
+if ok then
+    print("stat('" .. testFile .. "'):")
+    print("  name: " .. info.name)
+    print("  size: " .. info.size)
+    print("  isDir: " .. tostring(info.isDir))
+    print("  mode: " .. info.mode)
+    print("  perm: " .. info.perm)
+    print("  modTime: " .. info.modTime)
+end
+
+-- copy
+local copyFile = "/tmp/secshell_test_copy.txt"
+local ok, err = copy(testFile, copyFile)
+if ok then
+    print("copy to '" .. copyFile .. "': SUCCESS")
+end
+
+-- move
+local moveFile = "/tmp/secshell_test_moved.txt"
+local ok, err = move(copyFile, moveFile)
+if ok then
+    print("move to '" .. moveFile .. "': SUCCESS")
+end
+
+-- delete
+local ok, err = delete(moveFile)
+if ok then
+    print("delete('" .. moveFile .. "'): SUCCESS")
 end
 print()
 
--- 8. Lua tables and loops
-print(">>> Section 8: Lua Tables & Loops")
-local targets = {"192.168.1.1", "10.0.0.1", "172.16.0.1"}
-print("Network scan targets:")
-for i, target in ipairs(targets) do
-    print("  [" .. i .. "] " .. target)
+-- ============================================
+-- SECTION 6: Random Functions
+-- ============================================
+colorPrint(">>> Section 6: Random Functions", "cyan")
+
+-- random number
+local num = random(1, 100)
+print("random(1, 100): " .. num)
+
+-- random string
+local randStr = randomString(16)
+print("randomString(16): " .. randStr)
+
+local randStr2 = randomString(32)
+print("randomString(32): " .. randStr2)
+print()
+
+-- ============================================
+-- SECTION 7: Time Functions
+-- ============================================
+colorPrint(">>> Section 7: Time Functions", "cyan")
+
+local ts = time()
+print("Current Unix timestamp: " .. ts)
+print("Formatted time: " .. formatTime(ts, "2006-01-02 15:04:05"))
+print("Date only: " .. formatTime(ts, "January 2, 2006"))
+print()
+
+-- ============================================
+-- SECTION 8: JSON Functions
+-- ============================================
+colorPrint(">>> Section 8: JSON Functions", "cyan")
+
+-- jsonEncode
+local data = {
+    name = "SecShell",
+    version = "1.0",
+    secure = true,
+    ports = {22, 80, 443}
+}
+local ok, jsonStr = jsonEncode(data)
+if ok then
+    print("jsonEncode:")
+    print("  " .. jsonStr)
+else
+    print("jsonEncode failed: " .. jsonStr)
+end
+
+-- jsonDecode
+local jsonString = '{"host":"192.168.1.1","port":8080,"active":true}'
+local ok, parsed = jsonDecode(jsonString)
+if ok then
+    print("jsonDecode:")
+    print("  host: " .. parsed.host)
+    print("  port: " .. parsed.port)
+    print("  active: " .. tostring(parsed.active))
+else
+    print("jsonDecode failed: " .. parsed)
 end
 print()
 
--- 9. Port mapping
-print(">>> Section 9: Port Mapping")
-portmap(22, "ssh")
-portmap(80, "http")
-portmap(443, "https")
-portmap(8080, "http-proxy")
-portmap(3306, "mysql")
-print("Ports mapped (see output above)")
+-- ============================================
+-- SECTION 9: Sleep Function
+-- ============================================
+colorPrint(">>> Section 9: Sleep Function", "cyan")
+print("Sleeping for 1 second...")
+sleep(1)
+print("Done sleeping!")
 print()
 
--- 10. Script info
-print(">>> Section 10: Script Info")
+-- ============================================
+-- SECTION 10: Shell Commands
+-- ============================================
+colorPrint(">>> Section 10: Shell Commands", "cyan")
+
+local whoami = run("whoami")
+print("Current user: " .. trim(whoami))
+
+local hostname = run("hostname")
+print("Hostname: " .. trim(hostname))
+
+local ok, stdout, stderr = exec("ls -la /tmp/secshell_test.txt")
+if ok then
+    print("exec('ls -la'):")
+    print(stdout)
+else
+    print("exec error: " .. stderr)
+end
+print()
+
+-- ============================================
+-- SECTION 11: Environment Variables
+-- ============================================
+colorPrint(">>> Section 11: Environment Variables", "cyan")
+
+local path = env("PATH")
+print("PATH (first 60 chars): " .. string.sub(path, 1, 60) .. "...")
+
+set("SEC_TEST_VAR", "Hello from SecShell")
+local testVar = env("SEC_TEST_VAR")
+print("SEC_TEST_VAR: " .. testVar)
+
+unset("SEC_TEST_VAR")
+local afterUnset = env("SEC_TEST_VAR")
+print("After unset: '" .. afterUnset .. "'")
+print()
+
+-- ============================================
+-- SECTION 12: Script Info
+-- ============================================
+colorPrint(">>> Section 12: Script Info", "cyan")
+
 print("Script name: " .. script_name)
-print("Arguments: " .. #args)
+print("Arguments count: " .. #args)
 if #args > 0 then
     for i, arg in ipairs(args) do
         print("  arg[" .. i .. "] = " .. arg)
@@ -104,7 +291,22 @@ else
 end
 print()
 
+-- ============================================
+-- SECTION 13: Cleanup
+-- ============================================
+colorPrint(">>> Section 13: Cleanup", "cyan")
+
+local ok, err = delete(testFile)
+if ok then print("Cleaned up test file") end
+
+local ok, err = delete(testDir)
+if ok then print("Cleaned up test directory") end
+print()
+
+-- ============================================
+-- FINAL SUMMARY
+-- ============================================
 print("=========================================")
-print("  SecEngine demo complete!")
-print("  Happy scripting with SecShell!")
+colorPrint("  All tests completed successfully!", "green")
+colorPrint("  Happy scripting with SecShell!", "bold")
 print("=========================================")
