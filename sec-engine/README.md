@@ -137,7 +137,7 @@ SecEngine embeds a Lua VM (gopher-lua) to power `.sec` scripts with simple, shel
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `require` | `require(script) -> module` | Import/run another .sec script (supports relative paths, returns module table) |
+| `require` | `require(script) -> success, module_or_error` | Import/run another .sec script (supports relative paths, returns module table on success) |
 | `exit` | `exit(code)` | Exit script with status code |
 
 ### Script Variables
@@ -200,10 +200,13 @@ return M  -- Return the module table
 
 ```lua
 -- main.sec
-local mymod = require("libs/mymodule.sec")
-
-print(mymod.greet("World"))  -- Hello, World!
-print(mymod.add(5, 3))       -- 8
+local ok, mymod = require("libs/mymodule.sec")
+if ok then
+    print(mymod.greet("World"))  -- Hello, World!
+    print(mymod.add(5, 3))       -- 8
+else
+    print("Failed to load module: " .. mymod)
+end
 ```
 
 ### Module Path Resolution
@@ -426,7 +429,11 @@ end
 #!/usr/bin/secshell
 
 -- Load a reusable library
-local utils = require("libs/utils.sec")
+local ok, utils = require("libs/utils.sec")
+if not ok then
+    print("Failed to load utils: " .. utils)
+    exit(1)
+end
 
 -- Use utility functions
 utils.header("My Security Tool")

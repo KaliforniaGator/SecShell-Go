@@ -681,8 +681,9 @@ func builtinRequire(L *lua.LState) int {
 	// Read the script file
 	content, err := os.ReadFile(script)
 	if err != nil {
-		L.RaiseError("failed to read script '%s': %v", script, err)
-		return 0
+		L.Push(lua.LBool(false))
+		L.Push(lua.LString("failed to load module '" + script + "': " + err.Error()))
+		return 2
 	}
 
 	// Save current stack depth
@@ -690,20 +691,26 @@ func builtinRequire(L *lua.LState) int {
 
 	// Execute the script in the same Lua state
 	if err := L.DoString(string(content)); err != nil {
-		L.RaiseError("error executing script '%s': %v", script, err)
-		return 0
+		L.Push(lua.LBool(false))
+		L.Push(lua.LString("error executing module '" + script + "': " + err.Error()))
+		return 2
 	}
 
 	// Check if the script returned a value (module table)
 	newDepth := L.GetTop()
 	if newDepth > stackDepth {
-		// Return the value that the script returned
-		return newDepth - stackDepth
+		// Return success + module
+		L.Push(lua.LBool(true))
+		// Move the module return value(s) after the success flag
+		// The module is already on the stack, we just need to insert true before it
+		L.Insert(lua.LBool(true), stackDepth+1)
+		return 2
 	}
 
-	// No return value, return nil
+	// No return value, return success + nil
+	L.Push(lua.LBool(true))
 	L.Push(lua.LNil)
-	return 1
+	return 2
 }
 
 // --- match(pattern, str) - Pattern matching (regex) ---

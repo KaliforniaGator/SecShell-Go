@@ -12,15 +12,15 @@ print()
 -- ============================================
 colorPrint(">>> Test 1: Basic require() with module return", "cyan")
 
--- Load the utils library
-local utils = require("libs/utils.sec")
+-- Load the utils library (now returns success, module)
+local ok, utils = require("libs/utils.sec")
 
 -- Check if we got the module
-if utils then
+if ok then
     colorPrint("  SUCCESS: require() returned the utils module", "green")
     print("  utils type: " .. type(utils))
 else
-    colorPrint("  FAILED: require() returned nil", "red")
+    colorPrint("  FAILED: require() returned error: " .. tostring(utils), "red")
 end
 print()
 
@@ -98,10 +98,8 @@ print()
 -- ============================================
 colorPrint(">>> Test 6: require() error handling", "cyan")
 
--- This should fail gracefully
-local ok, err = pcall(function()
-    local bad = require("nonexistent.sec")
-end)
+-- This should return success=false with clean error message
+local ok, err = require("nonexistent.sec")
 
 if not ok then
     colorPrint("  SUCCESS: require() properly handles missing files", "green")
@@ -116,8 +114,8 @@ print()
 -- ============================================
 colorPrint(">>> Test 7: Multiple requires", "cyan")
 
-local utils2 = require("libs/utils.sec")
-if utils2 then
+local ok2, utils2 = require("libs/utils.sec")
+if ok2 then
     colorPrint("  SUCCESS: Second require() also worked", "green")
     print("  utils == utils2: " .. tostring(utils == utils2))
 end
