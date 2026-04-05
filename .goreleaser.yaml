@@ -6,17 +6,17 @@ before:
     - go generate ./...
 
 builds:
+  # All builds use CGO disabled for cross-compilation compatibility
+  # PAM authentication falls back to nocgo version when CGO is not available
   - main: ./...
-    # CGO is controlled by the CGO_ENABLED environment variable
-    # - Local macOS builds: CGO_ENABLED=0 (cross-compilation)
-    # - GitHub Actions: CGO_ENABLED=1 (native Linux build with PAM support)
+    env:
+      - CGO_ENABLED=0
     goos:
       - linux
       - darwin
     goarch:
       - amd64
       - arm64
-    # linux_arm64 excluded because PAM (libpam) doesn't support ARM64
     ignore:
       - goos: linux
         goarch: arm64
