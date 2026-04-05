@@ -19,7 +19,7 @@ var ProgramCommands = []string{}
 var AllowedDirs = []string{}
 var History = []string{}
 var DefaultBlacklist = []string{"rm", "mv", "cp", "dd", "mkfs", "reboot", "shutdown", "halt", "poweroff", "init", "systemctl", "service", "killall", "pkill"}
-var DefaultWhitelist = []string{"sudo", "apt", "ls", "cd", "pwd", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "cat", "echo", "grep", "find", "chmod", "chown", "ps", "kill", "top", "df", "du", "ifconfig", "netstat", "ping", "ip", "clear", "vim", "nano", "emacs", "nvim"}
+var DefaultWhitelist = []string{"sudo", "apt", "ls", "cd", "pwd", "cp", "mv", "rm", "mkdir", "rmdir", "touch", "cat", "echo", "grep", "find", "chmod", "chown", "ps", "kill", "top", "df", "du", "ifconfig", "netstat", "ping", "ip", "clear", "vim", "nano", "emacs", "nvim", "sec"}
 
 // getExecutablePath returns the path to the executable directory
 func GetExecutablePath() string {

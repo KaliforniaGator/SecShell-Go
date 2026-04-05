@@ -22,7 +22,7 @@ var BuiltInCommands = []string{
 	// Add pentesting commands
 	"portscan", "hostscan", "webscan", "payload", "session",
 	// Tools
-	"./", "base64", "hex", "urlencode", "hash", "extract-strings", "binary"}
+	"./", "base64", "hex", "urlencode", "hash", "extract-strings", "binary", "sec"}
 
 var TrustedDirs = []string{"/usr/bin/", "/bin/", "/opt/", "/usr/local/bin/"}
 

@@ -11,6 +11,7 @@ import (
 	"secshell/history"
 	"secshell/logging"
 	"secshell/pentest"
+	"secshell/sec-engine"
 	"secshell/services"
 	"secshell/tools"
 	"secshell/tools/editor"
@@ -79,6 +80,7 @@ func RegisterBuiltInCommandHandlers() {
 	registerCommandHandler("extract-strings", handleExtractStrings)
 	registerCommandHandler("edit", handleEdit)
 	registerCommandHandler("files", handleFiles)
+	registerCommandHandler("sec", handleSec)
 
 	// UI commands
 	registerCommandHandler("prompt", handlePrompt)
@@ -844,5 +846,16 @@ func handleReloadPrompt(args []string) (int, error) {
 
 	// Reload the prompt
 	ui.ReloadPrompt(version, needsUpdate)
+	return 0, nil
+}
+
+// handleSec handles the sec command - launches interactive SecEngine REPL
+func handleSec(args []string) (int, error) {
+	err := secengine.StartInteractiveREPL()
+	if err != nil {
+		logging.LogError(err)
+		gui.ErrorBox(fmt.Sprintf("REPL error: %v", err))
+		return 1, err
+	}
 	return 0, nil
 }

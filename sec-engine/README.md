@@ -233,6 +233,30 @@ if ok then
 end
 ```
 
+## Interactive REPL
+
+Type `sec` in SecShell to launch an interactive Lua scripting environment:
+
+```
+sec> 2 + 2
+4
+sec> hash("test", "md5")
+true    098f6bcd4621d373cade4e832627b4f6
+sec> x = 10
+sec> x * 2
+20
+sec> run("whoami")
+rafaelrivera
+sec> exit
+```
+
+### REPL Commands
+- `help` - Show available functions
+- `clear` - Clear screen
+- `history` - Show command history
+- `exit` / `quit` - Exit REPL
+- Ctrl+D - Also exits
+
 ## Usage
 
 Run `.sec` scripts from SecShell:

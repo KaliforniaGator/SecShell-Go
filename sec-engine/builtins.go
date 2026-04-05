@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/yuin/gopher-lua"
@@ -263,7 +264,8 @@ func builtinScan(L *lua.LState) int {
 		return 2
 	}
 
-	var results []string
+	// Collect targets to scan
+	var targets []string
 	for _, iface := range ifaces {
 		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
 			continue
@@ -279,23 +281,54 @@ func builtinScan(L *lua.LState) int {
 				ip := ipnet.IP.To4()
 				subnet := fmt.Sprintf("%d.%d.%d", ip[0], ip[1], ip[2])
 
-				// Ping sweep the subnet
 				for i := 1; i <= 254; i++ {
 					target := fmt.Sprintf("%s.%d", subnet, i)
-					conn, err := net.DialTimeout("tcp", target+":22", 100*time.Millisecond)
-					if err == nil {
-						results = append(results, target)
-						conn.Close()
-					}
+					targets = append(targets, target)
 				}
 			}
 		}
 	}
 
+	if len(targets) == 0 {
+		L.Push(lua.LBool(true))
+		L.Push(L.NewTable())
+		return 2
+	}
+
+	fmt.Println("[scan] Starting network scan, this may take a moment...")
+
+	// Scan targets concurrently with limited goroutines
+	results := make(chan string, 100)
+	var wg sync.WaitGroup
+	semaphore := make(chan struct{}, 50) // Limit concurrent connections
+
+	for _, target := range targets {
+		wg.Add(1)
+		semaphore <- struct{}{} // Block if we hit the limit
+		go func(t string) {
+			defer wg.Done()
+			defer func() { <-semaphore }()
+			conn, err := net.DialTimeout("tcp", t+":22", 100*time.Millisecond)
+			if err == nil {
+				results <- t
+				conn.Close()
+			}
+		}(target)
+	}
+
+	// Close results channel when all scans complete
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+
+	// Collect results
 	table := L.NewTable()
-	for _, host := range results {
+	for host := range results {
 		table.Append(lua.LString(host))
 	}
+
+	fmt.Printf("[scan] Found %d host(s) with SSH port 22 open\n", table.Len())
 
 	L.Push(lua.LBool(true))
 	L.Push(table)
@@ -901,7 +934,10 @@ func builtinColorPrint(L *lua.LState) int {
 	text := L.CheckString(1)
 	color := "white"
 	if L.GetTop() >= 2 {
-		color = strings.ToLower(L.CheckString(2))
+		arg := L.Get(2)
+		if s, ok := arg.(lua.LString); ok {
+			color = strings.ToLower(string(s))
+		}
 	}
 
 	colorCodes := map[string]string{
