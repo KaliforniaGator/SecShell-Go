@@ -112,6 +112,8 @@ ________________________________________________________________________________
 | `edit-prompt`          | Edit the command prompt.<br>Usage: `edit-prompt`                                                    |
 | `reload-prompt`        | Reload the command prompt configuration.<br>Usage: `reload-prompt`                                  |
 | `prompt`               | Display the current command prompt configuration and options.<br>Usage: `prompt`                    |
+| `files`                | Open interactive file manager.<br>Usage: `files`                                                    |
+| `sec`                  | Run the built-in scripting engine (SecEngine).<br>Usage: `sec`                                      |
 --------------------------------------------------------------------------------------------------------------------------------
 
 ---
@@ -128,7 +130,7 @@ ________________________________________________________________________________
 
 ### Installation Options
 
-#### Option 1: Quick Binary Installation (Recommended)
+#### Option 1: Quick Install Script (Recommended)
 
 Install the pre-compiled binary directly:
 
@@ -136,7 +138,18 @@ Install the pre-compiled binary directly:
 curl -fsSL https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/main/install.sh | bash
 ```
 
-This will download the appropriate binary for your system (Linux or macOS) and install it.
+This will:
+- Auto-detect your OS (`Linux`/`Darwin`) and architecture (`x86_64`/`arm64`)
+- Fetch the latest version from GitHub releases
+- Download the appropriate archive (e.g., `SecShell-Go_Darwin_arm64.tar.gz` for M1/M2 Macs)
+- Install the binary and DrawBox dependency
+
+**Supported platforms:**
+| OS | Architecture | Archive |
+|---|---|---|
+| macOS (Darwin) | Apple Silicon (M1/M2) | `SecShell-Go_Darwin_arm64.tar.gz` |
+| macOS (Darwin) | Intel (x86_64) | `SecShell-Go_Darwin_x86_64.tar.gz` |
+| Linux | x86_64 | `SecShell-Go_Linux_x86_64.tar.gz` |
 
 #### Option 2: Update Existing Installation
 
@@ -146,7 +159,15 @@ Update an existing installation to the latest version:
 curl -fsSL https://raw.githubusercontent.com/KaliforniaGator/SecShell-Go/main/update.sh | bash
 ```
 
-This will download the latest pre-compiled binary for your system and update your existing installation.
+Or from within SecShell:
+```
+--update
+```
+
+This will:
+- Compare your current version with the latest release
+- Download only if an update is available
+- Update both SecShell-Go and DrawBox
 
 #### Option 3: Manual Build from Source
 

@@ -374,6 +374,7 @@ Options:
 		Description: "Execute a script file with automatic interpreter detection",
 		Usage:       "./<script_file> [arguments]",
 		Examples: []string{
+			"./hello.sec",
 			"./script.sh",
 			"./script.py arg1 arg2",
 			"./custom_script --verbose",
@@ -478,6 +479,13 @@ Options:
 		Usage:       "files",
 		Examples:    []string{"files"},
 		Category:    "FileSystem",
+	},
+	"sec": {
+		Command:     "sec",
+		Description: "Run the built-in scripting engine (SecEngine)",
+		Usage:       "sec",
+		Examples:    []string{"sec"},
+		Category:    "System",
 	},
 }
 
