@@ -309,8 +309,11 @@ func executeRawTerminalCommand(args []string) {
 	// Restore terminal state when function returns
 	defer term.Restore(int(os.Stdin.Fd()), oldState)
 
+	// Build command args, adding color flags for supported commands
+	cmdArgs := buildCommandArgsWithColor(args)
+
 	// Create the command
-	cmd := exec.Command(args[0], args[1:]...)
+	cmd := exec.Command(args[0], cmdArgs...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -446,7 +449,7 @@ func executeNormalCommand(args []string) {
 }
 
 // executePipedCommands handles command pipelines
-func executePipedCommands(input string, jobsMap map[int]*jobs.Job) {
+func executePipedCommands(input string, _ map[int]*jobs.Job) {
 	// Split the input into separate commands
 	splitCommands := strings.Split(input, "|")
 	for i, cmd := range splitCommands {
@@ -471,28 +474,23 @@ func executePipedCommands(input string, jobsMap map[int]*jobs.Job) {
 
 		// Add color flags for supported commands
 		if len(args) > 0 {
-			switch args[0] {
-			case "grep":
-				hasColorFlag := false
-				for _, arg := range args {
-					if strings.HasPrefix(arg, "--color") {
-						hasColorFlag = true
-						break
-					}
+			hasColorFlag := false
+			for _, arg := range args {
+				if strings.HasPrefix(arg, "--color") {
+					hasColorFlag = true
+					break
 				}
-				if !hasColorFlag {
+			}
+			if !hasColorFlag {
+				switch args[0] {
+				case "grep", "fgrep", "egrep":
 					args = append([]string{args[0], "--color=always"}, args[1:]...)
-				}
-			case "ls", "diff":
-				hasColorFlag := false
-				for _, arg := range args {
-					if strings.HasPrefix(arg, "--color") {
-						hasColorFlag = true
-						break
-					}
-				}
-				if !hasColorFlag {
+				case "ls", "diff":
 					args = append([]string{args[0], "--color=auto"}, args[1:]...)
+				case "git":
+					args = append([]string{args[0], "--color=always"}, args[1:]...)
+				case "tree":
+					args = append([]string{args[0], "-C"}, args[1:]...)
 				}
 			}
 		}
@@ -663,6 +661,44 @@ func isSignalKilled(err error) bool {
 		}
 	}
 	return false
+}
+
+// buildCommandArgsWithColor adds color flags to commands that support them
+func buildCommandArgsWithColor(args []string) []string {
+	if len(args) < 1 {
+		return args[1:]
+	}
+
+	cmdArgs := make([]string, 0, len(args))
+
+	// Check if user already specified a color flag
+	hasColorFlag := false
+	for _, arg := range args[1:] {
+		if strings.HasPrefix(arg, "--color") {
+			hasColorFlag = true
+			break
+		}
+	}
+
+	// Add color flag if not already present
+	if !hasColorFlag {
+		switch args[0] {
+		case "ls":
+			cmdArgs = append(cmdArgs, "--color=auto")
+		case "grep", "fgrep", "egrep":
+			cmdArgs = append(cmdArgs, "--color=always")
+		case "diff":
+			cmdArgs = append(cmdArgs, "--color=auto")
+		case "git":
+			cmdArgs = append(cmdArgs, "--color=always")
+		case "tree":
+			cmdArgs = append(cmdArgs, "-C")
+		}
+	}
+
+	// Add remaining arguments
+	cmdArgs = append(cmdArgs, args[1:]...)
+	return cmdArgs
 }
 
 // RegisterBuiltInHandlers registers handlers for built-in commands

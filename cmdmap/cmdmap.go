@@ -19,33 +19,6 @@ import (
 // GlobalCommandMap holds all registered commands
 var GlobalCommandMap CommandMap
 
-// SpecialCommands that need raw terminal mode
-var SpecialCommands = map[string]bool{
-	"ssh":     true,
-	"vim":     true,
-	"vi":      true,
-	"nano":    true,
-	"pico":    true,
-	"emacs":   true,
-	"less":    true,
-	"more":    true,
-	"top":     true,
-	"htop":    true,
-	"nvim":    true,
-	"python":  true,
-	"python3": true,
-	"ruby":    true,
-	"node":    true,
-	"mysql":   true,
-	"psql":    true,
-	"su":      true,
-	"sudo":    true,
-	"screen":  true,
-	"tmux":    true,
-	"man":     true,
-	"info":    true,
-}
-
 // Variable to track security state - exported at package level for all cmdmap files
 var securityEnabled = true
 
@@ -139,11 +112,9 @@ func registerAllowedCommands() {
 				continue
 			}
 
-			// Check if it's a special command that needs raw terminal
-			termMode := ModeNormal
-			if SpecialCommands[sanitizedName] {
-				termMode = ModeRaw
-			}
+			// All external commands need raw terminal mode for proper
+			// interactive program support (ssh, vim, python, etc.)
+			termMode := ModeRaw
 
 			// Create command
 			cmd := Command{
@@ -293,11 +264,14 @@ func GetCommandsByCategory() map[CommandCategory][]Command {
 	return categories
 }
 
-// NeedsRawTerminal checks if a command needs raw terminal mode
+// NeedsRawTerminal checks if a command needs raw terminal mode.
+// All external commands (non-builtins) need raw terminal mode for proper
+// interactive program support (ssh, vim, python, editors, pagers, etc.)
 func NeedsRawTerminal(cmdName string) bool {
 	cmd, exists := GlobalCommandMap[cmdName]
 	if !exists {
-		return SpecialCommands[cmdName] // Check special commands as fallback
+		// Unknown commands default to raw mode for safety
+		return true
 	}
 
 	return cmd.TermMode == ModeRaw
