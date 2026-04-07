@@ -583,7 +583,7 @@ func DisplayHelp(args ...string) {
 	categories := []string{"System", "FileSystem", "Process", "Environment", "Security", "Network", "Pentesting", "Encoding", "Scripting", "Analysis"}
 
 	// Try to use the interactive mode with pagination
-	err := terminal.WithInteractiveMode(func() error {
+	err := runPaginatedHelpInteractiveMode(func() error {
 		return displayPaginatedHelp(categories, commandsByCategory)
 	})
 
@@ -591,6 +591,23 @@ func DisplayHelp(args ...string) {
 		// Fallback if interactive mode fails
 		displaySimpleHelp(categories, commandsByCategory)
 	}
+}
+
+func runPaginatedHelpInteractiveMode(fn func() error) error {
+	if err := terminal.EnterInteractiveMode(); err != nil {
+		return fmt.Errorf("failed to enter interactive mode: %w", err)
+	}
+
+	defer func() {
+		fmt.Print("\x1b[2J\x1b[H")
+		fmt.Print("\x1b[?25h")
+		terminal.ExitInteractiveMode()
+		fmt.Print("\x1b[2J\x1b[H\x1b[3J")
+		_ = os.Stdout.Sync()
+	}()
+
+	fmt.Print("\x1b[2J\x1b[H")
+	return fn()
 }
 
 // displayPaginatedHelp shows commands in a paginated interface
