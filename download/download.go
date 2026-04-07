@@ -104,12 +104,12 @@ func DownloadFiles(args []string) {
 	}
 
 	if len(urls) == 0 {
-		gui.ErrorBox("No URLs provided")
+		gui.ErrorBox("Usage: download [-o output1,output2,...] <url [url2 ...]>")
 		return
 	}
 
 	if len(outputFiles) > 0 && len(outputFiles) != len(urls) {
-		gui.ErrorBox("Number of output files must match number of URLs")
+		gui.ErrorBox("Usage: download [-o output1,output2,...] <url [url2 ...]>")
 		return
 	}
 

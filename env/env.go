@@ -29,8 +29,8 @@ func ExportVariable(args []string) {
 	varValue := sanitizeInput(args[1], false)
 	equalsPos := strings.Index(varValue, "=")
 	if equalsPos == -1 {
-		logging.LogAlert("Invalid export syntax. Use VAR=value")
-		gui.ErrorBox("Invalid export syntax. Use VAR=value")
+		logging.LogAlert("Usage: export VAR=value")
+		gui.ErrorBox("Usage: export VAR=value")
 		return
 	}
 

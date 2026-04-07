@@ -11,13 +11,14 @@ import (
 
 // updateJobListInContainer populates the container with job information.
 func updateJobListInContainer(jobsMap map[int]*Job, container *gui.Container, infoLabel *gui.Label) {
+	jobsSnapshot := snapshotJobs(jobsMap)
 	content := []string{}
-	if len(jobsMap) == 0 {
+	if len(jobsSnapshot) == 0 {
 		content = append(content, colors.Gray+"<No jobs running or defined>"+colors.Reset)
 	} else {
 		// Skip adding header line - it's now a separate UI element so it doesn't get duplicated
 
-		for _, job := range jobsMap {
+		for _, job := range jobsSnapshot {
 			job.Lock()
 			updateJobStats(job) // Ensure stats are fresh
 			status := job.Status

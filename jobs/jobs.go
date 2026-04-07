@@ -19,10 +19,30 @@ import (
 )
 
 var clockTicks float64
+var jobsMapMu sync.RWMutex
 
 func init() {
 	// Most modern Linux systems use 100 Hz
 	clockTicks = 100.0
+}
+
+func GetJob(jobs map[int]*Job, pid int) (*Job, bool) {
+	jobsMapMu.RLock()
+	job, ok := jobs[pid]
+	jobsMapMu.RUnlock()
+	return job, ok
+}
+
+func snapshotJobs(jobs map[int]*Job) map[int]*Job {
+	jobsMapMu.RLock()
+	defer jobsMapMu.RUnlock()
+
+	copyMap := make(map[int]*Job, len(jobs))
+	for pid, job := range jobs {
+		copyMap[pid] = job
+	}
+
+	return copyMap
 }
 
 type Job struct {
@@ -56,14 +76,15 @@ func DrawTable(header string, data []string, bg_color string) {
 
 // listJobs lists all jobs
 func ListJobs(jobs map[int]*Job) {
+	jobsSnapshot := snapshotJobs(jobs)
 
-	if len(jobs) == 0 {
+	if len(jobsSnapshot) == 0 {
 		fmt.Println("No jobs found.")
 		return
 	}
 
 	var services []string
-	for pid, job := range jobs {
+	for pid, job := range jobsSnapshot {
 		job.Lock()
 		updateJobStats(job)
 		status := job.Status
@@ -98,20 +119,24 @@ func AddJob(jobs map[int]*Job, pid int, command string, process *os.Process) {
 		StartTime: time.Now(),
 		Process:   process,
 	}
+	jobsMapMu.Lock()
 	jobs[pid] = job
+	jobsMapMu.Unlock()
 	logging.LogAlert(fmt.Sprintf("Job [%d] added: %s", pid, command))
 	gui.AlertBox(fmt.Sprintf("[%d] %s running in background", pid, command))
 }
 
 // RemoveJob removes a job from the jobs map
 func RemoveJob(jobs map[int]*Job, pid int) {
+	jobsMapMu.Lock()
 	delete(jobs, pid)
+	jobsMapMu.Unlock()
 	logging.LogAlert(fmt.Sprintf("Job [%d] removed", pid))
 	gui.AlertBox(fmt.Sprintf("Job [%d] removed", pid))
 }
 
 func StopJob(jobs map[int]*Job, pid int) {
-	job, ok := jobs[pid]
+	job, ok := GetJob(jobs, pid)
 	if !ok {
 		logging.LogAlert(fmt.Sprintf("No such job: %d", pid))
 		gui.ErrorBox(fmt.Sprintf("No such job: %d", pid))
@@ -140,7 +165,7 @@ func StopJob(jobs map[int]*Job, pid int) {
 }
 
 func StopJobClean(jobs map[int]*Job, pid int) string {
-	job, ok := jobs[pid]
+	job, ok := GetJob(jobs, pid)
 	if !ok {
 		logging.LogAlert(fmt.Sprintf("No such job: %d", pid))
 		return fmt.Sprintf("No such job: %d", pid)
@@ -169,7 +194,7 @@ func StopJobClean(jobs map[int]*Job, pid int) string {
 }
 
 func GetJobStatus(jobs map[int]*Job, pid int) {
-	job, ok := jobs[pid]
+	job, ok := GetJob(jobs, pid)
 	if !ok {
 		logging.LogAlert(fmt.Sprintf("No such job: %d", pid))
 		gui.ErrorBox(fmt.Sprintf("No such job: %d", pid))
@@ -190,7 +215,7 @@ func GetJobStatus(jobs map[int]*Job, pid int) {
 }
 
 func StartJob(jobs map[int]*Job, pid int) {
-	job, ok := jobs[pid]
+	job, ok := GetJob(jobs, pid)
 	if !ok {
 		logging.LogAlert(fmt.Sprintf("No such job: %d", pid))
 		gui.ErrorBox(fmt.Sprintf("No such job: %d", pid))
@@ -220,7 +245,7 @@ func StartJob(jobs map[int]*Job, pid int) {
 }
 
 func StartJobClean(jobs map[int]*Job, pid int) string {
-	job, ok := jobs[pid]
+	job, ok := GetJob(jobs, pid)
 	if !ok {
 		logging.LogAlert(fmt.Sprintf("No such job: %d", pid))
 		return fmt.Sprintf("No such job: %d", pid)
@@ -248,13 +273,14 @@ func StartJobClean(jobs map[int]*Job, pid int) string {
 
 func ClearFinishedJobs(jobs map[int]*Job) {
 	gui.TitleBox("Clear Finished Jobs")
+	jobsSnapshot := snapshotJobs(jobs)
 
-	if len(jobs) == 0 {
+	if len(jobsSnapshot) == 0 {
 		fmt.Println("No jobs found.")
 		return
 	}
 
-	for pid, job := range jobs {
+	for pid, job := range jobsSnapshot {
 		job.Lock()
 		status := job.Status
 		job.Unlock()

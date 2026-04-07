@@ -10,8 +10,8 @@ import (
 	"strings"
 )
 
-func runCommand(command string) {
-	cmd := exec.Command("sh", "-c", command)
+func runCommand(command string, args ...string) {
+	cmd := exec.Command(command, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
@@ -26,30 +26,45 @@ func runCommand(command string) {
 func RunServicesCommand(action string, serviceName string) {
 
 	var command string
+	var args []string
+	shouldRun := false
 
 	switch action {
 	case "list":
 		GetServices()
+		return
 	case "status":
 		gui.TitleBox("Service Status")
-		command = "systemctl status " + serviceName
+		command = "systemctl"
+		args = []string{"status", "--", serviceName}
+		shouldRun = true
 	case "start":
 		gui.TitleBox("Starting Service")
-		command = "sudo systemctl start " + serviceName
+		command = "sudo"
+		args = []string{"systemctl", "start", "--", serviceName}
+		shouldRun = true
 	case "stop":
 		gui.TitleBox("Stopping Service")
-		command = "sudo systemctl stop " + serviceName
+		command = "sudo"
+		args = []string{"systemctl", "stop", "--", serviceName}
+		shouldRun = true
 	case "restart":
 		gui.TitleBox("Restarting Service")
-		command = "sudo systemctl restart " + serviceName
+		command = "sudo"
+		args = []string{"systemctl", "restart", "--", serviceName}
+		shouldRun = true
 	case "--help", "-h", "help":
 		ShowHelp()
+		return
 	default:
-		gui.ErrorBox("Invalid action: " + action + " Use status, start, stop, restart, list, or help.")
+		gui.ErrorBox("Usage: services <start|stop|restart|status|list> <service_name>")
+		return
 	}
 
-	logging.LogCommand(command, 0)
-	runCommand(command)
+	if shouldRun {
+		logging.LogCommand(strings.Join(append([]string{command}, args...), " "), 0)
+		runCommand(command, args...)
+	}
 
 }
 

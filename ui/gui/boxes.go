@@ -346,6 +346,8 @@ func PrintBanner(text string, boxStyle string, textColor string, bgColor string,
 		height = textHeight + 2
 	}
 
+	fmt.Println()
+
 	// Top border with border color
 	fmt.Print(bgColor + borderColor)
 	fmt.Print(box.TopLeft)

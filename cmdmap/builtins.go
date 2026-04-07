@@ -11,7 +11,7 @@ import (
 	"secshell/history"
 	"secshell/logging"
 	"secshell/pentest"
-	"secshell/sec-engine"
+	secengine "secshell/sec-engine"
 	"secshell/services"
 	"secshell/tools"
 	"secshell/tools/editor"
@@ -21,10 +21,23 @@ import (
 	"secshell/update"
 
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
+
+var shellKeywords = map[string]bool{
+	"if": true, "then": true, "else": true, "elif": true, "fi": true,
+	"for": true, "while": true, "until": true, "do": true, "done": true,
+	"case": true, "esac": true, "in": true, "function": true,
+}
+
+var shellAliases = map[string]string{
+	"url": "urlencode",
+}
 
 // RegisterBuiltInCommandHandlers registers handlers for all built-in commands
 func RegisterBuiltInCommandHandlers() {
@@ -78,6 +91,11 @@ func RegisterBuiltInCommandHandlers() {
 	registerCommandHandler("binary", handleBinary)
 	registerCommandHandler("hash", handleHash)
 	registerCommandHandler("extract-strings", handleExtractStrings)
+	registerCommandHandler("type", handleType)
+	registerCommandHandler("size", handleSize)
+	registerCommandHandler("meta", handleMeta)
+	registerCommandHandler("obfu", handleObfu)
+	registerCommandHandler("mini", handleMini)
 	registerCommandHandler("edit", handleEdit)
 	registerCommandHandler("files", handleFiles)
 	registerCommandHandler("sec", handleSec)
@@ -110,6 +128,138 @@ func handleHelp(args []string) (int, error) {
 	} else {
 		help.DisplayHelp()
 	}
+	return 0, nil
+}
+
+func handleType(args []string) (int, error) {
+	if len(args) < 2 {
+		gui.ErrorBox("Usage: type <name> [name ...]")
+		return 1, fmt.Errorf("invalid usage")
+	}
+
+	for _, name := range args[1:] {
+		resolved, ok := resolveType(name)
+		if ok {
+			fmt.Println(resolved)
+		} else {
+			fmt.Printf("%s not found\n", name)
+		}
+	}
+
+	return 0, nil
+}
+
+func resolveType(name string) (string, bool) {
+	if aliasTarget, isAlias := shellAliases[name]; isAlias {
+		return fmt.Sprintf("%s is an alias for %s", name, aliasTarget), true
+	}
+
+	if shellKeywords[name] {
+		return fmt.Sprintf("%s is a shell keyword", name), true
+	}
+
+	cmd, exists := GetCommand(name)
+	if exists {
+		if cmd.Category == CategoryExternal {
+			if exePath, ok := findExecutablePath(name); ok {
+				return fmt.Sprintf("%s is %s", name, exePath), true
+			}
+			return fmt.Sprintf("%s is an executable file", name), true
+		}
+		return fmt.Sprintf("%s is a shell builtin", name), true
+	}
+
+	if exePath, ok := findExecutablePath(name); ok {
+		return fmt.Sprintf("%s is %s", name, exePath), true
+	}
+
+	if strings.Contains(name, "/") {
+		if info, err := os.Stat(name); err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
+			abs, _ := filepath.Abs(name)
+			return fmt.Sprintf("%s is %s", name, abs), true
+		}
+	}
+
+	return "", false
+}
+
+func findExecutablePath(name string) (string, bool) {
+	for _, dir := range globals.TrustedDirs {
+		candidate := filepath.Join(dir, name)
+		info, err := os.Stat(candidate)
+		if err == nil && !info.IsDir() && info.Mode()&0111 != 0 {
+			return candidate, true
+		}
+	}
+
+	if exePath, err := exec.LookPath(name); err == nil {
+		return exePath, true
+	}
+
+	return "", false
+}
+
+func handleSize(args []string) (int, error) {
+	if len(args) < 2 {
+		gui.ErrorBox("Usage: size <-b|-kb|-mb|-gb|-tb|-pb> <path>")
+		return 1, fmt.Errorf("invalid usage")
+	}
+
+	result, err := tools.SizeCommand(args[1:])
+	if err != nil {
+		gui.ErrorBox(err.Error())
+		return 1, err
+	}
+
+	fmt.Println(result)
+	return 0, nil
+}
+
+func handleMeta(args []string) (int, error) {
+	if len(args) < 2 {
+		gui.ErrorBox("Usage: meta [-r] <file>")
+		return 1, fmt.Errorf("invalid usage")
+	}
+
+	result, err := tools.MetaCommand(args[1:])
+	if err != nil {
+		gui.ErrorBox(err.Error())
+		return 1, err
+	}
+
+	fmt.Println(result)
+	return 0, nil
+}
+
+func handleObfu(args []string) (int, error) {
+	if len(args) < 2 {
+		gui.ErrorBox("Usage: obfu <text>")
+		return 1, fmt.Errorf("invalid usage")
+	}
+
+	result, err := tools.ObfuCommand(args[1:])
+	if err != nil {
+		gui.ErrorBox(err.Error())
+		return 1, err
+	}
+
+	fmt.Println(result)
+	return 0, nil
+}
+
+func handleMini(args []string) (int, error) {
+	if len(args) < 2 {
+		gui.ErrorBox("Usage: mini <file>")
+		return 1, fmt.Errorf("invalid usage")
+	}
+
+	result, err := tools.MiniCommand(args[1:])
+	if err != nil {
+		gui.ErrorBox(err.Error())
+		return 1, err
+	}
+
+	fmt.Println(result)
 	return 0, nil
 }
 
@@ -232,10 +382,15 @@ func handleAllowed(args []string) (int, error) {
 			for _, cmd := range GetBuiltInCommands() {
 				fmt.Println(" - " + cmd)
 			}
+		default:
+			logging.LogAlert("Usage: allowed <dirs|commands|bins|builtins|all>")
+			gui.ErrorBox("Usage: allowed <dirs|commands|bins|builtins|all>")
+			return 1, fmt.Errorf("invalid usage")
 		}
 	} else {
 		logging.LogAlert("Usage: allowed <dirs|commands|bins|builtins|all>")
 		gui.ErrorBox("Usage: allowed <dirs|commands|bins|builtins|all>")
+		return 1, fmt.Errorf("invalid usage")
 	}
 	return 0, nil
 }
@@ -447,8 +602,8 @@ func handlePortscan(args []string) (int, error) {
 	}
 
 	if target == "" {
-		gui.ErrorBox("No target specified")
-		return 1, fmt.Errorf("no target specified")
+		gui.ErrorBox("Usage: portscan [-p ports] [-udp] [-t timing] [-v] [-j|-html] [-o file] [-syn] [-os] [-e] <target>")
+		return 1, fmt.Errorf("invalid usage")
 	}
 
 	pentest.RunPortScan(target, portRange, options)
@@ -557,8 +712,8 @@ func handleWebscan(args []string) (int, error) {
 	}
 
 	if target == "" {
-		gui.ErrorBox("No target specified")
-		return 1, fmt.Errorf("no target specified")
+		help.DisplayHelp("webscan")
+		return 1, fmt.Errorf("invalid usage")
 	}
 
 	pentest.WebScan(target, options)
@@ -621,8 +776,8 @@ func handleSession(args []string) (int, error) {
 		}
 		pentest.CloseSession(id)
 	default:
-		gui.ErrorBox("Unknown session command. Use -l, -i, -c, or -k")
-		return 1, fmt.Errorf("invalid option: %s", args[1])
+		gui.ErrorBox("Usage: session [-l|-i <id>|-c <port>|-k <id>]")
+		return 1, fmt.Errorf("invalid usage")
 	}
 
 	return 0, nil
@@ -631,8 +786,8 @@ func handleSession(args []string) (int, error) {
 // handleLogs handles the logs command
 func handleLogs(args []string) (int, error) {
 	if len(args) < 2 {
-		logging.LogAlert("Usage: logs list")
-		gui.ErrorBox("Usage: logs list")
+		logging.LogAlert("Usage: logs <list|clear>")
+		gui.ErrorBox("Usage: logs <list|clear>")
 		return 1, fmt.Errorf("invalid usage")
 	}
 
@@ -645,9 +800,9 @@ func handleLogs(args []string) (int, error) {
 			return 1, err
 		}
 	default:
-		logging.LogAlert("Invalid logs option. Use 'list'.")
-		gui.ErrorBox("Invalid logs option. Use 'list'.")
-		return 1, fmt.Errorf("invalid option: %s", args[1])
+		logging.LogAlert("Usage: logs <list|clear>")
+		gui.ErrorBox("Usage: logs <list|clear>")
+		return 1, fmt.Errorf("invalid usage")
 	}
 
 	return 0, nil
@@ -672,9 +827,9 @@ func handleHistory(args []string) (int, error) {
 			core.ClearHistory(globals.HistoryPath)
 			gui.AlertBox("History cleared")
 		default:
-			logging.LogAlert("Invalid history option. Use -s for search or -i for interactive mode.")
-			gui.ErrorBox("Invalid history option. Use -s for search or -i for interactive mode.")
-			return 1, fmt.Errorf("invalid option")
+			logging.LogAlert("Usage: history [-s <query>] [-i|clear]")
+			gui.ErrorBox("Usage: history [-s <query>] [-i|clear]")
+			return 1, fmt.Errorf("invalid usage")
 		}
 	}
 	return 0, nil
@@ -701,6 +856,10 @@ func handleMore(args []string) (int, error) {
 func handleBase64(args []string) (int, error) {
 	err := tools.ExecuteEncodingCommand(args, tools.Base64Encoding)
 	if err != nil {
+		if strings.Contains(err.Error(), "missing arguments") || strings.Contains(err.Error(), "missing input") {
+			gui.ErrorBox("Usage: base64 [-e|-d] <string> OR base64 [-e|-d] -f <file>")
+			return 1, fmt.Errorf("invalid usage")
+		}
 		gui.ErrorBox(fmt.Sprintf("Base64 operation failed: %v", err))
 		return 1, err
 	}
@@ -711,6 +870,10 @@ func handleBase64(args []string) (int, error) {
 func handleHex(args []string) (int, error) {
 	err := tools.ExecuteEncodingCommand(args, tools.HexEncoding)
 	if err != nil {
+		if strings.Contains(err.Error(), "missing arguments") || strings.Contains(err.Error(), "missing input") {
+			gui.ErrorBox("Usage: hex [-e|-d] <string> OR hex [-e|-d] -f <file>")
+			return 1, fmt.Errorf("invalid usage")
+		}
 		gui.ErrorBox(fmt.Sprintf("Hex operation failed: %v", err))
 		return 1, err
 	}
@@ -721,6 +884,10 @@ func handleHex(args []string) (int, error) {
 func handleUrlEncode(args []string) (int, error) {
 	err := tools.ExecuteEncodingCommand(args, tools.URLEncoding)
 	if err != nil {
+		if strings.Contains(err.Error(), "missing arguments") || strings.Contains(err.Error(), "missing input") {
+			gui.ErrorBox("Usage: urlencode [-e|-d] <string>")
+			return 1, fmt.Errorf("invalid usage")
+		}
 		gui.ErrorBox(fmt.Sprintf("URL encoding operation failed: %v", err))
 		return 1, err
 	}
@@ -731,6 +898,10 @@ func handleUrlEncode(args []string) (int, error) {
 func handleBinary(args []string) (int, error) {
 	err := tools.ExecuteEncodingCommand(args, tools.BinaryEncoding)
 	if err != nil {
+		if strings.Contains(err.Error(), "missing arguments") || strings.Contains(err.Error(), "missing input") {
+			gui.ErrorBox("Usage: binary [-e|-d] <string> OR binary [-e|-d] -f <file>")
+			return 1, fmt.Errorf("invalid usage")
+		}
 		gui.ErrorBox(fmt.Sprintf("Binary operation failed: %v", err))
 		return 1, err
 	}

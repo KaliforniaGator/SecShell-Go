@@ -103,6 +103,11 @@ ________________________________________________________________________________
 | `hash`                 | Calculate or compare hashes.<br>Usage: `hash -s|-f <String|file> [algo] [-c <hash-to-compare>]<br>&nbsp;&nbsp;Algo: md5, sha1, sha256, sha512, all` |
 | **Analysis**           |                                                                                                     |
 | `extract-strings`      | Extract printable strings from binaries.<br>Usage: `extract-strings <file> [-n min-len] [-o output.json]<br>&nbsp;&nbsp;(or > output.json)`            |
+| `type`                 | Show how a name resolves in SecShell (builtin, alias, keyword, or executable).<br>Usage: `type <name> [name ...]` |
+| `size`                 | Show file/folder size in selected unit.<br>Usage: `size <-b|-kb|-mb|-gb|-tb|-pb> <path>` |
+| `meta`                 | Show file metadata or remove extended metadata.<br>Usage: `meta [-r] <file>` |
+| `obfu`                 | Obfuscate text and print encoded output.<br>Usage: `obfu <text>` |
+| `mini`                 | Minify file content in place (HTML/CSS/JS/plain text).<br>Usage: `mini <file>` |
 | **Scripting**          |                                                                                                     |
 | `./<script>`           | Execute scripts with automatic interpreter detection.                                               |
 | **UI/Display**         |                                                                                                     |
@@ -217,6 +222,12 @@ secshell
 - Decode a hex string: `hex -d "48656c6c6f"`
 - Calculate SHA256 hash: `hash -s "test" sha256`
 - Extract strings from a binary: `extract-strings firmware.bin -n 8`
+- Resolve command type: `type ls cd url if`
+- Show folder size in MB: `size -mb ./tools`
+- Show metadata: `meta ./README.md`
+- Remove file metadata: `meta -r image.jpg`
+- Obfuscate text: `obfu "my secret token"`
+- Minify a JS file: `mini app.js`
 - Run a Python script: `./myscript.py arg1 arg2`
 
 ---

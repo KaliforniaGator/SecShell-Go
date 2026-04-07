@@ -142,6 +142,7 @@ func executePipeline(pipeline PipelineNode, lastExitCode *int) {
 	for i := 0; i < len(cmds)-1; i++ {
 		stdout, err := cmds[i].StdoutPipe()
 		if err != nil {
+			closeFiles(files)
 			logging.LogError(err)
 			gui.ErrorBox(fmt.Sprintf("Failed to set up pipeline: %s", err))
 			*lastExitCode = 1
@@ -220,17 +221,19 @@ func executePipelineBackground(pipeline PipelineNode, jobsMap map[int]*jobs.Job,
 
 	// Multiple commands connected by pipes in background
 	var cmds []*exec.Cmd
+	var files []*os.File
 
 	for _, cmdNode := range pipeline.Commands {
 		cmd, cleanupFiles, err := buildCommandFromNode(cmdNode)
 		if err != nil {
+			closeFiles(files)
 			logging.LogError(err)
 			gui.ErrorBox(fmt.Sprintf("Failed to build command: %s", err))
 			*lastExitCode = 1
 			return
 		}
 		for _, f := range cleanupFiles {
-			f.Close()
+			files = append(files, f)
 		}
 		cmds = append(cmds, cmd)
 	}
@@ -248,6 +251,7 @@ func executePipelineBackground(pipeline PipelineNode, jobsMap map[int]*jobs.Job,
 	for i := 0; i < len(cmds)-1; i++ {
 		stdout, err := cmds[i].StdoutPipe()
 		if err != nil {
+			closeFiles(files)
 			logging.LogError(err)
 			gui.ErrorBox(fmt.Sprintf("Failed to set up pipeline: %s", err))
 			*lastExitCode = 1
@@ -275,6 +279,7 @@ func executePipelineBackground(pipeline PipelineNode, jobsMap map[int]*jobs.Job,
 	// Start all commands
 	for _, cmd := range cmds {
 		if err := cmd.Start(); err != nil {
+			closeFiles(files)
 			logging.LogError(err)
 			gui.ErrorBox(fmt.Sprintf("Failed to start command: %s", err))
 			*lastExitCode = 1
@@ -293,6 +298,8 @@ func executePipelineBackground(pipeline PipelineNode, jobsMap map[int]*jobs.Job,
 
 	// Wait for all commands to finish in a goroutine
 	go func() {
+		defer closeFiles(files)
+
 		exitCode := 0
 		var jobErr error
 
@@ -311,7 +318,7 @@ func executePipelineBackground(pipeline PipelineNode, jobsMap map[int]*jobs.Job,
 		}
 
 		// Update job status
-		job, exists := jobsMap[lastPid]
+		job, exists := jobs.GetJob(jobsMap, lastPid)
 		if exists {
 			job.Lock()
 			job.EndTime = time.Now()
@@ -340,21 +347,26 @@ func executePipelineWithMore(commands []CommandNode, lastExitCode *int) {
 	pr, pw := io.Pipe()
 
 	var cmds []*exec.Cmd
+	var files []*os.File
 
 	for _, cmdNode := range commands {
 		cmd, cleanupFiles, err := buildCommandFromNode(cmdNode)
 		if err != nil {
+			closeFiles(files)
 			logging.LogError(err)
 			gui.ErrorBox(fmt.Sprintf("Failed to build command: %s", err))
+			pw.Close()
+			pr.Close()
 			*lastExitCode = 1
 			return
 		}
 		for _, f := range cleanupFiles {
-			f.Close()
+			files = append(files, f)
 		}
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		cmds = append(cmds, cmd)
 	}
+	defer closeFiles(files)
 
 	// Set up signal handling
 	sigChan := make(chan os.Signal, 1)
@@ -380,6 +392,8 @@ func executePipelineWithMore(commands []CommandNode, lastExitCode *int) {
 		if err != nil {
 			logging.LogError(err)
 			gui.ErrorBox(fmt.Sprintf("Failed to set up pipeline: %s", err))
+			pw.Close()
+			pr.Close()
 			*lastExitCode = 1
 			return
 		}
@@ -397,6 +411,8 @@ func executePipelineWithMore(commands []CommandNode, lastExitCode *int) {
 		if err := cmd.Start(); err != nil {
 			logging.LogError(err)
 			gui.ErrorBox(fmt.Sprintf("Failed to start command: %s", err))
+			pw.Close()
+			pr.Close()
 			*lastExitCode = 1
 			return
 		}
@@ -446,6 +462,9 @@ func executeSingleCommand(cmdNode CommandNode) int {
 		args := append([]string{cmdNode.Name}, cmdNode.Args...)
 		exitCode, err := builtinCmd.Handler(args)
 		if err != nil {
+			if err.Error() == "invalid usage" {
+				return exitCode
+			}
 			logging.LogError(err)
 			gui.ErrorBox(fmt.Sprintf("Command execution failed: %s", err))
 			return 1
@@ -621,9 +640,6 @@ func executeSingleCommandBackground(cmdNode CommandNode, jobsMap map[int]*jobs.J
 		gui.ErrorBox(fmt.Sprintf("Failed to build command: %s", err))
 		return
 	}
-	for _, f := range files {
-		f.Close()
-	}
 
 	// No stdin for background jobs
 	cmd_exe.Stdin = nil
@@ -632,6 +648,7 @@ func executeSingleCommandBackground(cmdNode CommandNode, jobsMap map[int]*jobs.J
 
 	// Start the command
 	if err := cmd_exe.Start(); err != nil {
+		closeFiles(files)
 		logging.LogError(err)
 		gui.ErrorBox(fmt.Sprintf("Failed to start background job: %s", err))
 		return
@@ -645,6 +662,8 @@ func executeSingleCommandBackground(cmdNode CommandNode, jobsMap map[int]*jobs.J
 
 	// Wait in goroutine
 	go func() {
+		defer closeFiles(files)
+
 		err := cmd_exe.Wait()
 		exitCode := 0
 
@@ -656,7 +675,7 @@ func executeSingleCommandBackground(cmdNode CommandNode, jobsMap map[int]*jobs.J
 		}
 
 		// Update job status
-		job, exists := jobsMap[cmd_exe.Process.Pid]
+		job, exists := jobs.GetJob(jobsMap, cmd_exe.Process.Pid)
 		if exists {
 			job.Lock()
 			job.EndTime = time.Now()
@@ -670,6 +689,14 @@ func executeSingleCommandBackground(cmdNode CommandNode, jobsMap map[int]*jobs.J
 			job.Unlock()
 		}
 	}()
+}
+
+func closeFiles(files []*os.File) {
+	for _, f := range files {
+		if f != nil {
+			_ = f.Close()
+		}
+	}
 }
 
 // buildCommandFromNode creates an exec.Cmd from a CommandNode
@@ -849,7 +876,7 @@ func executeBackgroundCommand(args []string, jobsMap map[int]*jobs.Job) {
 			}
 			logging.LogError(err)
 		}
-		job, exists := jobsMap[cmd.Process.Pid]
+		job, exists := jobs.GetJob(jobsMap, cmd.Process.Pid)
 		if exists {
 			job.Lock()
 			job.EndTime = time.Now()
@@ -1306,7 +1333,7 @@ func executeBackgroundPipedCommands(commands []string, jobsMap map[int]*jobs.Job
 		if jobErr != nil {
 			logging.LogError(jobErr)
 		}
-		job, exists := jobsMap[lastPid]
+		job, exists := jobs.GetJob(jobsMap, lastPid)
 		if exists {
 			job.Lock()
 			job.EndTime = time.Now()
