@@ -230,7 +230,7 @@ func (s *SecShell) getInput() string {
 					if buf[i+1] == '[' {
 						switch buf[i+2] {
 						case 'A': // Up arrow
-							if s.historyIndex > 0 {
+							if len(s.history) > 0 && s.historyIndex > 0 {
 								s.historyIndex--
 								newLine := strings.TrimSpace(s.history[s.historyIndex])
 								fmt.Printf("\x1b[%dD\x1b[K%s", pos, newLine)
@@ -239,7 +239,7 @@ func (s *SecShell) getInput() string {
 							}
 							i += 2
 						case 'B': // Down arrow
-							if s.historyIndex < len(s.history)-1 {
+							if len(s.history) > 0 && s.historyIndex < len(s.history)-1 {
 								s.historyIndex++
 								newLine := strings.TrimSpace(s.history[s.historyIndex])
 								fmt.Printf("\x1b[%dD\x1b[K%s", pos, newLine)
