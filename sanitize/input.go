@@ -6,9 +6,9 @@ import (
 
 // Input sanitizes shell input with configurable character restrictions
 func Input(input string, allowSpecialChars bool) string {
-	forbidden := ";`\\"
+	forbidden := "`"
 	if !allowSpecialChars {
-		forbidden += "&|><${}[]()\"'"
+		forbidden += ";&|><${}[]()\"'"
 	}
 
 	// Remove all forbidden characters
