@@ -277,21 +277,144 @@ func NeedsRawTerminal(cmdName string) bool {
 	return cmd.TermMode == ModeRaw
 }
 
+// splitCommandLine splits a command line into words, respecting quoted strings
+// It returns the list of words and the starting position in the original line for each word
+func splitCommandLine(line string) ([]string, []int) {
+	var words []string
+	var wordStarts []int
+	i := 0
+	n := len(line)
+
+	for i < n {
+		// Skip whitespace
+		for i < n && (line[i] == ' ' || line[i] == '\t') {
+			i++
+		}
+		if i >= n {
+			break
+		}
+
+		// Start of a word
+		wordStart := i
+		word := ""
+
+		// Check if the word starts with a quote
+		if line[i] == '"' || line[i] == '\'' {
+			quote := line[i]
+			i++ // Skip opening quote
+			start := i
+			for i < n && line[i] != quote {
+				// Handle escaped quotes
+				if line[i] == '\\' && i+1 < n && (line[i+1] == '"' || line[i+1] == '\'' || line[i+1] == ' ') {
+					i += 2
+					continue
+				}
+				i++
+			}
+			word = line[start:i]
+			if i < n {
+				i++ // Skip closing quote
+			}
+		} else {
+			// Unquoted word - include escaped spaces
+			start := i
+			for i < n && line[i] != ' ' && line[i] != '\t' {
+				// Handle escaped space
+				if line[i] == '\\' && i+1 < n && line[i+1] == ' ' {
+					word += line[start : i+1]
+					i += 2
+					start = i
+					continue
+				}
+				i++
+			}
+			word = line[start:i]
+		}
+
+		if word != "" {
+			words = append(words, word)
+			wordStarts = append(wordStarts, wordStart)
+		}
+	}
+
+	return words, wordStarts
+}
+
+// joinCommandLine joins words back into a command line, quoting strings that contain spaces
+// It respects pre-escaped words (with \) and doesn't double-quote them
+func joinCommandLine(words []string) string {
+	var result strings.Builder
+	for i, word := range words {
+		if i > 0 {
+			result.WriteString(" ")
+		}
+		// If word already has backslash escapes, don't quote it - let the tokenizer handle escapes
+		if strings.Contains(word, "\\") {
+			result.WriteString(word)
+		} else if strings.Contains(word, " ") || strings.Contains(word, "\t") || strings.Contains(word, "'") || strings.Contains(word, "\"") {
+			// Only quote if there are no backslash escapes already present
+			result.WriteString("\"")
+			result.WriteString(strings.ReplaceAll(word, "\\", "\\\\"))
+			result.WriteString("\"")
+		} else {
+			result.WriteString(word)
+		}
+	}
+	return result.String()
+}
+
+// escapePathForCompletion escapes a path for display in the command line
+func escapePathForCompletion(path string) string {
+	// Escape backslashes first, then spaces
+	path = strings.ReplaceAll(path, "\\", "\\\\")
+	path = strings.ReplaceAll(path, " ", "\\ ")
+	path = strings.ReplaceAll(path, "\t", "\\	")
+	path = strings.ReplaceAll(path, "'", "\\'")
+	path = strings.ReplaceAll(path, "(", "\\(")
+	path = strings.ReplaceAll(path, ")", "\\)")
+	path = strings.ReplaceAll(path, "&", "\\&")
+	path = strings.ReplaceAll(path, ";", "\\;")
+	return path
+}
+
+// unescapePath unescapes a path for filesystem operations
+func unescapePath(path string) string {
+	var result strings.Builder
+	i := 0
+	n := len(path)
+
+	for i < n {
+		if path[i] == '\\' && i+1 < n {
+			switch path[i+1] {
+			case ' ', '\t', '\'', '"', '(', ')', '&', ';', '\\':
+				result.WriteByte(path[i+1])
+				i += 2
+				continue
+			}
+		}
+		result.WriteByte(path[i])
+		i++
+	}
+
+	return result.String()
+}
+
 // CompleteCommand provides command completion functionality
 func CompleteCommand(line string, pos int) (string, int) {
 	if line == "" {
 		return line, pos
 	}
 
-	words := strings.Fields(line)
+	words, _ := splitCommandLine(line)
 	if len(words) == 0 {
 		return line, pos
 	}
 
-	lastWord := words[len(words)-1]
-	prefix := lastWord
+	prefix := words[len(words)-1]
+	cmdWords := len(words)
+
 	// Special handling for help command completion
-	if len(words) == 2 && words[0] == "help" {
+	if cmdWords == 2 && words[0] == "help" {
 		matches := getHelpCommandMatches(prefix)
 		if len(matches) == 0 {
 			return line, pos
@@ -299,7 +422,7 @@ func CompleteCommand(line string, pos int) (string, int) {
 
 		// Replace the last word with the first match
 		words[len(words)-1] = matches[0]
-		newLine := strings.Join(words, " ")
+		newLine := joinCommandLine(words)
 
 		// Clear line and print bottom first
 		ui.ClearLineAndPrintBottom()
@@ -325,8 +448,8 @@ func CompleteCommand(line string, pos int) (string, int) {
 	}
 
 	// Special handling for ./ script completion
-	if len(words) == 1 && strings.HasPrefix(lastWord, "./") {
-		scriptPrefix := lastWord[2:] // Remove "./" from the prefix
+	if cmdWords == 1 && strings.HasPrefix(prefix, "./") {
+		scriptPrefix := prefix[2:] // Remove "./" from the prefix
 		currentDir, err := os.Getwd()
 		if err == nil {
 			matches, _ := filepath.Glob(filepath.Join(currentDir, scriptPrefix+"*"))
@@ -380,7 +503,7 @@ func CompleteCommand(line string, pos int) (string, int) {
 
 			if len(scriptMatches) > 0 {
 				words[len(words)-1] = scriptMatches[0]
-				newLine := strings.Join(words, " ")
+				newLine := joinCommandLine(words)
 
 				// Clear line and print bottom first
 				ui.ClearLineAndPrintBottom()
@@ -409,14 +532,15 @@ func CompleteCommand(line string, pos int) (string, int) {
 	}
 
 	// Command completion for first word
-	if len(words) == 1 {
+	if cmdWords == 1 {
 		// Command completion
 		matches := getCommandMatches(prefix)
 		if len(matches) == 0 {
 			return line, pos
-		} // Replace the last word with the first match
+		}
+		// Replace the last word with the first match
 		words[len(words)-1] = matches[0]
-		newLine := strings.Join(words, " ")
+		newLine := joinCommandLine(words)
 
 		// Clear line and print bottom first
 		ui.ClearLineAndPrintBottom()
@@ -440,13 +564,54 @@ func CompleteCommand(line string, pos int) (string, int) {
 
 		return newLine, len(newLine)
 	} else {
-		// Path completion
-		matches, _ := filepath.Glob(prefix + "*")
+		// Path completion - handle paths with spaces
+		// Unescape the path for filesystem operations
+		pathPrefix := unescapePath(prefix)
+
+		// Get matches using the unescaped path
+		matches, _ := filepath.Glob(pathPrefix + "*")
+
+		// If no matches with glob, try directory completion
+		if len(matches) == 0 {
+			// Check if the path ends with / or is a partial directory
+			dirPath := pathPrefix
+			if !strings.HasSuffix(dirPath, "/") {
+				// Try to find the parent directory
+				if idx := strings.LastIndex(dirPath, "/"); idx >= 0 {
+					dirPath = dirPath[:idx+1]
+				} else {
+					dirPath = "./"
+				}
+			}
+			// List entries in the directory
+			if entries, err := os.ReadDir(dirPath); err == nil {
+				entryPrefix := filepath.Base(pathPrefix)
+				if pathPrefix == "" || pathPrefix == "." {
+					entryPrefix = ""
+				}
+				for _, entry := range entries {
+					name := entry.Name()
+					if strings.HasPrefix(name, entryPrefix) {
+						// Reconstruct the full path with escaped spaces
+						escapedName := strings.ReplaceAll(name, " ", "\\ ")
+						fullPath := dirPath + escapedName
+						if entry.IsDir() {
+							fullPath += "/"
+						}
+						matches = append(matches, fullPath)
+					}
+				}
+			}
+		}
+
 		if len(matches) == 0 {
 			return line, pos
-		} // Replace the last word with the first match
-		words[len(words)-1] = matches[0]
-		newLine := strings.Join(words, " ")
+		}
+
+		// Escape the match for the command line
+		escapedMatch := escapePathForCompletion(matches[0])
+		words[len(words)-1] = escapedMatch
+		newLine := joinCommandLine(words)
 
 		// Clear line and print bottom first
 		ui.ClearLineAndPrintBottom()
@@ -461,7 +626,8 @@ func CompleteCommand(line string, pos int) (string, int) {
 			fmt.Println()
 			ui.ClearLine()
 			for _, match := range matches {
-				fmt.Print(match + "  ")
+				escapedMatch := escapePathForCompletion(match)
+				fmt.Print(escapedMatch + "  ")
 			}
 			fmt.Println()
 			// Restore cursor position
