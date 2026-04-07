@@ -88,7 +88,7 @@ func executeChain(chain *ChainNode, jobsMap map[int]*jobs.Job, originalInput str
 			executePipelineBackground(pipeline, jobsMap, &lastExitCode)
 		} else {
 			// Check for 'more' as the last command
-			if len(pipeline.Commands) > 0 && pipeline.Commands[len(pipeline.Commands)-1].Name == "more" {
+			if len(pipeline.Commands) > 1 && pipeline.Commands[len(pipeline.Commands)-1].Name == "more" {
 				executePipelineWithMore(pipeline.Commands[:len(pipeline.Commands)-1], &lastExitCode)
 			} else {
 				executePipeline(pipeline, &lastExitCode)
@@ -229,10 +229,8 @@ func executePipelineBackground(pipeline PipelineNode, jobsMap map[int]*jobs.Job,
 			*lastExitCode = 1
 			return
 		}
-		if cleanupFiles != nil {
-			for _, f := range cleanupFiles {
-				f.Close()
-			}
+		for _, f := range cleanupFiles {
+			f.Close()
 		}
 		cmds = append(cmds, cmd)
 	}
@@ -351,10 +349,8 @@ func executePipelineWithMore(commands []CommandNode, lastExitCode *int) {
 			*lastExitCode = 1
 			return
 		}
-		if cleanupFiles != nil {
-			for _, f := range cleanupFiles {
-				f.Close()
-			}
+		for _, f := range cleanupFiles {
+			f.Close()
 		}
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		cmds = append(cmds, cmd)
@@ -408,12 +404,13 @@ func executePipelineWithMore(commands []CommandNode, lastExitCode *int) {
 
 	// Read the output
 	var lines []string
+	scanDone := make(chan error, 1)
 	go func() {
 		scanner := bufio.NewScanner(pr)
 		for scanner.Scan() {
 			lines = append(lines, scanner.Text())
 		}
-		pw.Close()
+		scanDone <- scanner.Err()
 	}()
 
 	// Wait for all commands
@@ -424,15 +421,18 @@ func executePipelineWithMore(commands []CommandNode, lastExitCode *int) {
 	}
 
 	pw.Close()
+	if scanErr := <-scanDone; scanErr != nil {
+		logging.LogError(scanErr)
+		gui.ErrorBox(fmt.Sprintf("Failed to read piped output: %s", scanErr))
+		*lastExitCode = 1
+		return
+	}
 
-	// Pass collected lines to More
-	moreCmd, exists := GetCommand("more")
-	if exists && moreCmd.Handler != nil {
-		moreCmd.Handler([]string{"more", strings.Join(lines, "\n")})
-	} else {
-		for _, line := range lines {
-			fmt.Println(line)
-		}
+	if err := core.More(lines); err != nil {
+		logging.LogError(err)
+		gui.ErrorBox(fmt.Sprintf("Error: %v", err))
+		*lastExitCode = 1
+		return
 	}
 
 	*lastExitCode = 0
@@ -1194,12 +1194,13 @@ func executePipeWithMore(commands []string) {
 	}
 
 	var lines []string
+	scanDone := make(chan error, 1)
 	go func() {
 		scanner := bufio.NewScanner(pr)
 		for scanner.Scan() {
 			lines = append(lines, scanner.Text())
 		}
-		pw.Close()
+		scanDone <- scanner.Err()
 	}()
 
 	for _, cmd := range cmds {
@@ -1209,14 +1210,15 @@ func executePipeWithMore(commands []string) {
 	}
 
 	pw.Close()
+	if scanErr := <-scanDone; scanErr != nil {
+		logging.LogError(scanErr)
+		gui.ErrorBox(fmt.Sprintf("Failed to read piped output: %s", scanErr))
+		return
+	}
 
-	moreCmd, exists := GetCommand("more")
-	if exists && moreCmd.Handler != nil {
-		moreCmd.Handler([]string{"more", strings.Join(lines, "\n")})
-	} else {
-		for _, line := range lines {
-			fmt.Println(line)
-		}
+	if err := core.More(lines); err != nil {
+		logging.LogError(err)
+		gui.ErrorBox(fmt.Sprintf("Error: %v", err))
 	}
 }
 
