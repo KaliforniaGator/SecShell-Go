@@ -1,6 +1,7 @@
 package cmdmap
 
 import (
+	"crypto/rand"
 	"secshell/admin"
 	"secshell/colors"
 	"secshell/core"
@@ -99,6 +100,7 @@ func RegisterBuiltInCommandHandlers() {
 	registerCommandHandler("edit", handleEdit)
 	registerCommandHandler("files", handleFiles)
 	registerCommandHandler("sec", handleSec)
+	registerCommandHandler("pass", handlePass)
 
 	// UI commands
 	registerCommandHandler("prompt", handlePrompt)
@@ -1029,4 +1031,173 @@ func handleSec(args []string) (int, error) {
 		return 1, err
 	}
 	return 0, nil
+}
+
+// handlePass handles the pass command - generate secure passwords
+func handlePass(args []string) (int, error) {
+	generate := false
+	passType := "AN"
+	length := 16
+	outputFile := ""
+
+	// Parse arguments
+	for i := 1; i < len(args); i++ {
+		switch args[i] {
+		case "-g", "--generate":
+			generate = true
+		case "-t", "--type":
+			if i+1 < len(args) {
+				passType = args[i+1]
+				i++
+			}
+		case "-l", "--length":
+			if i+1 < len(args) {
+				if l, err := strconv.Atoi(args[i+1]); err == nil {
+					length = l
+				}
+				i++
+			}
+		case "-o", "--output":
+			if i+1 < len(args) {
+				outputFile = args[i+1]
+				i++
+			}
+		default:
+			if strings.HasPrefix(args[i], "-") {
+				gui.ErrorBox("Usage: pass -g [-t <type>] [-l <length>] [-o <file>]")
+				return 1, fmt.Errorf("invalid flag: %s", args[i])
+			}
+		}
+	}
+
+	if !generate {
+		gui.ErrorBox("Usage: pass -g [-t <type>] [-l <length>] [-o <file>]")
+		return 1, fmt.Errorf("-g flag is required")
+	}
+
+	// Validate length
+	if length < 8 || length > 128 {
+		gui.ErrorBox("Password length must be between 8 and 128")
+		return 1, fmt.Errorf("invalid length: %d", length)
+	}
+
+	// Validate type
+	validTypes := map[string]bool{"AN": true, "ANS": true, "N": true, "A": true}
+	if !validTypes[passType] {
+		gui.ErrorBox("Invalid type. Must be: AN, ANS, N, or A")
+		return 1, fmt.Errorf("invalid type: %s", passType)
+	}
+
+	// Generate password
+	password, err := generatePassword(passType, length)
+	if err != nil {
+		logging.LogError(err)
+		gui.ErrorBox(fmt.Sprintf("Failed to generate password: %v", err))
+		return 1, err
+	}
+
+	// Determine output format from file extension
+	var outputFormat string
+	if outputFile != "" {
+		ext := strings.ToLower(filepath.Ext(outputFile))
+		switch ext {
+		case ".json":
+			outputFormat = "JSON"
+		case ".txt":
+			outputFormat = "TXT"
+		default:
+			outputFormat = "TXT"
+		}
+	} else {
+		outputFormat = "TXT"
+	}
+
+	// Output based on format and file
+	if outputFile != "" {
+		var content string
+		if outputFormat == "JSON" {
+			content = fmt.Sprintf(`{"password": "%s", "length": %d, "type": "%s"}`+"\n", password, length, passType)
+		} else {
+			content = password + "\n"
+		}
+		err := os.WriteFile(outputFile, []byte(content), 0644)
+		if err != nil {
+			logging.LogError(err)
+			gui.ErrorBox(fmt.Sprintf("Failed to write to file: %v", err))
+			return 1, err
+		}
+		fmt.Printf("Password written to %s\n", outputFile)
+	} else {
+		if outputFormat == "JSON" {
+			fmt.Printf(`{"password": "%s", "length": %d, "type": "%s"}`+"\n", password, length, passType)
+		} else {
+			fmt.Println(password)
+		}
+	}
+
+	return 0, nil
+}
+
+// generatePassword generates a password based on type and length
+func generatePassword(passType string, length int) (string, error) {
+	const (
+		letters      = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+		digits       = "0123456789"
+		symbols      = "!@#$%^&*()_+-=[]{}|;:,.<>?"
+		alphanumeric = letters + digits
+		alphanumSym  = letters + digits + symbols
+	)
+
+	var charset string
+	switch passType {
+	case "AN":
+		charset = alphanumeric
+	case "ANS":
+		charset = alphanumSym
+	case "N":
+		charset = digits
+	case "A":
+		charset = letters
+	default:
+		return "", fmt.Errorf("unsupported password type")
+	}
+
+	// Use crypto/rand for secure random generation
+	password := make([]byte, length)
+	for i := range password {
+		randomIndex, err := randInt(len(charset))
+		if err != nil {
+			return "", err
+		}
+		password[i] = charset[randomIndex]
+	}
+
+	return string(password), nil
+}
+
+// randInt generates a secure random integer in range [0, max)
+func randInt(max int) (int, error) {
+	if max <= 0 {
+		return 0, fmt.Errorf("invalid max value")
+	}
+
+	// Calculate number of bytes needed
+	bytesNeeded := (max + 255) / 256
+	if bytesNeeded < 1 {
+		bytesNeeded = 1
+	}
+
+	buf := make([]byte, bytesNeeded)
+	_, err := rand.Read(buf)
+	if err != nil {
+		return 0, err
+	}
+
+	// Convert bytes to int and mod by max
+	val := 0
+	for _, b := range buf {
+		val = (val << 8) | int(b)
+	}
+
+	return val % max, nil
 }

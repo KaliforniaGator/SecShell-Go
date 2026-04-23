@@ -73,6 +73,7 @@ var HelpCommands = []string{
 	"prompt",
 	"files",
 	"sec",
+	"pass",
 }
 
 // HelpTopics contains detailed help information for each command
@@ -547,6 +548,24 @@ Options:
 		Examples:    []string{"sec"},
 		Category:    "System",
 	},
+	"pass": {
+		Command:     "pass",
+		Description: "Generate secure passwords with customizable options",
+		Usage: `pass -g [options]
+Options:
+    -g, --generate           Generate a password
+    -t, --type <type>        Password type: AN (alphanumerical), ANS (alphanumerical-w-symbols), N (numerical), A (alphabetical)
+    -l, --length <num>       Password length (8-128, default: 16)
+    -o, --output <file>      Output to file (format inferred from extension: .txt or .json)`,
+		Examples: []string{
+			"pass -g",
+			"pass -g -t AN -l 20",
+			"pass -g -t ANS -l 32 -o password.json",
+			"pass -g -t N -l 10 -o nums.txt",
+			"pass -g -t A -l 16 -o alpha.txt",
+		},
+		Category: "Utility",
+	},
 }
 
 // clearLine clears the current line before printing
@@ -580,7 +599,7 @@ func DisplayHelp(args ...string) {
 	}
 
 	// Order of categories to display
-	categories := []string{"System", "FileSystem", "Process", "Environment", "Security", "Network", "Pentesting", "Encoding", "Scripting", "Analysis"}
+	categories := []string{"System", "FileSystem", "Process", "Environment", "Security", "Network", "Pentesting", "Encoding", "Scripting", "Analysis", "Utility"}
 
 	// Try to use the interactive mode with pagination
 	err := runPaginatedHelpInteractiveMode(func() error {
