@@ -540,7 +540,7 @@ func Parse(tokens []Token) (*ChainNode, error) {
 	}
 
 	// Drop any dangling operators left by a trailing ; && || (e.g. "ls ;") so
-	// len(Operators) stays len(Pipelines)-1, which executeChain relies on.
+	// len(Operators) stays len(Pipelines)-1, the invariant consumers rely on.
 	for len(chain.Operators) >= len(chain.Pipelines) && len(chain.Operators) > 0 {
 		chain.Operators = chain.Operators[:len(chain.Operators)-1]
 	}

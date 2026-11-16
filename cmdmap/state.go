@@ -7,7 +7,7 @@ import (
 
 // Phase 3: shell state. Holds the variable store, aliases, and positional
 // parameters that the expansion stage (Phase 2) and the new builtins read and
-// write. $? remains in lastExitStatus (expand.go), updated by executeChain.
+// write. $? remains in lastExitStatus (expand.go), updated by ExecuteProgram.
 //
 // Variable model (bash-like): exported variables live in the process
 // environment so child processes inherit them automatically; non-exported shell

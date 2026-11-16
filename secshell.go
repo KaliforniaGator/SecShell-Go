@@ -1,13 +1,10 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -22,7 +19,6 @@ import (
 	"secshell/history"
 	"secshell/jobs"
 	"secshell/logging"
-	"secshell/sanitize"
 	"secshell/services"
 	"secshell/tools"
 	"secshell/tools/editor"
@@ -294,7 +290,11 @@ func (s *SecShell) getInput() string {
 				}
 			case 13, 10: // Enter (CR or LF)
 				fmt.Println()
-				input := s.sanitizeInput(strings.TrimSpace(line), true)
+				// The command line is passed through verbatim; the shell parser and
+				// expansion stage interpret quoting and metacharacters (parity-first).
+				// Sanitizing here would silently corrupt valid syntax such as
+				// backticks, $(...), and quotes.
+				input := strings.TrimSpace(line)
 				if input != "" {
 					logging.LogCommand(input, 0)
 					core.SaveHistory(s.historyFile, input)
@@ -315,15 +315,6 @@ func (s *SecShell) getInput() string {
 			}
 		}
 	}
-}
-
-// sanitizeInput uses the sanitize package to clean input
-func (s *SecShell) sanitizeInput(input string, allowSpecialChars ...bool) string {
-	allow := true
-	if len(allowSpecialChars) > 0 {
-		allow = allowSpecialChars[0]
-	}
-	return sanitize.Input(input, allow)
 }
 
 // reloadBlacklist reloads the blacklist from the file
@@ -406,272 +397,6 @@ func (s *SecShell) processCommand(input string) {
 
 	// Handle command with our command mapping system
 	cmdmap.ExecuteCommand(input, s.jobs)
-}
-
-// parseQuotedArgs handles quoted arguments in commands
-func (s *SecShell) parseQuotedArgs(args []string) []string {
-	var parsedArgs []string
-	var currentArg string
-	inQuotes := false
-
-	for _, arg := range args {
-		if strings.HasPrefix(arg, "\"") && strings.HasSuffix(arg, "\"") {
-			parsedArgs = append(parsedArgs, strings.Trim(arg, "\""))
-		} else if strings.HasPrefix(arg, "\"") {
-			inQuotes = true
-			currentArg = strings.TrimPrefix(arg, "\"")
-		} else if strings.HasSuffix(arg, "\"") {
-			inQuotes = false
-			currentArg += " " + strings.TrimSuffix(arg, "\"")
-			parsedArgs = append(parsedArgs, currentArg)
-			currentArg = ""
-		} else if inQuotes {
-			currentArg += " " + arg
-		} else {
-			parsedArgs = append(parsedArgs, arg)
-		}
-	}
-
-	if inQuotes {
-		parsedArgs = append(parsedArgs, currentArg)
-	}
-
-	return parsedArgs
-}
-
-// executePipedCommands executes a series of piped commands
-func (s *SecShell) executePipedCommands(commands []string) {
-	// Special handling for 'more' as the last command
-	if strings.TrimSpace(commands[len(commands)-1]) == "more" {
-		// Create a pipe for the output of all previous commands
-		pr, pw := io.Pipe()
-
-		// Execute all commands except 'more'
-		var cmds []*exec.Cmd
-		for i := 0; i < len(commands)-1; i++ {
-			args := strings.Fields(strings.TrimSpace(commands[i]))
-			if len(args) == 0 {
-				continue
-			}
-			cmd := exec.Command(args[0], args[1:]...)
-			// Set process group for each command
-			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-			cmds = append(cmds, cmd)
-		}
-
-		// Set up signal handling to kill all processes in pipeline
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGINT)
-		go func() {
-			<-sigChan
-			for _, cmd := range cmds {
-				if cmd.Process != nil {
-					// Kill entire process group
-					pgid, err := syscall.Getpgid(cmd.Process.Pid)
-					if err == nil {
-						syscall.Kill(-pgid, syscall.SIGKILL)
-					}
-				}
-			}
-			pw.Close()
-		}()
-		defer signal.Stop(sigChan)
-
-		// Set up the pipeline
-		for i := 0; i < len(cmds)-1; i++ {
-			stdout, err := cmds[i].StdoutPipe()
-			if err != nil {
-				logging.LogError(err)
-				gui.ErrorBox(fmt.Sprintf("Failed to set up pipeline: %s", err))
-				return
-			}
-			cmds[i+1].Stdin = stdout
-		}
-
-		// Set first command's stdin to os.Stdin and last command's stdout to our pipe
-		if len(cmds) > 0 {
-			cmds[0].Stdin = os.Stdin
-			cmds[len(cmds)-1].Stdout = pw
-			cmds[len(cmds)-1].Stderr = os.Stderr
-		}
-
-		// Start all commands
-		for _, cmd := range cmds {
-			if err := cmd.Start(); err != nil {
-				logging.LogError(err)
-				gui.ErrorBox(fmt.Sprintf("Failed to start command: %s", err))
-				return
-			}
-		}
-
-		// Read the output in a goroutine
-		var lines []string
-		go func() {
-			scanner := bufio.NewScanner(pr)
-			for scanner.Scan() {
-				lines = append(lines, scanner.Text())
-			}
-			pw.Close()
-		}()
-
-		// Wait for all commands to finish
-		for _, cmd := range cmds {
-			if err := cmd.Wait(); err != nil && !isSignalKilled(err) {
-				logging.LogError(err)
-			}
-		}
-
-		// Close the pipe writer to signal EOF
-		pw.Close()
-
-		// Now pass the collected lines to More
-		err := core.More(lines)
-		if err != nil {
-			logging.LogError(err)
-			gui.ErrorBox(fmt.Sprintf("More failed: %s", err))
-		}
-		return
-	}
-
-	var cmds []*exec.Cmd
-	files := make([]*os.File, 0)
-
-	// Clear the line before executing command
-	fmt.Print("\r\033[K")
-
-	for _, command := range commands {
-		args := strings.Fields(strings.TrimSpace(command))
-		if len(args) == 0 {
-			continue
-		}
-
-		// Add color flags for supported commands
-		switch args[0] {
-		case "grep":
-			hasColorFlag := false
-			for _, arg := range args {
-				if strings.HasPrefix(arg, "--color") {
-					hasColorFlag = true
-					break
-				}
-			}
-			if !hasColorFlag {
-				args = append([]string{args[0], "--color=always"}, args[1:]...)
-			}
-		}
-
-		cmd := exec.Command(args[0], args[1:]...)
-		cmds = append(cmds, cmd)
-	}
-
-	if len(cmds) == 0 {
-		return
-	}
-
-	// Set up the pipeline
-	for i := 0; i < len(cmds)-1; i++ {
-		stdout, err := cmds[i].StdoutPipe()
-		if err != nil {
-			logging.LogError(err)
-			gui.ErrorBox(fmt.Sprintf("Failed to set up pipeline: %s", err))
-			return
-		}
-		cmds[i+1].Stdin = stdout
-	}
-
-	// Set up input/output for first and last commands
-	cmds[0].Stdin = os.Stdin
-	lastCmd := cmds[len(cmds)-1]
-	lastCmd.Stdout = os.Stdout
-	lastCmd.Stderr = os.Stderr
-
-	// Set up process group for all commands in the pipeline
-	for _, cmd := range cmds {
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	}
-
-	// Set up signal handling
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT)
-
-	// Start all commands
-	for _, cmd := range cmds {
-		if err := cmd.Start(); err != nil {
-			logging.LogError(err)
-			gui.ErrorBox(fmt.Sprintf("Failed to start command: %s", err))
-			return
-		}
-	}
-
-	// Forward SIGINT to the process group
-	go func() {
-		for range sigChan {
-			for _, cmd := range cmds {
-				if cmd.Process != nil {
-					syscall.Kill(-cmd.Process.Pid, syscall.SIGINT)
-				}
-			}
-		}
-	}()
-
-	// Wait for all commands to finish
-	for _, cmd := range cmds {
-		err := cmd.Wait()
-		if err != nil && !isSignalKilled(err) {
-			if _, ok := err.(*exec.ExitError); !ok {
-				logging.LogError(err)
-				gui.ErrorBox(fmt.Sprintf("Command execution failed: %s", err))
-			}
-		}
-	}
-
-	signal.Stop(sigChan)
-	close(sigChan)
-
-	// Close any opened files
-	for _, file := range files {
-		file.Close()
-	}
-}
-
-// isCommandAllowed checks if a command is allowed
-func (s *SecShell) isCommandAllowed(cmd string) bool {
-	// Bypass security checks for built-in commands
-	if admin.IsAdmin() && !securityEnabled {
-		return true // Admins bypass whitelist
-	}
-
-	// Sanitize the command first
-	cmd = sanitize.Command(cmd)
-
-	// Define a list of restricted network commands
-	networkCommands := []string{"wget", "curl", "nc", "nmap", "scp", "rsync"}
-
-	for _, netCmd := range networkCommands {
-		if cmd == netCmd {
-			logging.LogAlert("Network access restricted for non-admin users.")
-			gui.ErrorBox("Network access restricted for non-admin users.")
-			return false
-		}
-	}
-
-	// First check if command is in whitelist
-	for _, allowedCmd := range s.allowedCommands {
-		if cmd == allowedCmd {
-			return true
-		}
-	}
-
-	// Verify the command exists in allowed directories
-	for _, dir := range s.allowedDirs {
-		path := filepath.Join(dir, cmd)
-		if _, err := os.Stat(path); err == nil {
-			logging.LogError(err)
-			return true
-		}
-	}
-
-	return false
 }
 
 // isCommandBlacklisted checks if a command is blacklisted

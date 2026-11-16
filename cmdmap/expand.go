@@ -22,7 +22,7 @@ import (
 // Variable state here is intentionally minimal (environment + a few specials);
 // Phase 3 replaces lookupVar with a real shell-variable store.
 
-// lastExitStatus backs $? for parameter expansion. executeChain updates it after
+// lastExitStatus backs $? for parameter expansion. ExecuteProgram updates it after
 // each command line. It is a package-level stand-in until Phase 3's shell state.
 var lastExitStatus int
 
