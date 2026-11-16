@@ -57,6 +57,7 @@ type SecShell struct {
 	versionFile         string
 	historyFile         string
 	historyIndex        int
+	continuationMode    bool // true while reading a PS2 continuation line
 }
 
 // NewSecShell initializes a new SecShell instance
@@ -177,6 +178,14 @@ func (s *SecShell) run() {
 
 	for s.running {
 		input := s.getInput()
+		// If the line is an unfinished compound command, quote, or ends in a
+		// connector, keep reading continuation lines (PS2) until it is complete.
+		for s.running && strings.TrimSpace(input) != "" && cmdmap.IsIncompleteCommand(input) {
+			s.continuationMode = true
+			more := s.getInput()
+			s.continuationMode = false
+			input = input + "\n" + more
+		}
 		s.processCommand(input)
 	}
 
@@ -186,7 +195,11 @@ func (s *SecShell) run() {
 
 // getInput reads user input from the terminal
 func (s *SecShell) getInput() string {
-	ui.DisplayPrompt()
+	if s.continuationMode {
+		fmt.Print("> ")
+	} else {
+		ui.DisplayPrompt()
+	}
 
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {

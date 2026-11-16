@@ -41,24 +41,18 @@ func ExecuteCommand(input string, jobsMap map[int]*jobs.Job) {
 	// Print a new line before command output
 	fmt.Println()
 
-	// Try to parse the command using our shell parser
-	chain, parseErr := ParseString(input)
-
-	// If parsing fails, fall back to legacy handling
+	// Parse into the full program AST (lists, pipelines, compound commands) and
+	// run it through the AST executor. Aliases and expansions are applied per
+	// command inside the executor.
+	prog, parseErr := ParseProgram(input)
 	if parseErr != nil {
-		// Check if it's the here-doc unsupported error
-		if strings.Contains(parseErr.Error(), "here-doc") {
-			logging.LogError(parseErr)
-			gui.ErrorBox(fmt.Sprintf("Command parsing error: %s", parseErr))
-			return
-		}
-		// Fall back to legacy parsing for backward compatibility
+		// Fall back to the legacy string-based handler for anything the grammar
+		// cannot parse yet (retired in Phase 6).
 		executeLegacyCommand(input, jobsMap)
 		return
 	}
 
-	// Execute the command chain
-	executeChain(chain, jobsMap, input)
+	ExecuteProgram(prog, jobsMap)
 }
 
 // executeChain executes a chain of pipelines connected by && and ||
@@ -95,6 +89,9 @@ func executeChain(chain *ChainNode, jobsMap map[int]*jobs.Job, originalInput str
 			}
 		}
 	}
+
+	// Publish the final exit status so the next command line's $? expansion sees it.
+	lastExitStatus = lastExitCode
 }
 
 // executePipeline executes a pipeline of commands connected by pipes
@@ -456,6 +453,22 @@ func executePipelineWithMore(commands []CommandNode, lastExitCode *int) {
 
 // executeSingleCommand executes a single command with its redirections
 func executeSingleCommand(cmdNode CommandNode) int {
+	// Handle leading VAR=value assignments. With no command, they set shell
+	// variables; before a command, they are set in the environment for that
+	// command only and restored afterward (bash prefix-assignment semantics).
+	assignments, rest, isPure := splitAssignments(cmdNode)
+	if len(assignments) > 0 {
+		if isPure {
+			for _, a := range assignments {
+				ShellState.SetVar(a.name, a.value)
+			}
+			return 0
+		}
+		restore := applyTempEnv(assignments)
+		defer restore()
+		cmdNode = rest
+	}
+
 	// Check if it's a built-in command first
 	builtinCmd, exists := GetCommand(cmdNode.Name)
 	if exists && builtinCmd.Handler != nil {
@@ -472,8 +485,11 @@ func executeSingleCommand(cmdNode CommandNode) int {
 		return exitCode
 	}
 
-	// Check if command needs raw terminal mode (e.g., ssh, vim, top, nano)
-	if NeedsRawTerminal(cmdNode.Name) {
+	// Check if command needs raw terminal mode (e.g., ssh, vim, top, nano). Raw
+	// mode is only meaningful with a real terminal; when stdin is not a TTY (a
+	// pipe, a test, a non-interactive run) fall through to normal execution so the
+	// command's real exit status is returned instead of hanging on MakeRaw.
+	if NeedsRawTerminal(cmdNode.Name) && term.IsTerminal(int(os.Stdin.Fd())) {
 		return executeRawCommandWithRedirections(cmdNode)
 	}
 
@@ -703,18 +719,9 @@ func closeFiles(files []*os.File) {
 func buildCommandFromNode(cmdNode CommandNode) (*exec.Cmd, []*os.File, error) {
 	var files []*os.File
 
-	// Process arguments and handle redirections
+	// Arguments are already fully expanded by ExpandChain before execution.
 	args := make([]string, 0, len(cmdNode.Args))
-	for _, arg := range cmdNode.Args {
-		args = append(args, arg)
-	}
-
-	// Expand environment variables for echo command
-	if cmdNode.Name == "echo" {
-		for i, arg := range args {
-			args[i] = os.ExpandEnv(arg)
-		}
-	}
+	args = append(args, cmdNode.Args...)
 
 	cmd := exec.Command(cmdNode.Name, args...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -742,8 +749,39 @@ func buildCommandFromNode(cmdNode CommandNode) (*exec.Cmd, []*os.File, error) {
 			return nil, nil, fmt.Errorf("failed to open output file '%s': %w", cmdNode.StdoutFile, err)
 		}
 		cmd.Stdout = file
-		cmd.Stderr = file // Also redirect stderr to the same file
 		files = append(files, file)
+	}
+
+	// Apply the fd-specific redirections the legacy fields cannot express:
+	// stderr (2>), combined (&>), and here-strings (<<<).
+	for _, r := range cmdNode.Redirs {
+		switch r.Op {
+		case RedirOut, RedirAppend:
+			if r.Fd != 2 {
+				continue // stdout handled above
+			}
+			flag := os.O_CREATE | os.O_WRONLY | os.O_TRUNC
+			if r.Op == RedirAppend {
+				flag = os.O_CREATE | os.O_WRONLY | os.O_APPEND
+			}
+			file, err := os.OpenFile(r.Target, flag, 0644)
+			if err != nil {
+				return nil, files, fmt.Errorf("failed to open stderr file '%s': %w", r.Target, err)
+			}
+			cmd.Stderr = file
+			files = append(files, file)
+		case RedirBoth:
+			file, err := os.Create(r.Target)
+			if err != nil {
+				return nil, files, fmt.Errorf("failed to open output file '%s': %w", r.Target, err)
+			}
+			cmd.Stdout = file
+			cmd.Stderr = file
+			files = append(files, file)
+		case RedirHereStr:
+			// A here-string feeds the word plus a trailing newline on stdin.
+			cmd.Stdin = strings.NewReader(r.Target + "\n")
+		}
 	}
 
 	// Check security for the command

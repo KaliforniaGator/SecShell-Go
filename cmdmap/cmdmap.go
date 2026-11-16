@@ -45,6 +45,11 @@ func registerBuiltInCommands() {
 		builtInCommands[cmd] = true
 	}
 
+	// Phase 3 shell-state builtins (may not have help topics yet).
+	for _, cmd := range []string{"alias", "unalias", "set", "read", "source", ".", ":"} {
+		builtInCommands[cmd] = true
+	}
+
 	// Register all the combined built-in commands
 	for cmdName := range builtInCommands {
 		// Get help topic if it exists

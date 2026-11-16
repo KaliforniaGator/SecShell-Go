@@ -10,6 +10,7 @@ import (
 	"secshell/globals"
 	"secshell/help"
 	"secshell/history"
+	"secshell/jobs"
 	"secshell/logging"
 	"secshell/pentest"
 	secengine "secshell/sec-engine"
@@ -21,6 +22,7 @@ import (
 	"secshell/ui/gui"
 	"secshell/update"
 
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
@@ -36,9 +38,6 @@ var shellKeywords = map[string]bool{
 	"case": true, "esac": true, "in": true, "function": true,
 }
 
-var shellAliases = map[string]string{
-	"url": "urlencode",
-}
 
 // RegisterBuiltInCommandHandlers registers handlers for all built-in commands
 func RegisterBuiltInCommandHandlers() {
@@ -59,6 +58,13 @@ func RegisterBuiltInCommandHandlers() {
 	registerCommandHandler("export", handleExport)
 	registerCommandHandler("env", handleEnv)
 	registerCommandHandler("unset", handleUnset)
+	registerCommandHandler("alias", handleAlias)
+	registerCommandHandler("unalias", handleUnalias)
+	registerCommandHandler("set", handleSet)
+	registerCommandHandler("read", handleRead)
+	registerCommandHandler("source", handleSource)
+	registerCommandHandler(".", handleSource)
+	registerCommandHandler(":", handleColon)
 
 	// Security commands
 	registerCommandHandler("allowed", handleAllowed)
@@ -152,7 +158,7 @@ func handleType(args []string) (int, error) {
 }
 
 func resolveType(name string) (string, bool) {
-	if aliasTarget, isAlias := shellAliases[name]; isAlias {
+	if aliasTarget, isAlias := ShellState.GetAlias(name); isAlias {
 		return fmt.Sprintf("%s is an alias for %s", name, aliasTarget), true
 	}
 
@@ -287,7 +293,36 @@ func handleDate(args []string) (int, error) {
 
 // handleCd handles the cd command
 func handleCd(args []string) (int, error) {
-	core.ChangeDirectory(args)
+	var target string
+	switch {
+	case len(args) < 2:
+		target = os.Getenv("HOME")
+		if target == "" {
+			gui.ErrorBox("cd: HOME not set")
+			return 1, nil
+		}
+	case args[1] == "-" || args[1] == "--prev" || args[1] == "-p":
+		target = os.Getenv("OLDPWD")
+		if target == "" {
+			gui.ErrorBox("cd: OLDPWD not set")
+			return 1, nil
+		}
+		fmt.Println(target)
+	default:
+		target = args[1]
+	}
+
+	current, _ := os.Getwd()
+	if err := os.Chdir(target); err != nil {
+		gui.ErrorBox(fmt.Sprintf("cd: %s", err))
+		return 1, nil
+	}
+	if current != "" {
+		_ = os.Setenv("OLDPWD", current)
+	}
+	if newPwd, err := os.Getwd(); err == nil {
+		_ = os.Setenv("PWD", newPwd)
+	}
 	return 0, nil
 }
 
@@ -324,7 +359,22 @@ func handleColors(args []string) (int, error) {
 
 // handleExport handles the export command
 func handleExport(args []string) (int, error) {
-	env.ExportVariable(args)
+	// export               -> list exported variables
+	// export NAME          -> mark an existing shell variable exported
+	// export NAME=value    -> set and export (multiple pairs allowed)
+	if len(args) < 2 {
+		for _, e := range os.Environ() {
+			fmt.Printf("export %s\n", e)
+		}
+		return 0, nil
+	}
+	for _, a := range args[1:] {
+		if eq := strings.IndexByte(a, '='); eq >= 0 {
+			ShellState.Export(a[:eq], a[eq+1:], true)
+		} else {
+			ShellState.Export(a, "", false)
+		}
+	}
 	return 0, nil
 }
 
@@ -336,7 +386,125 @@ func handleEnv(args []string) (int, error) {
 
 // handleUnset handles the unset command
 func handleUnset(args []string) (int, error) {
-	env.UnsetEnvVariable(args)
+	if len(args) < 2 {
+		gui.ErrorBox("Usage: unset NAME...")
+		return 1, nil
+	}
+	for _, name := range args[1:] {
+		ShellState.Unset(name)
+	}
+	return 0, nil
+}
+
+// handleAlias implements: alias (list), alias NAME (show), alias NAME=value (set).
+func handleAlias(args []string) (int, error) {
+	if len(args) < 2 {
+		for name, val := range ShellState.Aliases() {
+			fmt.Printf("alias %s='%s'\n", name, val)
+		}
+		return 0, nil
+	}
+	exit := 0
+	for _, a := range args[1:] {
+		if eq := strings.IndexByte(a, '='); eq >= 0 {
+			ShellState.SetAlias(a[:eq], a[eq+1:])
+		} else if val, ok := ShellState.GetAlias(a); ok {
+			fmt.Printf("alias %s='%s'\n", a, val)
+		} else {
+			gui.ErrorBox(fmt.Sprintf("alias: %s: not found", a))
+			exit = 1
+		}
+	}
+	return exit, nil
+}
+
+// handleUnalias removes one or more aliases.
+func handleUnalias(args []string) (int, error) {
+	if len(args) < 2 {
+		gui.ErrorBox("Usage: unalias NAME...")
+		return 1, nil
+	}
+	for _, name := range args[1:] {
+		ShellState.RemoveAlias(name)
+	}
+	return 0, nil
+}
+
+// handleSet supports `set -- ARGS` to set positional parameters. With no args it
+// lists shell variables.
+func handleSet(args []string) (int, error) {
+	if len(args) < 2 {
+		for _, e := range os.Environ() {
+			fmt.Println(e)
+		}
+		return 0, nil
+	}
+	if args[1] == "--" {
+		ShellState.SetPositional(args[2:])
+		return 0, nil
+	}
+	ShellState.SetPositional(args[1:])
+	return 0, nil
+}
+
+// handleRead reads a line from stdin into the named variable(s). A single name
+// receives the whole line; multiple names split the line on whitespace with the
+// last absorbing the remainder.
+func handleRead(args []string) (int, error) {
+	if len(args) < 2 {
+		gui.ErrorBox("Usage: read NAME...")
+		return 1, nil
+	}
+	reader := bufio.NewReader(os.Stdin)
+	line, err := reader.ReadString('\n')
+	if err != nil && line == "" {
+		return 1, nil
+	}
+	line = strings.TrimRight(line, "\r\n")
+	names := args[1:]
+	if len(names) == 1 {
+		ShellState.SetVar(names[0], line)
+		return 0, nil
+	}
+	fields := strings.Fields(line)
+	for i, name := range names {
+		switch {
+		case i < len(names)-1 && i < len(fields):
+			ShellState.SetVar(name, fields[i])
+		case i == len(names)-1:
+			ShellState.SetVar(name, strings.Join(fields[i:], " "))
+		default:
+			ShellState.SetVar(name, "")
+		}
+	}
+	return 0, nil
+}
+
+// handleColon is the `:` no-op builtin; it always succeeds.
+func handleColon(args []string) (int, error) {
+	return 0, nil
+}
+
+// handleSource runs the commands in a file in the current shell context
+// (source FILE / . FILE).
+func handleSource(args []string) (int, error) {
+	if len(args) < 2 {
+		gui.ErrorBox("Usage: source FILE")
+		return 1, nil
+	}
+	data, err := os.ReadFile(args[1])
+	if err != nil {
+		gui.ErrorBox(fmt.Sprintf("source: %s", err))
+		return 1, nil
+	}
+	jobsMap := make(map[int]*jobs.Job)
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		ExecuteCommand(line, jobsMap)
+	}
 	return 0, nil
 }
 
